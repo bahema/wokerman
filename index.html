@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <title>AutoHub | Forex, Betting, Software & Social Tools</title>
+    <meta
+      name="description"
+      content="Discover high-performance Forex, Betting, Software, and Social automation products built for modern digital operators."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AutoHub | Forex, Betting, Software & Social Tools" />
+    <meta
+      property="og:description"
+      content="Discover high-performance Forex, Betting, Software, and Social automation products built for modern digital operators."
+    />
+    <meta property="og:image" content="/social-preview.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AutoHub | Forex, Betting, Software & Social Tools" />
+    <meta
+      name="twitter:description"
+      content="Discover high-performance Forex, Betting, Software, and Social automation products built for modern digital operators."
+    />
+    <meta name="twitter:image" content="/social-preview.svg" />
+    <link rel="canonical" href="/" />
+  </head>
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <noscript>
+      <div style="padding:16px;font-family:Segoe UI, Arial, sans-serif;color:#111827;background:#f8fafc;">
+        JavaScript is disabled. Enable JavaScript to run this app.
+      </div>
+    </noscript>
+    <div id="root">
+      <div style="padding:16px;font-family:Segoe UI, Arial, sans-serif;color:#111827;background:#f8fafc;">
+        Loading app...
+      </div>
+    </div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var redirectedPath = params.get("p");
+        if (!redirectedPath) return;
+        var nextPath = redirectedPath.charAt(0) === "/" ? redirectedPath : "/" + redirectedPath;
+        var nextQuery = params.get("q") || "";
+        var nextHash = params.get("h") || "";
+        var finalUrl = nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
+        window.history.replaceState({}, "", finalUrl);
+      })();
+    </script>
+    <script>
+      window.setTimeout(function () {
+        var root = document.getElementById("root");
+        if (!root) return;
+        if (root.children.length === 1 && root.textContent && root.textContent.indexOf("Loading app...") !== -1) {
+          root.innerHTML =
+            '<div style="padding:16px;font-family:Segoe UI, Arial, sans-serif;color:#991b1b;background:#fff1f2;">App failed to initialize in browser. Open DevTools console and share the first red error line.</div>';
+        }
+      }, 4000);
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
