@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: autohub-backend
+    env: node
+    plan: starter
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: autohub-storage
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        sync: false
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      - key: MEDIA_DIR
+        value: /var/data/storage
+      - key: DISABLE_SMTP
+        value: "false"
+      - key: ALLOW_DEV_OTP
+        value: "false"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
