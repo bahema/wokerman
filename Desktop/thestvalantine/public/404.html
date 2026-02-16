@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var segments = window.location.pathname.split("/").filter(Boolean);
+        var isGithubProject = window.location.hostname.endsWith(".github.io") && segments.length > 0;
+        var basePath = isGithubProject ? "/" + segments[0] : "";
+        var routePath = window.location.pathname.slice(basePath.length) || "/";
+        var query = window.location.search ? window.location.search.slice(1) : "";
+        var hash = window.location.hash ? window.location.hash.slice(1) : "";
+        var target =
+          window.location.origin +
+          basePath +
+          "/?p=" +
+          encodeURIComponent(routePath) +
+          (query ? "&q=" + encodeURIComponent(query) : "") +
+          (hash ? "&h=" + encodeURIComponent(hash) : "");
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>
