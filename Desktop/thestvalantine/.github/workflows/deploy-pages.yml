@@ -20,6 +20,7 @@ jobs:
     env:
       DEFAULT_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
       SITE_URL: ${{ vars.SITE_URL }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
