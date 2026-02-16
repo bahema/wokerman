@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Keep private admin/auth pages out of search indexing.
+Disallow: /admin
+Disallow: /signup
+Disallow: /boss/
+
+Sitemap: __SITE_URL__/sitemap.xml
