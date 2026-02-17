@@ -70,7 +70,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-grabs-title"
-        className="my-4 w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:my-8 sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
+        className="mx-auto my-4 w-full max-w-[calc(100vw-1.5rem)] min-w-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:my-8 sm:max-w-lg sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <h3 id="quick-grabs-title" className="text-xl font-bold text-slate-900 dark:text-white">
@@ -99,7 +99,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
                   required
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
+                  className="mt-1 h-11 min-w-0 w-full max-w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
                   placeholder="Enter your name"
                 />
               </label>
@@ -111,7 +111,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
+                  className="mt-1 h-11 min-w-0 w-full max-w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
                   placeholder="you@example.com"
                 />
               </label>
@@ -122,17 +122,19 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
                   type="text"
                   value={contact}
                   onChange={(event) => setContact(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
+                  className="mt-1 h-11 min-w-0 w-full max-w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
                   placeholder="Phone or WhatsApp"
                 />
               </label>
 
-              <button
-                type="submit"
-                className="mt-2 w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-500"
-              >
-                Subscribe
-              </button>
+              <div className="pt-1">
+                <button
+                  type="submit"
+                  className="mt-2 inline-flex w-auto rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-500"
+                >
+                  Subscribe
+                </button>
+              </div>
             </form>
           </>
         ) : (
