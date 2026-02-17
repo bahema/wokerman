@@ -72,7 +72,13 @@ const bootstrap = async () => {
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-    res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+    // Uploaded media is displayed by a separate frontend origin (GitHub Pages/custom domain).
+    // Keep API strict while allowing /uploads assets to be embedded cross-origin.
+    if (req.path.startsWith("/uploads/")) {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    } else {
+      res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+    }
     res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     if (process.env.NODE_ENV === "production" && req.secure) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");

@@ -19,8 +19,8 @@ const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
 
   return (
     <article className="group relative z-0 flex h-full w-full max-w-[350px] flex-col overflow-visible rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_32px_-20px_rgba(15,23,42,0.45)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_40px_-20px_rgba(37,99,235,0.35)] dark:border-transparent dark:bg-slate-900 dark:text-slate-100 dark:shadow-[0_22px_48px_-24px_rgba(2,6,23,0.95),0_0_0_1px_rgba(30,41,59,0.35)] dark:hover:shadow-[0_30px_56px_-24px_rgba(2,6,23,0.98),0_0_0_1px_rgba(59,130,246,0.35)]">
-      <div className={`relative h-[150px] overflow-hidden bg-gradient-to-br sm:h-[170px] ${gradientByCategory[product.category]}`}>
-        {product.imageUrl ? <img src={product.imageUrl} alt={product.title} className="absolute inset-0 h-full w-full object-cover" /> : null}
+      <div className={`relative h-[190px] overflow-hidden bg-gradient-to-br sm:h-[220px] ${gradientByCategory[product.category]}`}>
+        {product.imageUrl ? <img src={product.imageUrl} alt={product.title} className="absolute inset-0 h-full w-full object-cover object-center" loading="lazy" /> : null}
         <div className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
         <div className="absolute left-3 top-3 flex gap-2">
           {product.isNew && (

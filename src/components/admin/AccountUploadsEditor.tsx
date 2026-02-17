@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { deleteMediaItem, getMediaLibrary, uploadMediaFiles, type MediaItem } from "../../utils/mediaLibrary";
+import { withBasePath } from "../../utils/basePath";
 
 const AccountUploadsEditor = () => {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -23,7 +24,7 @@ const AccountUploadsEditor = () => {
     })();
   }, []);
 
-  const openPreview = () => window.open("/?preview=draft", "_blank", "noopener,noreferrer");
+  const openPreview = () => window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
 
   return (
     <div className="space-y-4">

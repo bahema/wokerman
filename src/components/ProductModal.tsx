@@ -61,6 +61,9 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
           </button>
         </div>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">{product.longDescription}</p>
+        {product.imageUrl ? (
+          <img src={product.imageUrl} alt={product.title} className="mb-4 h-56 w-full rounded-xl object-cover object-center" loading="lazy" />
+        ) : null}
         <ul className="space-y-2">
           {product.features.map((feature, index) => (
             <li key={`${product.id}-feature-${index}-${feature}`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
