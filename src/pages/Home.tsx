@@ -426,7 +426,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {renderProductGrid(forex.filteredProducts, content.products.forex.length)}
             </div>
           </div>
@@ -451,7 +451,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {renderProductGrid(betting.filteredProducts, content.products.betting.length)}
             </div>
           </div>
@@ -476,7 +476,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {renderProductGrid(software.filteredProducts, content.products.software.length)}
             </div>
           </div>
@@ -501,7 +501,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {renderProductGrid(social.filteredProducts, content.products.social.length)}
             </div>
           </div>
@@ -587,16 +587,16 @@ const Home = ({ initialSection }: HomeProps) => {
               <div>
                 <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Quick links</h4>
                 <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
-                  <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/forex"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("forex"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/forex")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("forex"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
                     Forex
                   </a>
-                  <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/betting"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("betting"); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/betting")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("betting"); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">
                     Betting
                   </a>
-                  <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/software"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("software"); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/software")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("software"); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">
                     Software
                   </a>
-                  <a href={withBasePath("/social")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/social"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("social"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/social")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/social")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("social"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
                     Social
                   </a>
                 </div>
@@ -625,7 +625,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     href={withBasePath("/affiliate-disclosure")}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.history.pushState({}, "", "/affiliate-disclosure");
+                      window.history.pushState({}, "", withBasePath("/affiliate-disclosure"));
                       window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
@@ -636,7 +636,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     href={withBasePath("/earnings-disclaimer")}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.history.pushState({}, "", "/earnings-disclaimer");
+                      window.history.pushState({}, "", withBasePath("/earnings-disclaimer"));
                       window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
@@ -647,7 +647,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     href={withBasePath("/privacy")}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.history.pushState({}, "", "/privacy");
+                      window.history.pushState({}, "", withBasePath("/privacy"));
                       window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
@@ -658,7 +658,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     href={withBasePath("/terms")}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.history.pushState({}, "", "/terms");
+                      window.history.pushState({}, "", withBasePath("/terms"));
                       window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"

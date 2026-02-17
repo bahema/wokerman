@@ -9,7 +9,8 @@ export const useProductFilters = (products: Product[]) => {
 
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const filtered = products.filter((product) => {
+    const indexedProducts = products.map((product, index) => ({ product, index }));
+    const filtered = indexedProducts.filter(({ product }) => {
       if (!term) return true;
       return (
         product.title.toLowerCase().includes(term) ||
@@ -25,15 +26,20 @@ export const useProductFilters = (products: Product[]) => {
     };
 
     if (sort === "position") {
-      sorted.sort((a, b) => positionValue(a.position, Number.MAX_SAFE_INTEGER) - positionValue(b.position, Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
+      sorted.sort(
+        (a, b) =>
+          positionValue(a.product.position, Number.MAX_SAFE_INTEGER) - positionValue(b.product.position, Number.MAX_SAFE_INTEGER) ||
+          a.index - b.index ||
+          a.product.title.localeCompare(b.product.title)
+      );
     } else if (sort === "rating") {
-      sorted.sort((a, b) => b.rating - a.rating);
+      sorted.sort((a, b) => b.product.rating - a.product.rating || a.index - b.index);
     } else if (sort === "newest") {
-      sorted.sort((a, b) => Number(b.isNew) - Number(a.isNew) || b.rating - a.rating);
+      sorted.sort((a, b) => Number(b.product.isNew) - Number(a.product.isNew) || b.product.rating - a.product.rating || a.index - b.index);
     } else {
-      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      sorted.sort((a, b) => a.product.title.localeCompare(b.product.title) || a.index - b.index);
     }
-    return sorted;
+    return sorted.map(({ product }) => product);
   }, [products, search, sort]);
 
   return {
