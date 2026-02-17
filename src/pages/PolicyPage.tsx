@@ -1,3 +1,5 @@
+import { withBasePath } from "../utils/basePath";
+
 type PolicyPageKind = "affiliate-disclosure" | "earnings-disclaimer" | "privacy" | "terms";
 
 type PolicyPageProps = {
@@ -64,7 +66,7 @@ const PolicyPage = ({ kind }: PolicyPageProps) => {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <main className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
         <a
-          href="/"
+          href={withBasePath("/")}
           onClick={(event) => {
             event.preventDefault();
             window.history.pushState({}, "", "/");

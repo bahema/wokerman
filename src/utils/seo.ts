@@ -1,3 +1,5 @@
+import { withBasePath } from "./basePath";
+
 type SeoOptions = {
   title: string;
   description: string;
@@ -54,7 +56,8 @@ export const removeStructuredData = (id: string) => {
 
 export const setSeo = ({ title, description, canonicalPath = "/", robots = "index,follow", image = "/social-preview.svg" }: SeoOptions) => {
   const origin = window.location.origin;
-  const canonicalUrl = new URL(canonicalPath, `${origin}/`).toString();
+  const canonicalUrl = new URL(withBasePath(canonicalPath), `${origin}/`).toString();
+  const imageUrl = new URL(withBasePath(image), `${origin}/`).toString();
 
   document.title = title;
   setMetaName("description", description);
@@ -67,10 +70,10 @@ export const setSeo = ({ title, description, canonicalPath = "/", robots = "inde
   setMetaProperty("og:title", title);
   setMetaProperty("og:description", description);
   setMetaProperty("og:url", canonicalUrl);
-  setMetaProperty("og:image", new URL(image, `${origin}/`).toString());
+  setMetaProperty("og:image", imageUrl);
 
   setMetaName("twitter:card", "summary_large_image");
   setMetaName("twitter:title", title);
   setMetaName("twitter:description", description);
-  setMetaName("twitter:image", new URL(image, `${origin}/`).toString());
+  setMetaName("twitter:image", imageUrl);
 };

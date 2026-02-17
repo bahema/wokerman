@@ -4,6 +4,7 @@ import type { Theme } from "../utils/theme";
 import { smoothScrollToId } from "../utils/smoothScroll";
 import FollowUsPopover from "./FollowUsPopover";
 import ThemeToggle from "./ThemeToggle";
+import { withBasePath } from "../utils/basePath";
 
 type NavbarProps = {
   activeSection: string;
@@ -29,7 +30,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-3">
           <a
-            href="/"
+            href={withBasePath("/")}
             onClick={(event) => {
               event.preventDefault();
               window.history.pushState({}, "", "/");
@@ -49,7 +50,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
               return (
                 <a
                   key={link.id}
-                  href={`/${link.id}`}
+                  href={withBasePath(`/${link.id}`)}
                   onClick={(event) => {
                     event.preventDefault();
                     window.history.pushState({}, "", `/${link.id}`);

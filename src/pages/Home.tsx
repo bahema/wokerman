@@ -14,6 +14,7 @@ import { defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
+import { withBasePath } from "../utils/basePath";
 
 type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
@@ -560,16 +561,16 @@ const Home = ({ initialSection }: HomeProps) => {
               <div>
                 <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Quick links</h4>
                 <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
-                  <a href="/forex" onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/forex"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("forex"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/forex"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("forex"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
                     Forex
                   </a>
-                  <a href="/betting" onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/betting"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("betting"); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/betting"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("betting"); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">
                     Betting
                   </a>
-                  <a href="/software" onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/software"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("software"); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/software"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("software"); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">
                     Software
                   </a>
-                  <a href="/social" onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/social"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("social"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
+                  <a href={withBasePath("/social")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/social"); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("social"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
                     Social
                   </a>
                 </div>
@@ -595,7 +596,7 @@ const Home = ({ initialSection }: HomeProps) => {
                 <p className="text-sm text-slate-700 dark:text-slate-200">{content.footer.note}</p>
                 <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-300">
                   <a
-                    href="/affiliate-disclosure"
+                    href={withBasePath("/affiliate-disclosure")}
                     onClick={(e) => {
                       e.preventDefault();
                       window.history.pushState({}, "", "/affiliate-disclosure");
@@ -606,7 +607,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     Affiliate Disclosure
                   </a>
                   <a
-                    href="/earnings-disclaimer"
+                    href={withBasePath("/earnings-disclaimer")}
                     onClick={(e) => {
                       e.preventDefault();
                       window.history.pushState({}, "", "/earnings-disclaimer");
@@ -617,7 +618,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     Earnings Disclaimer
                   </a>
                   <a
-                    href="/privacy"
+                    href={withBasePath("/privacy")}
                     onClick={(e) => {
                       e.preventDefault();
                       window.history.pushState({}, "", "/privacy");
@@ -628,7 +629,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     Privacy Policy
                   </a>
                   <a
-                    href="/terms"
+                    href={withBasePath("/terms")}
                     onClick={(e) => {
                       e.preventDefault();
                       window.history.pushState({}, "", "/terms");
@@ -646,7 +647,7 @@ const Home = ({ initialSection }: HomeProps) => {
             </p>
             <div className="mt-4 flex justify-end">
               <a
-                href="/boss/login"
+                href={withBasePath("/boss/login")}
                 aria-label="Go to login page"
                 className="inline-flex h-4 w-4 rounded-full bg-red-600 shadow-[0_0_0_4px_rgba(220,38,38,0.2)] transition hover:scale-110 hover:bg-red-500"
               />

@@ -27,6 +27,7 @@ import { useEffect } from "react";
 import { defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
+import { withBasePath } from "../utils/basePath";
 
 const Admin = () => {
   const [content, setContent] = useState(defaultSiteContent);
@@ -186,7 +187,7 @@ const Admin = () => {
                 void (async () => {
                   await saveDraftContent(nextContent);
                   setStatus("Draft");
-                  window.open("/?preview=draft", "_blank", "noopener,noreferrer");
+                  window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
                 })();
               }}
             />
@@ -214,7 +215,7 @@ const Admin = () => {
                 void (async () => {
                   await saveDraftContent(nextContent);
                   setStatus("Draft");
-                  window.open("/?preview=draft", "_blank", "noopener,noreferrer");
+                  window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
                 })();
               }}
             />
@@ -242,7 +243,7 @@ const Admin = () => {
                 void (async () => {
                   await saveDraftContent(nextContent);
                   setStatus("Draft");
-                  window.open("/?preview=draft", "_blank", "noopener,noreferrer");
+                  window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
                 })();
               }}
             />
@@ -270,7 +271,7 @@ const Admin = () => {
                 void (async () => {
                   await saveDraftContent(nextContent);
                   setStatus("Draft");
-                  window.open("/?preview=draft", "_blank", "noopener,noreferrer");
+                  window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
                 })();
               }}
             />
