@@ -15,12 +15,26 @@ const app = express();
 app.disable("x-powered-by");
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+const CORS_ORIGIN_RAW = process.env.CORS_ORIGIN ?? "http://localhost:5173";
 const DB_URL = process.env.DB_URL ?? "";
 const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
-const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true" && process.env.NODE_ENV !== "production";
+const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
 const _siteContentContract: SiteContent | null = null;
+
+const normalizeOrigin = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed === "*") return "*";
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed;
+  }
+};
+
+const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
+const isOriginAllowed = (origin: string) => CORS_ORIGINS.includes("*") || CORS_ORIGINS.includes(origin);
 
 const bootstrap = async () => {
   const mediaStore = await createMediaStore(MEDIA_DIR);
@@ -42,7 +56,13 @@ const bootstrap = async () => {
 
   app.use(
     cors({
-      origin: CORS_ORIGIN,
+      origin: (origin, callback) => {
+        if (!origin || isOriginAllowed(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error("CORS origin not allowed."));
+      },
       credentials: true
     })
   );
@@ -92,7 +112,7 @@ const bootstrap = async () => {
       service: "autohub-backend",
       env: {
         port: PORT,
-        corsOrigin: CORS_ORIGIN,
+        corsOrigins: CORS_ORIGINS,
         dbConfigured: Boolean(DB_URL),
         mediaDir: MEDIA_DIR
       },

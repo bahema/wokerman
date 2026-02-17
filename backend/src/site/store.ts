@@ -29,6 +29,13 @@ const writeJson = async (filePath: string, data: unknown) => {
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
 };
 
+const isLegacyEmptyPublishedContent = (content: SiteContent) =>
+  content.products.forex.length === 0 &&
+  content.products.betting.length === 0 &&
+  content.products.software.length === 0 &&
+  content.products.social.length === 0 &&
+  content.industries.length === 0;
+
 export const createSiteStore = async (baseDir: string) => {
   const dataDir = path.join(baseDir, "site");
   const dataPath = path.join(dataDir, "content.json");
@@ -40,7 +47,11 @@ export const createSiteStore = async (baseDir: string) => {
     updatedAt: new Date().toISOString()
   };
   const existing = await readJson<SiteStoreRecord>(dataPath, initial);
-  await writeJson(dataPath, existing);
+  const hydrated =
+    existing.draft === null && isLegacyEmptyPublishedContent(existing.published)
+      ? { ...existing, published: clone(defaultPublishedContent), updatedAt: new Date().toISOString() }
+      : existing;
+  await writeJson(dataPath, hydrated);
 
   const read = async () => readJson<SiteStoreRecord>(dataPath, initial);
 
