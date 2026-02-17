@@ -150,18 +150,22 @@ const Home = ({ initialSection }: HomeProps) => {
   useEffect(() => {
     const el = industriesScrollRef.current;
     if (!el || content.industries.length < 2) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) return;
     let rafId = 0;
     let last = performance.now();
-    const speedPxPerMs = 0.03;
+    const speedPxPerMs = window.innerWidth < 640 ? 0.028 : 0.04;
+
+    el.scrollLeft = 0;
 
     const tick = (now: number) => {
       const delta = now - last;
       last = now;
       if (!industriesScrollPaused) {
-        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
-        if (maxScroll > 0) {
+        const loopWidth = el.scrollWidth / 2;
+        if (loopWidth > 0) {
           const next = el.scrollLeft + delta * speedPxPerMs;
-          el.scrollLeft = next >= maxScroll ? 0 : next;
+          el.scrollLeft = next >= loopWidth ? next - loopWidth : next;
         }
       }
       rafId = window.requestAnimationFrame(tick);
@@ -242,6 +246,9 @@ const Home = ({ initialSection }: HomeProps) => {
     }
     smoothScrollToId(target.replace("#", ""));
   };
+
+  const industriesForTrack =
+    content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
 
   const renderProductGrid = (products: Product[], sourceCount: number) => {
     if (sourceCount === 0) {
@@ -499,11 +506,24 @@ const Home = ({ initialSection }: HomeProps) => {
               No industries published yet. Add industries from Admin to show them here.
             </div>
           ) : (
-            <div ref={industriesScrollRef} className="overflow-hidden py-4 md:overflow-x-auto">
-              <div className="flex flex-wrap items-center justify-center gap-6 px-2 md:min-w-max md:flex-nowrap md:justify-start md:gap-8 md:px-4">
-                {content.industries.map((industry) => (
+            <div
+              ref={industriesScrollRef}
+              className="overflow-hidden py-4"
+              onMouseEnter={() => setIndustriesScrollPaused(true)}
+              onMouseLeave={() => setIndustriesScrollPaused(false)}
+              onPointerDown={() => setIndustriesScrollPaused(true)}
+              onPointerUp={() => setIndustriesScrollPaused(false)}
+              onPointerCancel={() => setIndustriesScrollPaused(false)}
+              onFocusCapture={() => setIndustriesScrollPaused(true)}
+              onBlurCapture={() => setIndustriesScrollPaused(false)}
+            >
+              <div className="flex min-w-max touch-pan-y flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
+                {industriesForTrack.map((industry, index) => {
+                  const isClone = index >= content.industries.length;
+                  return (
                   <div
-                    key={industry.id}
+                    key={`${industry.id}-${index}`}
+                    aria-hidden={isClone}
                     className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3"
                   >
                     {industry.link?.trim() ? (
@@ -512,8 +532,7 @@ const Home = ({ initialSection }: HomeProps) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`Open ${industry.label}`}
-                        onMouseEnter={() => setIndustriesScrollPaused(true)}
-                        onMouseLeave={() => setIndustriesScrollPaused(false)}
+                        tabIndex={isClone ? -1 : 0}
                       >
                         {industry.imageUrl ? (
                           <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] transition hover:scale-105 dark:shadow-none" />
@@ -528,22 +547,16 @@ const Home = ({ initialSection }: HomeProps) => {
                         src={industry.imageUrl}
                         alt={industry.label}
                         className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] dark:shadow-none"
-                        onMouseEnter={() => setIndustriesScrollPaused(true)}
-                        onMouseLeave={() => setIndustriesScrollPaused(false)}
                       />
                     ) : (
-                      <span
-                        aria-hidden="true"
-                        className="text-4xl"
-                        onMouseEnter={() => setIndustriesScrollPaused(true)}
-                        onMouseLeave={() => setIndustriesScrollPaused(false)}
-                      >
+                      <span aria-hidden="true" className="text-4xl">
                         {industry.icon ?? "•"}
                       </span>
                     )}
                     <span className="sr-only">{industry.label}</span>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </div>
           )}
