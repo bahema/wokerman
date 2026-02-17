@@ -36,13 +36,13 @@ const SectionHeader = ({
   }
 
   return (
-    <div className="mb-8 space-y-4">
+    <div className="mb-8 min-w-0 space-y-4">
     <div className="space-y-2">
       <span className="inline-flex rounded-full bg-gradient-to-r from-blue-100 via-sky-100 to-cyan-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-blue-700 dark:rounded-none dark:bg-none dark:px-0 dark:py-0 dark:text-blue-400">
         {eyebrow}
       </span>
-      <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white md:text-4xl">{title}</h2>
-      <p className="max-w-2xl text-sm text-slate-700 dark:text-slate-300 md:text-base">{description}</p>
+      <h2 className="break-words text-3xl font-bold tracking-tight text-slate-900 dark:text-white md:text-4xl">{title}</h2>
+      <p className="max-w-2xl break-words text-sm text-slate-700 dark:text-slate-300 md:text-base">{description}</p>
     </div>
 
     <div className="grid gap-3 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-white via-slate-50 to-blue-50/60 p-4 shadow-[0_12px_30px_-18px_rgba(15,23,42,0.28)] dark:border-slate-600 dark:bg-none dark:bg-slate-900 dark:shadow-sm md:grid-cols-[1fr,220px,auto] md:items-center">
@@ -70,7 +70,7 @@ const SectionHeader = ({
         <option value="newest">Newest first</option>
         <option value="az">A-Z</option>
       </select>
-      <span className="inline-flex h-11 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+      <span className="flex min-w-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
         {updatedLabel}
       </span>
     </div>

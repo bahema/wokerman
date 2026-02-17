@@ -5,7 +5,6 @@ import { smoothScrollToId } from "../utils/smoothScroll";
 import FollowUsPopover from "./FollowUsPopover";
 import ThemeToggle from "./ThemeToggle";
 import { withBasePath } from "../utils/basePath";
-import { useOutsideClick } from "../utils/useOutsideClick";
 
 type NavbarProps = {
   activeSection: string;
@@ -26,8 +25,6 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
-  useOutsideClick(mobileMenuRef, () => setMobileMenuOpen(false), mobileMenuOpen);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -106,7 +103,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
             })}
           </nav>
 
-          <div ref={mobileMenuRef} className="relative flex shrink-0 items-center gap-2">
+          <div className="relative flex shrink-0 items-center gap-2">
             <div className="hidden md:block">
               <ThemeToggle theme={theme} onToggle={onThemeToggle} />
             </div>
@@ -138,7 +135,14 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
             </button>
           </div>
         </div>
-        {mobileMenuOpen ? <div className="fixed inset-0 top-16 z-40 bg-slate-950/20 backdrop-blur-[1px] md:hidden" aria-hidden="true" /> : null}
+        {mobileMenuOpen ? (
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 top-16 z-40 bg-slate-950/20 backdrop-blur-[1px] md:hidden"
+            aria-label="Close mobile menu"
+          />
+        ) : null}
         <nav
           id="mobile-nav-menu"
           aria-label="Primary mobile"

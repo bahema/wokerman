@@ -305,7 +305,7 @@ const Home = ({ initialSection }: HomeProps) => {
         socials={content.socials}
       />
 
-      <main>
+      <main className="overflow-x-hidden">
         <section className="relative overflow-hidden py-16">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50 via-sky-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -406,7 +406,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
               {renderProductGrid(forex.filteredProducts, content.products.forex.length)}
             </div>
           </div>
@@ -431,7 +431,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
               {renderProductGrid(betting.filteredProducts, content.products.betting.length)}
             </div>
           </div>
@@ -456,7 +456,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
               {renderProductGrid(software.filteredProducts, content.products.software.length)}
             </div>
           </div>
@@ -481,7 +481,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
+            <div className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 sm:justify-items-start xl:grid-cols-3">
               {renderProductGrid(social.filteredProducts, content.products.social.length)}
             </div>
           </div>
@@ -499,12 +499,12 @@ const Home = ({ initialSection }: HomeProps) => {
               No industries published yet. Add industries from Admin to show them here.
             </div>
           ) : (
-            <div ref={industriesScrollRef} className="overflow-x-auto py-4">
-              <div className="flex min-w-max items-center gap-8 px-4">
+            <div ref={industriesScrollRef} className="overflow-hidden py-4 md:overflow-x-auto">
+              <div className="flex flex-wrap items-center justify-center gap-6 px-2 md:min-w-max md:flex-nowrap md:justify-start md:gap-8 md:px-4">
                 {content.industries.map((industry) => (
                   <div
                     key={industry.id}
-                    className="flex min-w-[96px] items-center justify-center px-3 py-2"
+                    className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3"
                   >
                     {industry.link?.trim() ? (
                       <a

@@ -24,7 +24,7 @@ const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
   }, [product.imageUrl, product.id]);
 
   return (
-    <article className="group relative z-0 flex h-full w-full max-w-[350px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_32px_-20px_rgba(15,23,42,0.45)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_40px_-20px_rgba(37,99,235,0.35)] dark:border-transparent dark:bg-slate-900 dark:text-slate-100 dark:shadow-[0_22px_48px_-24px_rgba(2,6,23,0.95),0_0_0_1px_rgba(30,41,59,0.35)] dark:hover:shadow-[0_30px_56px_-24px_rgba(2,6,23,0.98),0_0_0_1px_rgba(59,130,246,0.35)]">
+    <article className="group relative z-0 flex h-full min-w-0 w-full max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_32px_-20px_rgba(15,23,42,0.45)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_40px_-20px_rgba(37,99,235,0.35)] sm:max-w-[350px] dark:border-transparent dark:bg-slate-900 dark:text-slate-100 dark:shadow-[0_22px_48px_-24px_rgba(2,6,23,0.95),0_0_0_1px_rgba(30,41,59,0.35)] dark:hover:shadow-[0_30px_56px_-24px_rgba(2,6,23,0.98),0_0_0_1px_rgba(59,130,246,0.35)]">
       <div className={`relative h-[190px] overflow-hidden rounded-t-2xl bg-gradient-to-br sm:h-[220px] ${gradientByCategory[product.category]}`}>
         {product.imageUrl && !imageFailed ? (
           <img
