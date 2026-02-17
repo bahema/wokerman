@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { deleteMediaItem, getMediaLibrary, uploadMediaFiles, type MediaItem } from "../../utils/mediaLibrary";
 import { withBasePath } from "../../utils/basePath";
 
-const MAX_UPLOAD_DIMENSION = 1600;
-const UPLOAD_QUALITY = 0.82;
-const MIN_SIZE_TO_OPTIMIZE_BYTES = 350 * 1024;
+const MAX_UPLOAD_DIMENSION = 1200;
+const UPLOAD_QUALITY = 0.72;
+const MIN_SIZE_TO_OPTIMIZE_BYTES = 80 * 1024;
 
 const loadImage = (file: File): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
