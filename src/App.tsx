@@ -8,6 +8,34 @@ import { setSeo } from "./utils/seo";
 
 type PublicCategoryPath = "/forex" | "/betting" | "/software" | "/social";
 
+const APP_BASE_PATH = (() => {
+  const raw = import.meta.env.BASE_URL || "/";
+  const trimmed = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  return !trimmed || trimmed === "/" ? "" : trimmed;
+})();
+
+const toAppPath = (pathname: string) => {
+  const clean = pathname || "/";
+  if (!APP_BASE_PATH) return clean;
+  if (clean === APP_BASE_PATH) return "/";
+  if (clean.startsWith(`${APP_BASE_PATH}/`)) return clean.slice(APP_BASE_PATH.length) || "/";
+  return clean;
+};
+
+const toBrowserPath = (appPath: string) => {
+  if (!appPath.startsWith("/")) return appPath;
+  if (!APP_BASE_PATH) return appPath;
+  if (appPath === APP_BASE_PATH || appPath.startsWith(`${APP_BASE_PATH}/`)) return appPath;
+  return `${APP_BASE_PATH}${appPath}`;
+};
+
+const normalizeHistoryArgs = <T extends [data: any, unused: string, url?: string | URL | null | undefined]>(args: T): T => {
+  const [state, unused, url] = args;
+  if (typeof url !== "string") return args;
+  if (/^[a-z]+:\/\//i.test(url) || url.startsWith("#") || url.startsWith("?")) return args;
+  return [state, unused, toBrowserPath(url)] as unknown as T;
+};
+
 const normalizePath = (rawPath: string) => {
   const cleaned = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (cleaned === "/boss/login") return "/signup";
@@ -38,23 +66,25 @@ const categorySectionByPath: Record<PublicCategoryPath, "forex" | "betting" | "s
 };
 
 function App() {
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(toAppPath(window.location.pathname));
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const normalizedPath = normalizePath(path);
 
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
+    const onPopState = () => setPath(toAppPath(window.location.pathname));
     const originalPushState = window.history.pushState;
     const originalReplaceState = window.history.replaceState;
 
     window.history.pushState = function (...args: Parameters<History["pushState"]>) {
-      originalPushState.apply(this, args);
-      setPath(window.location.pathname);
+      const nextArgs = normalizeHistoryArgs(args);
+      originalPushState.apply(this, nextArgs);
+      setPath(toAppPath(window.location.pathname));
     };
     window.history.replaceState = function (...args: Parameters<History["replaceState"]>) {
-      originalReplaceState.apply(this, args);
-      setPath(window.location.pathname);
+      const nextArgs = normalizeHistoryArgs(args);
+      originalReplaceState.apply(this, nextArgs);
+      setPath(toAppPath(window.location.pathname));
     };
 
     window.addEventListener("popstate", onPopState);
