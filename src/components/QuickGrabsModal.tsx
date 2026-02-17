@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type QuickGrabsModalProps = {
   open: boolean;
@@ -55,10 +56,11 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
   };
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/70 p-3 sm:flex sm:items-center sm:justify-center sm:p-4"
+      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-3 pt-6 sm:items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -70,7 +72,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-grabs-title"
-        className="mx-auto my-4 w-full max-w-[calc(100vw-1.5rem)] min-w-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:my-8 sm:max-w-lg sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
+        className="mx-auto w-full max-w-lg min-w-0 max-h-[calc(100dvh-3rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <h3 id="quick-grabs-title" className="text-xl font-bold text-slate-900 dark:text-white">
@@ -153,7 +155,8 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
