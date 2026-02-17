@@ -1,5 +1,6 @@
 export type LoginStartPayload = {
   requiresOtp: boolean;
+  devOtp?: string;
 };
 
 export type AuthStep = "credentials" | "otp" | "done";
@@ -9,16 +10,18 @@ export type FlowResolution = {
   info: string;
 };
 
-export const resolveSignupStart = (): FlowResolution => ({
+const withDevOtp = (message: string, devOtp?: string) => (devOtp ? `${message} Dev OTP: ${devOtp}` : message);
+
+export const resolveSignupStart = (devOtp?: string): FlowResolution => ({
   step: "otp",
-  info: "OTP sent to your email."
+  info: withDevOtp("OTP sent to your email.", devOtp)
 });
 
 export const resolveLoginStart = (payload: LoginStartPayload): FlowResolution => {
   if (payload.requiresOtp) {
     return {
       step: "otp",
-      info: "OTP sent to your email."
+      info: withDevOtp("OTP sent to your email.", payload.devOtp)
     };
   }
   return {

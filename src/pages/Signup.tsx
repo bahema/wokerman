@@ -51,13 +51,13 @@ const Signup = () => {
     setBusy(true);
     try {
       if (mode === "signup") {
-        await startSignupOtp(email.trim().toLowerCase(), password);
-        const next = resolveSignupStart();
+        const response = await startSignupOtp(email.trim().toLowerCase(), password);
+        const next = resolveSignupStart(response.devOtp);
         setInfo(next.info);
         setStep(next.step);
       } else {
         const response = await startLoginOtp(email.trim().toLowerCase(), password);
-        const next = resolveLoginStart({ requiresOtp: response.requiresOtp });
+        const next = resolveLoginStart({ requiresOtp: response.requiresOtp, devOtp: response.devOtp });
         setInfo(next.info);
         setStep(next.step);
       }
@@ -210,7 +210,8 @@ const Signup = () => {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.assign("/admin");
+                  window.history.pushState({}, "", "/admin");
+                  window.dispatchEvent(new PopStateEvent("popstate"));
                 }}
                 className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"
               >
