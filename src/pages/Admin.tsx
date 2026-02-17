@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
@@ -43,10 +43,40 @@ const Admin = () => {
   const [isBusy, setIsBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
+  const autoPublishTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     updateTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      if (autoPublishTimerRef.current !== null) {
+        window.clearTimeout(autoPublishTimerRef.current);
+      }
+    };
+  }, []);
+
+  const queueAutoPublish = (nextContent: typeof content, successMessage: string, fallbackErrorMessage: string) => {
+    setContent(nextContent);
+    setStatus("Draft");
+    if (autoPublishTimerRef.current !== null) {
+      window.clearTimeout(autoPublishTimerRef.current);
+    }
+    autoPublishTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setActionError("");
+          await saveDraftContent(nextContent);
+          await publishContent(nextContent);
+          setStatus("Published");
+          setActionMessage(successMessage);
+        } catch (error) {
+          setActionError(error instanceof Error ? error.message : fallbackErrorMessage);
+        }
+      })();
+    }, 500);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -98,19 +128,37 @@ const Admin = () => {
       case "branding":
         return (
           <EditorShell title="Branding & Theme" description="Manage logo text, accent color and default theme.">
-            <BrandingEditor value={content.branding} onChange={(next) => setContent((prev) => ({ ...prev, branding: next }))} />
+            <BrandingEditor
+              value={content.branding}
+              onChange={(next) => {
+                const nextContent = { ...content, branding: next };
+                queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
+              }}
+            />
           </EditorShell>
         );
       case "social-links":
         return (
           <EditorShell title="Social Links" description="Primary links used by navbar popover and footer.">
-            <SocialLinksEditor value={content.socials} onChange={(next) => setContent((prev) => ({ ...prev, socials: next }))} />
+            <SocialLinksEditor
+              value={content.socials}
+              onChange={(next) => {
+                const nextContent = { ...content, socials: next };
+                queueAutoPublish(nextContent, "Social links updated and published.", "Failed to publish social links updates.");
+              }}
+            />
           </EditorShell>
         );
       case "hero":
         return (
           <EditorShell title="Hero" description="Edit headline, supporting copy, CTA actions and stat chips.">
-            <HeroEditor value={content.hero} onChange={(next) => setContent((prev) => ({ ...prev, hero: next }))} />
+            <HeroEditor
+              value={content.hero}
+              onChange={(next) => {
+                const nextContent = { ...content, hero: next };
+                queueAutoPublish(nextContent, "Hero updated and published.", "Failed to publish hero updates.");
+              }}
+            />
           </EditorShell>
         );
       case "testimonials":
@@ -162,7 +210,13 @@ const Admin = () => {
       case "footer":
         return (
           <EditorShell title="Footer" description="Manage footer note and copyright text.">
-            <FooterEditor value={content.footer} onChange={(next) => setContent((prev) => ({ ...prev, footer: next }))} />
+            <FooterEditor
+              value={content.footer}
+              onChange={(next) => {
+                const nextContent = { ...content, footer: next };
+                queueAutoPublish(nextContent, "Footer updated and published.", "Failed to publish footer updates.");
+              }}
+            />
           </EditorShell>
         );
       case "products-forex":
