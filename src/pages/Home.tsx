@@ -406,7 +406,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,350px))]">
+            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
               {renderProductGrid(forex.filteredProducts, content.products.forex.length)}
             </div>
           </div>
@@ -431,7 +431,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,350px))]">
+            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
               {renderProductGrid(betting.filteredProducts, content.products.betting.length)}
             </div>
           </div>
@@ -456,7 +456,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,350px))]">
+            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
               {renderProductGrid(software.filteredProducts, content.products.software.length)}
             </div>
           </div>
@@ -481,7 +481,7 @@ const Home = ({ initialSection }: HomeProps) => {
               }}
               updatedAt={siteUpdatedAt}
             />
-            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,350px))]">
+            <div className="grid justify-items-start gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),350px))]">
               {renderProductGrid(social.filteredProducts, content.products.social.length)}
             </div>
           </div>

@@ -53,7 +53,7 @@ const CheckoutModal = ({ product, onClose, returnFocusTo }: CheckoutModalProps) 
         <p className="mb-6 text-sm text-slate-600 dark:text-slate-300">
           Confirm checkout for <span className="font-semibold">{product.title}</span>.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <a
             href={product.checkoutLink}
             target="_blank"

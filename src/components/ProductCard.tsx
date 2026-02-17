@@ -59,7 +59,7 @@ const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
           <span className="text-xs text-slate-600 dark:text-slate-300">{trustLabel}</span>
         </div>
       </div>
-      <div className="mt-auto grid grid-cols-2 gap-3 px-4 pb-4">
+      <div className="mt-auto grid grid-cols-1 gap-3 px-4 pb-4 sm:grid-cols-2">
         <button
           type="button"
           onClick={(event) => onCheckout(product, event.currentTarget)}
