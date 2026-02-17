@@ -29,11 +29,20 @@ const CheckoutModal = ({ product, onClose, returnFocusTo }: CheckoutModalProps) 
     returnFocusTo?.focus();
   }, [product, returnFocusTo]);
 
+  useEffect(() => {
+    if (!product) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [product]);
+
   if (!product) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/65 p-3 sm:flex sm:items-center sm:justify-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -45,12 +54,12 @@ const CheckoutModal = ({ product, onClose, returnFocusTo }: CheckoutModalProps) 
         role="dialog"
         aria-modal="true"
         aria-labelledby="checkout-modal-title"
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl outline-none dark:border-slate-700 dark:bg-slate-900"
+        className="my-4 w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:my-8 sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
       >
         <h3 id="checkout-modal-title" className="mb-2 text-xl font-bold text-slate-900 dark:text-white">
           Proceed to Checkout
         </h3>
-        <p className="mb-6 text-sm text-slate-600 dark:text-slate-300">
+        <p className="mb-6 break-words text-sm text-slate-600 dark:text-slate-300">
           Confirm checkout for <span className="font-semibold">{product.title}</span>.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">

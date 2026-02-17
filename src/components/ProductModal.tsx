@@ -34,11 +34,20 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
     returnFocusTo?.focus();
   }, [product, returnFocusTo]);
 
+  useEffect(() => {
+    if (!product) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [product]);
+
   if (!product) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/65 p-3 sm:flex sm:items-center sm:justify-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -50,10 +59,10 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
         role="dialog"
         aria-modal="true"
         aria-labelledby="product-modal-title"
-        className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl outline-none dark:border-slate-700 dark:bg-slate-900"
+        className="my-4 w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none sm:my-8 sm:max-h-[88vh] sm:p-6 dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
-          <h3 id="product-modal-title" className="text-xl font-bold text-slate-900 dark:text-white">
+          <h3 id="product-modal-title" className="min-w-0 break-words text-xl font-bold text-slate-900 dark:text-white">
             {product.title}
           </h3>
           <button
@@ -65,12 +74,12 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
             ✕
           </button>
         </div>
-        <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">{product.longDescription}</p>
+        <p className="mb-4 break-words text-sm text-slate-600 dark:text-slate-300">{product.longDescription}</p>
         {product.imageUrl && !imageFailed ? (
           <img
             src={product.imageUrl}
             alt={product.title}
-            className="mb-4 h-56 w-full rounded-xl object-cover object-center"
+            className="mb-4 h-40 w-full rounded-xl object-cover object-center sm:h-56"
             loading="lazy"
             decoding="async"
             onError={() => setImageFailed(true)}

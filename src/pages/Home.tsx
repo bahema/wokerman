@@ -296,7 +296,7 @@ const Home = ({ initialSection }: HomeProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <Navbar
         activeSection={activeSection}
         theme={theme}
@@ -310,12 +310,12 @@ const Home = ({ initialSection }: HomeProps) => {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50 via-sky-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="relative grid items-center gap-8 lg:grid-cols-2">
-              <div className="reveal space-y-6">
+              <div className="reveal min-w-0 space-y-6">
                 <span className="inline-flex rounded-full border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300">
                   Smart automation for modern operators
                 </span>
-                <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">{content.hero.headline}</h1>
-                <p className="max-w-xl text-base text-slate-600 dark:text-slate-200">{content.hero.subtext}</p>
+                <h1 className="break-words text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">{content.hero.headline}</h1>
+                <p className="max-w-xl break-words text-base text-slate-600 dark:text-slate-200">{content.hero.subtext}</p>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
@@ -334,7 +334,7 @@ const Home = ({ initialSection }: HomeProps) => {
                 </div>
               </div>
 
-              <div className="reveal rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
+              <div className="reveal min-w-0 rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
                 <h3 className="text-lg font-semibold">Performance Snapshot</h3>
                 <p className="mt-1 text-sm text-slate-100">Products tuned for speed, confidence, and measurable outcomes.</p>
                 <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -352,9 +352,9 @@ const Home = ({ initialSection }: HomeProps) => {
               {content.testimonials.map((item) => (
                 <article
                   key={item.id}
-                  className="grid grid-cols-[110px,1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_35px_-18px_rgba(30,64,175,0.25)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-sm dark:hover:shadow-md"
+                  className="grid min-w-0 grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_35px_-18px_rgba(30,64,175,0.25)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-sm dark:hover:shadow-md sm:grid-cols-[110px,1fr]"
                 >
-                  <div className="flex flex-col items-start gap-2 border-r border-slate-200 pr-3 dark:border-slate-700">
+                  <div className="flex flex-col items-start gap-2 border-b border-slate-200 pb-3 dark:border-slate-700 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3">
                     {item.avatarUrl ? (
                       <img src={item.avatarUrl} alt={item.name} className="h-12 w-12 rounded-full object-cover" />
                     ) : (
@@ -375,8 +375,8 @@ const Home = ({ initialSection }: HomeProps) => {
                       ))}
                     </div>
                   </div>
-                  <blockquote className="flex flex-col justify-between">
-                    <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">"{item.quote}"</p>
+                  <blockquote className="min-w-0 break-words flex flex-col justify-between">
+                    <p className="break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200">"{item.quote}"</p>
                     <footer className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                       <span className="font-semibold text-slate-700 dark:text-slate-200">{item.name}</span> · {item.role}
                     </footer>
