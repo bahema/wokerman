@@ -52,6 +52,13 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
   const [saving, setSaving] = useState(false);
   const filteredMedia = mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase()));
 
+  const persistProductList = async (nextItems: Product[]) => {
+    onChange(nextItems);
+    if (onSaveAndPublish) {
+      await onSaveAndPublish(nextItems);
+    }
+  };
+
   useEffect(() => {
     if (!imagePickerOpen) return;
     let isCancelled = false;
@@ -205,8 +212,19 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
               const next = [...items];
               const [moved] = next.splice(dragIndex, 1);
               next.splice(index, 0, moved);
-              onChange(next.map((entry, itemIndex) => ({ ...entry, position: itemIndex + 1 })));
-              setDragIndex(null);
+              const reordered = next.map((entry, itemIndex) => ({ ...entry, position: itemIndex + 1 }));
+              void (async () => {
+                setSaving(true);
+                try {
+                  await persistProductList(reordered);
+                  setFormError("");
+                } catch (error) {
+                  setFormError(error instanceof Error ? error.message : "Failed to reorder products.");
+                } finally {
+                  setSaving(false);
+                  setDragIndex(null);
+                }
+              })();
             }}
           >
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-950/40">
@@ -232,14 +250,25 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    onChange(
-                      [...items.slice(0, index + 1), { ...item, id: makeId("prd"), title: `${item.title} Copy` }, ...items.slice(index + 1)].map((entry, itemIndex) => ({
+                  onClick={() => {
+                    const duplicated = [...items.slice(0, index + 1), { ...item, id: makeId("prd"), title: `${item.title} Copy` }, ...items.slice(index + 1)].map(
+                      (entry, itemIndex) => ({
                         ...entry,
                         position: itemIndex + 1
-                      }))
-                    )
-                  }
+                      })
+                    );
+                    void (async () => {
+                      setSaving(true);
+                      try {
+                        await persistProductList(duplicated);
+                        setFormError("");
+                      } catch (error) {
+                        setFormError(error instanceof Error ? error.message : "Failed to duplicate product.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    })();
+                  }}
                   className="h-9 rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-700"
                 >
                   Duplicate
@@ -418,12 +447,19 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
         onCancel={() => setDeleteIndex(null)}
         onConfirm={() => {
           if (deleteIndex === null) return;
-          onChange(
-            items
-              .filter((_, index) => index !== deleteIndex)
-              .map((entry, itemIndex) => ({ ...entry, position: itemIndex + 1 }))
-          );
-          setDeleteIndex(null);
+          const filtered = items.filter((_, index) => index !== deleteIndex).map((entry, itemIndex) => ({ ...entry, position: itemIndex + 1 }));
+          void (async () => {
+            setSaving(true);
+            try {
+              await persistProductList(filtered);
+              setFormError("");
+              setDeleteIndex(null);
+            } catch (error) {
+              setFormError(error instanceof Error ? error.message : "Failed to delete product.");
+            } finally {
+              setSaving(false);
+            }
+          })();
         }}
       />
 
