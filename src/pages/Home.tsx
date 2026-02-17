@@ -4,6 +4,7 @@ import CheckoutModal from "../components/CheckoutModal";
 import Navbar from "../components/Navbar";
 import ProductCard from "../components/ProductCard";
 import ProductModal from "../components/ProductModal";
+import QuickGrabsModal from "../components/QuickGrabsModal";
 import SectionHeader from "../components/SectionHeader";
 import type { Product } from "../data/siteData";
 import { smoothScrollToId } from "../utils/smoothScroll";
@@ -37,8 +38,10 @@ const Home = ({ initialSection }: HomeProps) => {
 
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
+  const [quickGrabsOpen, setQuickGrabsOpen] = useState(false);
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
   const [checkoutTrigger, setCheckoutTrigger] = useState<HTMLElement | null>(null);
+  const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
 
   useEffect(() => {
@@ -339,6 +342,16 @@ const Home = ({ initialSection }: HomeProps) => {
                     {content.hero.ctaSecondary.label}
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    setQuickGrabsTrigger(event.currentTarget);
+                    setQuickGrabsOpen(true);
+                  }}
+                  className="w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-500 sm:w-auto"
+                >
+                  Quick Grabs
+                </button>
               </div>
 
               <div className="reveal min-w-0 rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
@@ -670,6 +683,7 @@ const Home = ({ initialSection }: HomeProps) => {
       </footer>
 
       <BackToTop />
+      <QuickGrabsModal open={quickGrabsOpen} onClose={() => setQuickGrabsOpen(false)} returnFocusTo={quickGrabsTrigger} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
       <CheckoutModal product={checkoutProduct} onClose={() => setCheckoutProduct(null)} returnFocusTo={checkoutTrigger} />
     </div>
