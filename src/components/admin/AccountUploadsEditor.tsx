@@ -2,6 +2,53 @@ import { useEffect, useState } from "react";
 import { deleteMediaItem, getMediaLibrary, uploadMediaFiles, type MediaItem } from "../../utils/mediaLibrary";
 import { withBasePath } from "../../utils/basePath";
 
+const MAX_UPLOAD_DIMENSION = 1600;
+const UPLOAD_QUALITY = 0.82;
+const MIN_SIZE_TO_OPTIMIZE_BYTES = 350 * 1024;
+
+const loadImage = (file: File): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image file."));
+    };
+    img.src = url;
+  });
+
+const optimizeImageFile = async (file: File): Promise<File> => {
+  if (!file.type.startsWith("image/") || file.size < MIN_SIZE_TO_OPTIMIZE_BYTES) return file;
+
+  const img = await loadImage(file);
+  const scale = Math.min(1, MAX_UPLOAD_DIMENSION / Math.max(img.width, img.height));
+  const width = Math.max(1, Math.round(img.width * scale));
+  const height = Math.max(1, Math.round(img.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const hasAlpha = file.type === "image/png" || file.type === "image/webp";
+  const targetType = hasAlpha ? "image/webp" : "image/jpeg";
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, targetType, UPLOAD_QUALITY));
+  if (!blob || blob.size >= file.size) return file;
+
+  const baseName = file.name.replace(/\.[^.]+$/, "");
+  const ext = targetType === "image/webp" ? "webp" : "jpg";
+  return new File([blob], `${baseName}.${ext}`, { type: targetType, lastModified: Date.now() });
+};
+
+const optimizeFiles = async (files: File[]) => Promise.all(files.map((file) => optimizeImageFile(file)));
+
 const AccountUploadsEditor = () => {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
@@ -64,7 +111,8 @@ const AccountUploadsEditor = () => {
                     setUploading(true);
                     setError("");
                     setMessage("");
-                    const created = await uploadMediaFiles(files);
+                    const optimizedFiles = await optimizeFiles(files);
+                    const created = await uploadMediaFiles(optimizedFiles);
                     setItems((prev) => [...created, ...prev]);
                     setMessage(`${created.length} image${created.length === 1 ? "" : "s"} uploaded successfully.`);
                   } catch (uploadError) {
@@ -91,7 +139,7 @@ const AccountUploadsEditor = () => {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => (
               <article key={item.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                <img src={item.dataUrl} alt={item.name} className="h-36 w-full object-cover" />
+                <img src={item.dataUrl} alt={item.name} className="h-36 w-full object-cover" loading="lazy" decoding="async" />
                 <div className="space-y-2 p-3">
                   <p className="truncate text-sm font-medium">{item.name}</p>
                   <div className="flex flex-wrap gap-2">

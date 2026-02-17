@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "../data/siteData";
 
 type ProductModalProps = {
@@ -9,11 +9,16 @@ type ProductModalProps = {
 
 const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) => {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     if (!product) return;
     panelRef.current?.focus();
   }, [product]);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [product?.imageUrl, product?.id]);
 
   useEffect(() => {
     if (!product) return;
@@ -61,8 +66,15 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
           </button>
         </div>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">{product.longDescription}</p>
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.title} className="mb-4 h-56 w-full rounded-xl object-cover object-center" loading="lazy" />
+        {product.imageUrl && !imageFailed ? (
+          <img
+            src={product.imageUrl}
+            alt={product.title}
+            className="mb-4 h-56 w-full rounded-xl object-cover object-center"
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageFailed(true)}
+          />
         ) : null}
         <ul className="space-y-2">
           {product.features.map((feature, index) => (

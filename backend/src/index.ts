@@ -86,7 +86,17 @@ const bootstrap = async () => {
     next();
   });
   app.use(express.json({ limit: "2mb" }));
-  app.use("/uploads", express.static(mediaStore.uploadsDir));
+  app.use(
+    "/uploads",
+    express.static(mediaStore.uploadsDir, {
+      maxAge: "365d",
+      immutable: true,
+      setHeaders: (res) => {
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    })
+  );
 
   const getAuthToken = (req: express.Request) => {
     const header = req.header("authorization") ?? "";
