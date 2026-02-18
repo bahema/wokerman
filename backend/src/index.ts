@@ -11,7 +11,7 @@ import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
-import { EmailDeliveryError, sendConfirmationEmail } from "./email/confirmationSender.js";
+import { sendConfirmationEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
@@ -228,6 +228,30 @@ const bootstrap = async () => {
     // eslint-disable-next-line no-console
     console.log(`[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider}`);
     return result;
+  };
+
+  const queueConfirmationDelivery = (input: {
+    id: string;
+    name: string;
+    email: string;
+    confirmToken: string;
+    unsubscribeToken: string;
+    source: "auto_subscription_flow" | "admin_email_analytics";
+  }) => {
+    void (async () => {
+      try {
+        await deliverConfirmationEmail({
+          name: input.name,
+          email: input.email,
+          confirmToken: input.confirmToken,
+          unsubscribeToken: input.unsubscribeToken
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown confirmation delivery error.";
+        // eslint-disable-next-line no-console
+        console.error(`[email] confirmation async send failed source=${input.source} email=${input.email} message=${message}`);
+      }
+    })();
   };
 
   app.get("/api/health", (_req, res) => {
@@ -509,17 +533,19 @@ const bootstrap = async () => {
       }
 
       const subscriber = await emailStore.upsertPendingSubscriber({ name, email, phone });
-      // Auto-send confirmation immediately after a new pending subscription is created.
-      const confirmationResult = await deliverConfirmationEmail({
-        name: subscriber.name,
-        email: subscriber.email,
-        confirmToken: subscriber.confirmToken,
-        unsubscribeToken: subscriber.unsubscribeToken
-      });
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadSubscribed,
         subscriberId: subscriber.id,
-        meta: { source: "quick_grabs", deliveryProvider: confirmationResult.provider, delivered: confirmationResult.delivered }
+        meta: { source: "quick_grabs", confirmationDispatch: "queued" }
+      });
+      // Send confirmation in the background so client subscribe calls stay responsive.
+      queueConfirmationDelivery({
+        id: subscriber.id,
+        name: subscriber.name,
+        email: subscriber.email,
+        confirmToken: subscriber.confirmToken,
+        unsubscribeToken: subscriber.unsubscribeToken,
+        source: "auto_subscription_flow"
       });
       res.status(201).json({
         ok: true,
@@ -527,10 +553,6 @@ const bootstrap = async () => {
         status: subscriber.status
       });
     } catch (error) {
-      if (error instanceof EmailDeliveryError) {
-        res.status(500).json({ error: error.code, message: error.message });
-        return;
-      }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
     }
   });
@@ -547,23 +569,21 @@ const bootstrap = async () => {
         res.status(400).json({ error: "Only pending subscribers can receive confirmation resend." });
         return;
       }
-      await deliverConfirmationEmail({
+      queueConfirmationDelivery({
+        id: subscriber.id,
         name: subscriber.name,
         email: subscriber.email,
         confirmToken: subscriber.confirmToken,
-        unsubscribeToken: subscriber.unsubscribeToken
+        unsubscribeToken: subscriber.unsubscribeToken,
+        source: "admin_email_analytics"
       });
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
         subscriberId: subscriber.id,
-        meta: { source: "admin_email_analytics" }
+        meta: { source: "admin_email_analytics", confirmationDispatch: "queued" }
       });
-      res.status(200).json({ ok: true, subscriberId: subscriber.id });
+      res.status(200).json({ ok: true, queued: true, subscriberId: subscriber.id });
     } catch (error) {
-      if (error instanceof EmailDeliveryError) {
-        res.status(500).json({ error: error.code, message: error.message });
-        return;
-      }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
     }
   });
