@@ -7,7 +7,7 @@ const resolveApiBaseUrl = () => {
       return "http://localhost:4000";
     }
   }
-  return "";
+  return "https://autohub-backend-production.up.railway.app";
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
