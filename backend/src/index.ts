@@ -31,6 +31,7 @@ const DB_URL = process.env.DB_URL ?? "";
 const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
 const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
+const EMAIL_SUBSCRIPTIONS_ENABLED = process.env.EMAIL_SUBSCRIPTIONS_ENABLED !== "false";
 const _siteContentContract: SiteContent | null = null;
 const PERSISTENCE_MODE = "filesystem";
 
@@ -478,6 +479,14 @@ const bootstrap = async () => {
   });
 
   app.post("/api/email/subscribe", async (req, res) => {
+    if (!EMAIL_SUBSCRIPTIONS_ENABLED) {
+      res.status(503).json({
+        error: "SUBSCRIPTIONS_DISABLED",
+        message: "Subscriptions are temporarily disabled."
+      });
+      return;
+    }
+
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
@@ -1063,9 +1072,9 @@ const bootstrap = async () => {
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(`API running on http://localhost:${PORT}`);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[email] smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+  // eslint-disable-next-line no-console
+  console.log(
+      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())
