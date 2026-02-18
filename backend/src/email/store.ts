@@ -19,6 +19,17 @@ type EmailCampaignBodyMode = (typeof EMAIL_CAMPAIGN_BODY_MODE)[keyof typeof EMAI
 type EmailCampaignAudienceMode = (typeof EMAIL_CAMPAIGN_AUDIENCE_MODE)[keyof typeof EMAIL_CAMPAIGN_AUDIENCE_MODE];
 type EmailCampaignSendMode = (typeof EMAIL_CAMPAIGN_SEND_MODE)[keyof typeof EMAIL_CAMPAIGN_SEND_MODE];
 type EmailCampaignStatus = (typeof EMAIL_CAMPAIGN_STATUS)[keyof typeof EMAIL_CAMPAIGN_STATUS];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_FROM_EMAIL = "no-reply@example.com";
+const DEFAULT_REPLY_TO = "support@example.com";
+
+const extractEmail = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/<([^<>]+)>/);
+  const candidate = (match?.[1] ?? trimmed).trim().toLowerCase();
+  return EMAIL_PATTERN.test(candidate) ? candidate : "";
+};
 
 export type EmailSubscriber = {
   id: string;
@@ -214,10 +225,20 @@ const normalizeTemplate = (item: EmailTemplate): EmailTemplate => ({
   updatedAt: item.updatedAt || new Date().toISOString()
 });
 
-const normalizeSenderProfile = (item: Partial<EmailSenderProfile> | null | undefined): EmailSenderProfile => ({
+const normalizeSenderProfile = (item: Partial<EmailSenderProfile> | null | undefined): EmailSenderProfile => {
+  const envFromEmail = extractEmail(process.env.SMTP_FROM ?? "");
+  const currentFromEmail = typeof item?.fromEmail === "string" ? item.fromEmail.trim().toLowerCase() : "";
+  const currentReplyTo = typeof item?.replyTo === "string" ? item.replyTo.trim().toLowerCase() : "";
+
+  const fromEmail =
+    currentFromEmail && currentFromEmail !== DEFAULT_FROM_EMAIL ? currentFromEmail : envFromEmail || currentFromEmail || DEFAULT_FROM_EMAIL;
+  const replyTo =
+    currentReplyTo && currentReplyTo !== DEFAULT_REPLY_TO ? currentReplyTo : envFromEmail || currentReplyTo || DEFAULT_REPLY_TO;
+
+  return ({
   fromName: typeof item?.fromName === "string" && item.fromName.trim() ? item.fromName.trim() : "AutoHub Team",
-  fromEmail: typeof item?.fromEmail === "string" && item.fromEmail.trim() ? item.fromEmail.trim() : "no-reply@example.com",
-  replyTo: typeof item?.replyTo === "string" && item.replyTo.trim() ? item.replyTo.trim() : "support@example.com",
+  fromEmail,
+  replyTo,
   smtpHost: typeof item?.smtpHost === "string" && item.smtpHost.trim() ? item.smtpHost.trim() : (process.env.SMTP_HOST ?? ""),
   smtpPort: Number.isFinite(Number(item?.smtpPort))
     ? Number(item?.smtpPort)
@@ -233,6 +254,7 @@ const normalizeSenderProfile = (item: Partial<EmailSenderProfile> | null | undef
   },
   updatedAt: typeof item?.updatedAt === "string" && item.updatedAt ? item.updatedAt : new Date().toISOString()
 });
+};
 
 export const createEmailStore = async (baseDir: string) => {
   const dataDir = path.join(baseDir, "email");
