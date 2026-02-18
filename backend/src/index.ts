@@ -11,7 +11,7 @@ import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
-import { sendConfirmationEmail } from "./email/confirmationSender.js";
+import { EmailDeliveryError, sendConfirmationEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
@@ -32,6 +32,7 @@ const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
 const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
 const EMAIL_SUBSCRIPTIONS_ENABLED = process.env.EMAIL_SUBSCRIPTIONS_ENABLED !== "false";
+const EMAIL_CONFIRMATION_SEND_MODE = process.env.EMAIL_CONFIRMATION_SEND_MODE === "sync" ? "sync" : "async";
 const _siteContentContract: SiteContent | null = null;
 const PERSISTENCE_MODE = "filesystem";
 
@@ -554,21 +555,43 @@ const bootstrap = async () => {
         subscriberId: subscriber.id,
         meta: { source: "quick_grabs", confirmationDispatch: "queued" }
       });
-      // Send confirmation in the background so client subscribe calls stay responsive.
-      queueConfirmationDelivery({
-        id: subscriber.id,
-        name: subscriber.name,
-        email: subscriber.email,
-        confirmToken: subscriber.confirmToken,
-        unsubscribeToken: subscriber.unsubscribeToken,
-        source: "auto_subscription_flow"
-      });
+      if (EMAIL_CONFIRMATION_SEND_MODE === "sync") {
+        const confirmationResult = await deliverConfirmationEmail({
+          name: subscriber.name,
+          email: subscriber.email,
+          confirmToken: subscriber.confirmToken,
+          unsubscribeToken: subscriber.unsubscribeToken
+        });
+        await emailStore.addEvent({
+          eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
+          subscriberId: subscriber.id,
+          meta: {
+            source: "auto_subscription_flow_sync",
+            deliveryProvider: confirmationResult.provider,
+            delivered: confirmationResult.delivered
+          }
+        });
+      } else {
+        // Send confirmation in the background so client subscribe calls stay responsive.
+        queueConfirmationDelivery({
+          id: subscriber.id,
+          name: subscriber.name,
+          email: subscriber.email,
+          confirmToken: subscriber.confirmToken,
+          unsubscribeToken: subscriber.unsubscribeToken,
+          source: "auto_subscription_flow"
+        });
+      }
       res.status(201).json({
         ok: true,
         subscriberId: subscriber.id,
         status: subscriber.status
       });
     } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        res.status(502).json({ error: error.code, message: error.message });
+        return;
+      }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
     }
   });
@@ -585,6 +608,26 @@ const bootstrap = async () => {
         res.status(400).json({ error: "Only pending subscribers can receive confirmation resend." });
         return;
       }
+      if (EMAIL_CONFIRMATION_SEND_MODE === "sync") {
+        const confirmationResult = await deliverConfirmationEmail({
+          name: subscriber.name,
+          email: subscriber.email,
+          confirmToken: subscriber.confirmToken,
+          unsubscribeToken: subscriber.unsubscribeToken
+        });
+        await emailStore.addEvent({
+          eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
+          subscriberId: subscriber.id,
+          meta: {
+            source: "admin_email_analytics_sync",
+            deliveryProvider: confirmationResult.provider,
+            delivered: confirmationResult.delivered
+          }
+        });
+        res.status(200).json({ ok: true, queued: false, subscriberId: subscriber.id });
+        return;
+      }
+
       queueConfirmationDelivery({
         id: subscriber.id,
         name: subscriber.name,
@@ -600,6 +643,10 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, queued: true, subscriberId: subscriber.id });
     } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        res.status(502).json({ error: error.code, message: error.message });
+        return;
+      }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
     }
   });
@@ -1081,7 +1128,7 @@ const bootstrap = async () => {
     console.log(`API running on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(
-      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRMATION_SEND_MODE} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())
