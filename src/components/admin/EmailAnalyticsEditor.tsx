@@ -147,6 +147,7 @@ const EmailAnalyticsEditor = () => {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
   const [authRequired, setAuthRequired] = useState(false);
   const [subscriberActionError, setSubscriberActionError] = useState("");
+  const [subscriberActionNotice, setSubscriberActionNotice] = useState("");
   const [subscriberActionBusyId, setSubscriberActionBusyId] = useState("");
   const pageSize = 8;
 
@@ -301,9 +302,11 @@ const EmailAnalyticsEditor = () => {
 
   const resendConfirmationEmail = async (lead: SubscriberLead) => {
     setSubscriberActionError("");
+    setSubscriberActionNotice("");
     setSubscriberActionBusyId(lead.id);
     try {
-      await apiJson<{ ok: boolean; subscriberId: string }>(`/api/email/subscribers/${encodeURIComponent(lead.id)}/resend-confirmation`, "POST");
+      await apiJson<{ ok: boolean; queued?: boolean; subscriberId: string }>(`/api/email/subscribers/${encodeURIComponent(lead.id)}/resend-confirmation`, "POST");
+      setSubscriberActionNotice(`Confirmation email queued for ${lead.email}.`);
       await load();
     } catch (error) {
       setSubscriberActionError(error instanceof Error ? error.message : "Failed to resend confirmation email.");
@@ -316,6 +319,7 @@ const EmailAnalyticsEditor = () => {
     const confirmed = window.confirm(`Delete subscriber ${lead.email}? This action cannot be undone.`);
     if (!confirmed) return;
     setSubscriberActionError("");
+    setSubscriberActionNotice("");
     setSubscriberActionBusyId(lead.id);
     try {
       await apiJson<{ ok: boolean; deletedId: string }>(`/api/email/subscribers/${encodeURIComponent(lead.id)}`, "DELETE");
@@ -517,6 +521,11 @@ const EmailAnalyticsEditor = () => {
         {subscriberActionError ? (
           <p className="mb-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
             {subscriberActionError}
+          </p>
+        ) : null}
+        {subscriberActionNotice ? (
+          <p className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+            {subscriberActionNotice}
           </p>
         ) : null}
         {filteredSubscribers.length === 0 ? (
