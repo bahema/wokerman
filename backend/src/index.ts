@@ -45,6 +45,11 @@ const normalizeOrigin = (value: string) => {
     return trimmed;
   }
 };
+const normalizePublicBaseUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\/+$/, "");
+};
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
   if (smtpPort === 465) return true;
@@ -53,7 +58,9 @@ const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
 };
 
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
-const CLIENT_PUBLIC_BASE_URL = CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5173";
+const CLIENT_PUBLIC_BASE_URL =
+  normalizePublicBaseUrl(process.env.CLIENT_PUBLIC_BASE_URL ?? "") ||
+  (CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5173");
 const isLocalLoopbackOrigin = (origin: string) => {
   try {
     const parsed = new URL(origin);
