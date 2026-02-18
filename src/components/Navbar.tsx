@@ -5,6 +5,7 @@ import { smoothScrollToId } from "../utils/smoothScroll";
 import FollowUsPopover from "./FollowUsPopover";
 import ThemeToggle from "./ThemeToggle";
 import { withBasePath } from "../utils/basePath";
+import { acquireBodyScrollLock } from "../utils/scrollLock";
 
 type NavbarProps = {
   activeSection: string;
@@ -51,11 +52,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
+    return acquireBodyScrollLock();
   }, [mobileMenuOpen]);
 
   return (
@@ -146,7 +143,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
         <nav
           id="mobile-nav-menu"
           aria-label="Primary mobile"
-          className={`absolute right-4 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl transition duration-200 dark:border-slate-700 dark:bg-slate-900 md:hidden ${
+          className={`absolute left-4 right-4 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl transition duration-200 dark:border-slate-700 dark:bg-slate-900 md:hidden sm:left-auto sm:w-80 ${
             mobileMenuOpen ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"
           }`}
         >

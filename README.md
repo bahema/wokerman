@@ -29,6 +29,7 @@ Set repository variable:
   - Example (custom domain): `https://yourdomain.com`
 - `VITE_API_BASE_URL`
   - Example: `https://autohub-backend.onrender.com`
+  - For Railway: `https://<your-service>.up.railway.app`
 
 The workflow automatically:
 
@@ -52,7 +53,7 @@ This repo includes `render.yaml` for backend deployment.
 1. In Render, create a **Blueprint** deployment from this repository.
 2. Select service `autohub-backend`.
 3. Fill required env vars:
-   - `CORS_ORIGIN`
+   - `CORS_ORIGIN` (origin only, no path, e.g. `https://username.github.io`)
    - `API_PUBLIC_BASE_URL`
    - `SMTP_HOST`
    - `SMTP_USER`

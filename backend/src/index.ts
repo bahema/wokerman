@@ -10,6 +10,17 @@ import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
+import { createEmailStore } from "./email/store.js";
+import { EmailDeliveryError, sendConfirmationEmail } from "./email/confirmationSender.js";
+import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
+import {
+  EMAIL_CAMPAIGN_AUDIENCE_MODE,
+  EMAIL_CAMPAIGN_BODY_MODE,
+  EMAIL_CAMPAIGN_SEND_MODE,
+  EMAIL_CAMPAIGN_STATUS,
+  EMAIL_EVENT_TYPES,
+  EMAIL_SUBSCRIBER_STATUS
+} from "./db/schema.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -21,6 +32,7 @@ const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
 const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
 const _siteContentContract: SiteContent | null = null;
+const PERSISTENCE_MODE = "filesystem";
 
 const normalizeOrigin = (value: string) => {
   const trimmed = value.trim();
@@ -32,15 +44,34 @@ const normalizeOrigin = (value: string) => {
     return trimmed;
   }
 };
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
+  if (smtpPort === 465) return true;
+  if (smtpPort === 587) return false;
+  return smtpSecure;
+};
 
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
-const isOriginAllowed = (origin: string) => CORS_ORIGINS.includes("*") || CORS_ORIGINS.includes(origin);
+const CLIENT_PUBLIC_BASE_URL = CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5173";
+const isLocalLoopbackOrigin = (origin: string) => {
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    return (host === "localhost" || host === "127.0.0.1") && (parsed.protocol === "http:" || parsed.protocol === "https:");
+  } catch {
+    return false;
+  }
+};
+const allowDevLoopbackOrigins = process.env.NODE_ENV !== "production" && CORS_ORIGINS.some(isLocalLoopbackOrigin);
+const isOriginAllowed = (origin: string) =>
+  CORS_ORIGINS.includes("*") || CORS_ORIGINS.includes(origin) || (allowDevLoopbackOrigins && isLocalLoopbackOrigin(origin));
 
 const bootstrap = async () => {
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
+  const emailStore = await createEmailStore(MEDIA_DIR);
 
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, mediaStore.uploadsDir),
@@ -122,14 +153,92 @@ const bootstrap = async () => {
     res.status(400).json({ error: error instanceof Error ? error.message : fallbackMessage });
   };
 
+  const parseCampaignInput = (body: unknown) => {
+    const payload = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+    const id = typeof payload.id === "string" ? payload.id.trim() : "";
+    const name = typeof payload.name === "string" ? payload.name.trim() : "";
+    const subject = typeof payload.subject === "string" ? payload.subject.trim() : "";
+    const previewText = typeof payload.previewText === "string" ? payload.previewText : "";
+    const bodyMode =
+      payload.bodyMode === EMAIL_CAMPAIGN_BODY_MODE.rich || payload.bodyMode === EMAIL_CAMPAIGN_BODY_MODE.html
+        ? payload.bodyMode
+        : EMAIL_CAMPAIGN_BODY_MODE.rich;
+    const bodyRich = typeof payload.bodyRich === "string" ? payload.bodyRich : "";
+    const bodyHtml = typeof payload.bodyHtml === "string" ? payload.bodyHtml : "";
+    const audienceMode =
+      payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.segments || payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.all
+        ? payload.audienceMode
+        : EMAIL_CAMPAIGN_AUDIENCE_MODE.all;
+    const segments = Array.isArray(payload.segments) ? payload.segments.map((item) => String(item).trim()).filter(Boolean) : [];
+    const exclusions = Array.isArray(payload.exclusions) ? payload.exclusions.map((item) => String(item).trim()).filter(Boolean) : [];
+    const sendMode =
+      payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.schedule || payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.now
+        ? payload.sendMode
+        : EMAIL_CAMPAIGN_SEND_MODE.now;
+    const scheduleAt = typeof payload.scheduleAt === "string" ? payload.scheduleAt : null;
+    const timezone = typeof payload.timezone === "string" && payload.timezone.trim() ? payload.timezone.trim() : "UTC";
+    const estimatedRecipientsRaw = typeof payload.estimatedRecipients === "number" ? payload.estimatedRecipients : Number(payload.estimatedRecipients ?? 0);
+    const estimatedRecipients = Number.isFinite(estimatedRecipientsRaw) ? Math.max(0, Math.floor(estimatedRecipientsRaw)) : 0;
+
+    return {
+      id,
+      name,
+      subject,
+      previewText,
+      bodyMode,
+      bodyRich,
+      bodyHtml,
+      audienceMode,
+      segments,
+      exclusions,
+      sendMode,
+      scheduleAt,
+      timezone,
+      estimatedRecipients
+    };
+  };
+
+  const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
+
+  const deliverConfirmationEmail = async (input: { name: string; email: string; confirmToken: string; unsubscribeToken: string }) => {
+    // eslint-disable-next-line no-console
+    console.log(`[email] confirmation send requested email=${input.email}`);
+    const [template, senderProfile] = await Promise.all([emailStore.getConfirmationTemplate(), emailStore.getSenderProfile()]);
+    const confirmUrl = `${API_PUBLIC_BASE_URL}/api/email/confirm?token=${encodeURIComponent(input.confirmToken)}`;
+    const unsubscribeUrl = `${API_PUBLIC_BASE_URL}/api/email/unsubscribe?token=${encodeURIComponent(input.unsubscribeToken)}`;
+    const result = await sendConfirmationEmail({
+      toEmail: input.email,
+      firstName: toFirstName(input.name),
+      confirmUrl,
+      unsubscribeUrl,
+      subject: template.subject,
+      previewText: template.previewText,
+      bodyMode: template.mode,
+      bodyRich: template.bodyRich,
+      bodyHtml: template.bodyHtml,
+      fromName: senderProfile.fromName,
+      fromEmail: senderProfile.fromEmail,
+      replyTo: senderProfile.replyTo,
+      smtpHost: senderProfile.smtpHost,
+      smtpPort: senderProfile.smtpPort,
+      smtpUser: senderProfile.smtpUser,
+      smtpPass: senderProfile.smtpPass,
+      smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider}`);
+    return result;
+  };
+
   app.get("/api/health", (_req, res) => {
     res.status(200).json({
       ok: true,
       service: "autohub-backend",
       env: {
+        persistenceMode: PERSISTENCE_MODE,
         port: PORT,
         corsOrigins: CORS_ORIGINS,
-        dbConfigured: Boolean(DB_URL),
+        dbUrlProvided: Boolean(DB_URL),
         mediaDir: MEDIA_DIR
       },
       timestamp: new Date().toISOString()
@@ -344,14 +453,606 @@ const bootstrap = async () => {
     res.status(201).json({ item: created });
   });
 
+  app.post("/api/email/subscribe", async (req, res) => {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+
+    if (!name) {
+      res.status(400).json({ error: "name is required." });
+      return;
+    }
+    if (!email) {
+      res.status(400).json({ error: "email is required." });
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      res.status(400).json({ error: "email must be valid." });
+      return;
+    }
+
+    try {
+      const senderProfile = await emailStore.getSenderProfile();
+      const missingFields: string[] = [];
+      if (!EMAIL_PATTERN.test(senderProfile.fromEmail)) {
+        missingFields.push("fromEmail");
+      }
+      if (!senderProfile.smtpHost.trim()) {
+        missingFields.push("smtpHost");
+      }
+      if (!Number.isFinite(Number(senderProfile.smtpPort)) || Number(senderProfile.smtpPort) < 1 || Number(senderProfile.smtpPort) > 65535) {
+        missingFields.push("smtpPort");
+      }
+      if (!senderProfile.smtpUser.trim()) {
+        missingFields.push("smtpUser");
+      }
+      if (!senderProfile.smtpPass.trim()) {
+        missingFields.push("smtpPass");
+      }
+      if (missingFields.length) {
+        res.status(400).json({
+          error: "SMTP_SETTINGS_REQUIRED",
+          message: "Email sender profile is incomplete. Configure SMTP settings before accepting subscriptions.",
+          missingFields
+        });
+        return;
+      }
+
+      const existing = await emailStore.getSubscriberByEmail(email);
+      if (existing) {
+        res.status(409).json({
+          error: "ALREADY_SUBSCRIBED",
+          message: "This email already exists in the subscriber list.",
+          status: existing.status
+        });
+        return;
+      }
+
+      const subscriber = await emailStore.upsertPendingSubscriber({ name, email, phone });
+      // Auto-send confirmation immediately after a new pending subscription is created.
+      const confirmationResult = await deliverConfirmationEmail({
+        name: subscriber.name,
+        email: subscriber.email,
+        confirmToken: subscriber.confirmToken,
+        unsubscribeToken: subscriber.unsubscribeToken
+      });
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.leadSubscribed,
+        subscriberId: subscriber.id,
+        meta: { source: "quick_grabs", deliveryProvider: confirmationResult.provider, delivered: confirmationResult.delivered }
+      });
+      res.status(201).json({
+        ok: true,
+        subscriberId: subscriber.id,
+        status: subscriber.status
+      });
+    } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        res.status(500).json({ error: error.code, message: error.message });
+        return;
+      }
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
+    }
+  });
+
+  app.post("/api/email/subscribers/:id/resend-confirmation", requireAdminAuth, async (req, res) => {
+    const subscriberId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    try {
+      const subscriber = await emailStore.getSubscriberById(subscriberId);
+      if (!subscriber) {
+        res.status(404).json({ error: "Subscriber not found." });
+        return;
+      }
+      if (subscriber.status !== EMAIL_SUBSCRIBER_STATUS.pending) {
+        res.status(400).json({ error: "Only pending subscribers can receive confirmation resend." });
+        return;
+      }
+      await deliverConfirmationEmail({
+        name: subscriber.name,
+        email: subscriber.email,
+        confirmToken: subscriber.confirmToken,
+        unsubscribeToken: subscriber.unsubscribeToken
+      });
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
+        subscriberId: subscriber.id,
+        meta: { source: "admin_email_analytics" }
+      });
+      res.status(200).json({ ok: true, subscriberId: subscriber.id });
+    } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        res.status(500).json({ error: error.code, message: error.message });
+        return;
+      }
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
+    }
+  });
+
+  app.delete("/api/email/subscribers/:id", requireAdminAuth, async (req, res) => {
+    const subscriberId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    try {
+      const deleted = await emailStore.deleteSubscriberById(subscriberId);
+      if (!deleted) {
+        res.status(404).json({ error: "Subscriber not found." });
+        return;
+      }
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.leadDeleted,
+        subscriberId: deleted.id,
+        meta: { source: "admin_email_analytics", email: deleted.email }
+      });
+      res.status(200).json({ ok: true, deletedId: deleted.id });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to delete subscriber." });
+    }
+  });
+
+  app.get("/api/email/confirm", async (req, res) => {
+    const redirectToConfirm = (status: "success" | "error", reason?: "invalid" | "failed") => {
+      const query = new URLSearchParams({ status });
+      if (reason) query.set("reason", reason);
+      return `${CLIENT_PUBLIC_BASE_URL}/confirm?${query.toString()}`;
+    };
+
+    const token = typeof req.query?.token === "string" ? req.query.token : "";
+    if (!token.trim()) {
+      res.redirect(303, redirectToConfirm("error", "invalid"));
+      return;
+    }
+    try {
+      const subscriber = await emailStore.confirmSubscriberByToken(token);
+      if (!subscriber) {
+        res.redirect(303, redirectToConfirm("error", "invalid"));
+        return;
+      }
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.leadConfirmed,
+        subscriberId: subscriber.id,
+        meta: { source: "quick_grabs" }
+      });
+      res.redirect(303, redirectToConfirm("success"));
+    } catch (error) {
+      res.redirect(303, redirectToConfirm("error", "failed"));
+    }
+  });
+
+  app.get("/api/email/unsubscribe", async (req, res) => {
+    const redirectToUnsubscribe = (status: "success" | "error", reason?: "invalid" | "failed") => {
+      const query = new URLSearchParams({ status });
+      if (reason) query.set("reason", reason);
+      return `${CLIENT_PUBLIC_BASE_URL}/unsubscribe?${query.toString()}`;
+    };
+
+    const token = typeof req.query?.token === "string" ? req.query.token : "";
+    if (!token.trim()) {
+      res.redirect(303, redirectToUnsubscribe("error", "invalid"));
+      return;
+    }
+    try {
+      const subscriber = await emailStore.unsubscribeSubscriberByToken(token);
+      if (!subscriber) {
+        res.redirect(303, redirectToUnsubscribe("error", "invalid"));
+        return;
+      }
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.leadUnsubscribed,
+        subscriberId: subscriber.id,
+        meta: { source: "quick_grabs" }
+      });
+      res.redirect(303, redirectToUnsubscribe("success"));
+    } catch (error) {
+      res.redirect(303, redirectToUnsubscribe("error", "failed"));
+    }
+  });
+
+  app.get("/api/email/subscribers", requireAdminAuth, async (req, res) => {
+    const statusRaw = typeof req.query?.status === "string" ? req.query.status.trim().toLowerCase() : "";
+    const status =
+      statusRaw === EMAIL_SUBSCRIBER_STATUS.pending ||
+      statusRaw === EMAIL_SUBSCRIBER_STATUS.confirmed ||
+      statusRaw === EMAIL_SUBSCRIBER_STATUS.unsubscribed
+        ? statusRaw
+        : undefined;
+
+    if (statusRaw && !status) {
+      res.status(400).json({ error: "status must be one of: pending, confirmed, unsubscribed." });
+      return;
+    }
+
+    const q = typeof req.query?.q === "string" ? req.query.q : "";
+    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
+    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
+    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
+    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+
+    try {
+      const result = await emailStore.listSubscribers({ status, q, page, pageSize });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list subscribers." });
+    }
+  });
+
+  app.get("/api/email/campaigns", requireAdminAuth, async (req, res) => {
+    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
+    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
+    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
+    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+
+    try {
+      const result = await emailStore.listCampaigns({ page, pageSize });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list campaigns." });
+    }
+  });
+
+  app.post("/api/email/campaigns/draft", requireAdminAuth, async (req, res) => {
+    const input = parseCampaignInput(req.body);
+    if (!input.name) {
+      res.status(400).json({ error: "name is required." });
+      return;
+    }
+    if (!input.subject) {
+      res.status(400).json({ error: "subject is required." });
+      return;
+    }
+    if (!input.bodyRich.includes("{{unsubscribe_link}}") && !input.bodyHtml.includes("{{unsubscribe_link}}")) {
+      res.status(400).json({ error: "unsubscribe link token is required in email content." });
+      return;
+    }
+
+    try {
+      const campaign = await emailStore.saveCampaign({
+        ...input,
+        status: EMAIL_CAMPAIGN_STATUS.draft
+      });
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.campaignSaved,
+        campaignId: campaign.id,
+        meta: { status: campaign.status, subject: campaign.subject }
+      });
+      res.status(200).json({ ok: true, campaign });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save draft campaign." });
+    }
+  });
+
+  app.post("/api/email/campaigns/test", requireAdminAuth, async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+    const bodyMode =
+      req.body?.bodyMode === EMAIL_CAMPAIGN_BODY_MODE.html || req.body?.bodyMode === EMAIL_CAMPAIGN_BODY_MODE.rich
+        ? req.body.bodyMode
+        : EMAIL_CAMPAIGN_BODY_MODE.rich;
+    const bodyRich = typeof req.body?.bodyRich === "string" ? req.body.bodyRich : "";
+    const bodyHtml = typeof req.body?.bodyHtml === "string" ? req.body.bodyHtml : "";
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: "Valid email is required." });
+      return;
+    }
+    if (!subject) {
+      res.status(400).json({ error: "subject is required." });
+      return;
+    }
+    if (!bodyRich.trim() && !bodyHtml.trim()) {
+      res.status(400).json({ error: "bodyRich or bodyHtml is required." });
+      return;
+    }
+    if (!bodyRich.includes("{{unsubscribe_link}}") && !bodyHtml.includes("{{unsubscribe_link}}")) {
+      res.status(400).json({ error: "unsubscribe link token is required in email content." });
+      return;
+    }
+
+    try {
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.campaignTestSent,
+        meta: { to: email, subject, bodyMode }
+      });
+      res.status(200).json({ ok: true, queuedTo: email });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to queue test email." });
+    }
+  });
+
+  app.post("/api/email/campaigns/schedule", requireAdminAuth, async (req, res) => {
+    const input = parseCampaignInput(req.body);
+    if (!input.name) {
+      res.status(400).json({ error: "name is required." });
+      return;
+    }
+    if (!input.subject) {
+      res.status(400).json({ error: "subject is required." });
+      return;
+    }
+    if (!input.scheduleAt) {
+      res.status(400).json({ error: "scheduleAt is required for scheduled campaigns." });
+      return;
+    }
+    const scheduleMs = Date.parse(input.scheduleAt);
+    if (!Number.isFinite(scheduleMs)) {
+      res.status(400).json({ error: "scheduleAt must be a valid ISO datetime." });
+      return;
+    }
+    if (scheduleMs <= Date.now()) {
+      res.status(400).json({ error: "scheduleAt must be in the future." });
+      return;
+    }
+    if (!input.bodyRich.includes("{{unsubscribe_link}}") && !input.bodyHtml.includes("{{unsubscribe_link}}")) {
+      res.status(400).json({ error: "unsubscribe link token is required in email content." });
+      return;
+    }
+
+    try {
+      const campaign = await emailStore.saveCampaign({
+        ...input,
+        sendMode: EMAIL_CAMPAIGN_SEND_MODE.schedule,
+        status: EMAIL_CAMPAIGN_STATUS.scheduled
+      });
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.campaignScheduled,
+        campaignId: campaign.id,
+        meta: { status: campaign.status, scheduleAt: campaign.scheduleAt, subject: campaign.subject }
+      });
+      res.status(200).json({ ok: true, campaign });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to schedule campaign." });
+    }
+  });
+
+  app.post("/api/email/campaigns/send", requireAdminAuth, async (req, res) => {
+    const input = parseCampaignInput(req.body);
+    if (!input.name) {
+      res.status(400).json({ error: "name is required." });
+      return;
+    }
+    if (!input.subject) {
+      res.status(400).json({ error: "subject is required." });
+      return;
+    }
+    if (!input.bodyRich.includes("{{unsubscribe_link}}") && !input.bodyHtml.includes("{{unsubscribe_link}}")) {
+      res.status(400).json({ error: "unsubscribe link token is required in email content." });
+      return;
+    }
+    if (input.estimatedRecipients <= 0) {
+      res.status(400).json({ error: "No confirmed recipients available for this campaign." });
+      return;
+    }
+
+    try {
+      const senderProfile = await emailStore.getSenderProfile();
+      const recipientsRaw = await emailStore.listCampaignRecipients();
+      const exclusionSet = new Set(input.exclusions.map((item) => item.trim().toLowerCase()).filter(Boolean));
+      const recipients = recipientsRaw.filter((item) => !exclusionSet.has(item.email.toLowerCase()));
+      if (!recipients.length) {
+        res.status(400).json({ error: "No confirmed recipients available for this campaign after exclusions." });
+        return;
+      }
+
+      const delivery = await sendCampaignEmails({
+        recipients,
+        subject: input.subject,
+        previewText: input.previewText,
+        bodyMode: input.bodyMode,
+        bodyRich: input.bodyRich,
+        bodyHtml: input.bodyHtml,
+        fromName: senderProfile.fromName,
+        fromEmail: senderProfile.fromEmail,
+        replyTo: senderProfile.replyTo,
+        smtpHost: senderProfile.smtpHost,
+        smtpPort: senderProfile.smtpPort,
+        smtpUser: senderProfile.smtpUser,
+        smtpPass: senderProfile.smtpPass,
+        smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure),
+        apiPublicBaseUrl: API_PUBLIC_BASE_URL
+      });
+
+      const campaign = await emailStore.saveCampaign({
+        ...input,
+        estimatedRecipients: delivery.delivered,
+        sendMode: EMAIL_CAMPAIGN_SEND_MODE.now,
+        scheduleAt: null,
+        status: EMAIL_CAMPAIGN_STATUS.sent
+      });
+      await emailStore.addEvent({
+        eventType: EMAIL_EVENT_TYPES.campaignSent,
+        campaignId: campaign.id,
+        meta: {
+          status: campaign.status,
+          subject: campaign.subject,
+          recipients: campaign.estimatedRecipients,
+          attempted: delivery.attempted,
+          delivered: delivery.delivered,
+          failed: delivery.failed
+        }
+      });
+      res.status(200).json({
+        ok: true,
+        campaign,
+        delivery: {
+          attempted: delivery.attempted,
+          delivered: delivery.delivered,
+          failed: delivery.failed
+        }
+      });
+    } catch (error) {
+      if (error instanceof CampaignDeliveryError) {
+        res.status(500).json({ error: error.code, message: error.message });
+        return;
+      }
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to send campaign." });
+    }
+  });
+
+  app.get("/api/email/templates/confirmation", requireAdminAuth, async (_req, res) => {
+    try {
+      const template = await emailStore.getConfirmationTemplate();
+      res.status(200).json({ template });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load confirmation template." });
+    }
+  });
+
+  app.put("/api/email/templates/confirmation", requireAdminAuth, async (req, res) => {
+    const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+    const mode =
+      payload.mode === EMAIL_CAMPAIGN_BODY_MODE.rich || payload.mode === EMAIL_CAMPAIGN_BODY_MODE.html
+        ? payload.mode
+        : EMAIL_CAMPAIGN_BODY_MODE.rich;
+    const subject = typeof payload.subject === "string" ? payload.subject.trim() : "";
+    const previewText = typeof payload.previewText === "string" ? payload.previewText : "";
+    const bodyRich = typeof payload.bodyRich === "string" ? payload.bodyRich : "";
+    const bodyHtml = typeof payload.bodyHtml === "string" ? payload.bodyHtml : "";
+
+    if (!subject) {
+      res.status(400).json({ error: "subject is required." });
+      return;
+    }
+    if (!bodyRich.trim() && !bodyHtml.trim()) {
+      res.status(400).json({ error: "bodyRich or bodyHtml is required." });
+      return;
+    }
+    if (!bodyRich.includes("{{unsubscribe_link}}") && !bodyHtml.includes("{{unsubscribe_link}}")) {
+      res.status(400).json({ error: "unsubscribe link token is required in confirmation template." });
+      return;
+    }
+
+    try {
+      const template = await emailStore.saveConfirmationTemplate({
+        mode,
+        subject,
+        previewText,
+        bodyRich,
+        bodyHtml
+      });
+      res.status(200).json({ template });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save confirmation template." });
+    }
+  });
+
+  app.get("/api/email/settings/sender-profile", requireAdminAuth, async (_req, res) => {
+    try {
+      const profile = await emailStore.getSenderProfile();
+      res.status(200).json({ profile });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load sender profile." });
+    }
+  });
+
+  app.put("/api/email/settings/sender-profile", requireAdminAuth, async (req, res) => {
+    const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+    const fromName = typeof payload.fromName === "string" ? payload.fromName.trim() : "";
+    const fromEmail = typeof payload.fromEmail === "string" ? payload.fromEmail.trim().toLowerCase() : "";
+    const replyTo = typeof payload.replyTo === "string" ? payload.replyTo.trim().toLowerCase() : "";
+    const smtpHost = typeof payload.smtpHost === "string" ? payload.smtpHost.trim() : "";
+    const smtpPortRaw = typeof payload.smtpPort === "number" ? payload.smtpPort : Number(payload.smtpPort ?? 0);
+    const smtpPort = Number.isFinite(smtpPortRaw) ? Math.floor(smtpPortRaw) : 0;
+    const smtpUser = typeof payload.smtpUser === "string" ? payload.smtpUser.trim() : "";
+    const smtpPass = typeof payload.smtpPass === "string" ? payload.smtpPass : "";
+    const smtpSecure = payload.smtpSecure === true;
+    const includeUnsubscribeFooter = payload.includeUnsubscribeFooter !== false;
+    const checksRaw = typeof payload.checks === "object" && payload.checks !== null ? (payload.checks as Record<string, unknown>) : {};
+    const checks = {
+      subjectSafe: checksRaw.subjectSafe !== false,
+      addressIncluded: Boolean(checksRaw.addressIncluded),
+      unsubscribeLink: checksRaw.unsubscribeLink !== false
+    };
+
+    if (!fromName) {
+      res.status(400).json({ error: "fromName is required." });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+      res.status(400).json({ error: "fromEmail must be valid." });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) {
+      res.status(400).json({ error: "replyTo must be valid." });
+      return;
+    }
+    if (!smtpHost) {
+      res.status(400).json({ error: "smtpHost is required." });
+      return;
+    }
+    if (smtpPort < 1 || smtpPort > 65535) {
+      res.status(400).json({ error: "smtpPort must be between 1 and 65535." });
+      return;
+    }
+    if (!smtpUser) {
+      res.status(400).json({ error: "smtpUser is required." });
+      return;
+    }
+    try {
+      const existing = await emailStore.getSenderProfile();
+      const effectiveSmtpPass = smtpPass.trim() ? smtpPass : existing.smtpPass;
+      if (!effectiveSmtpPass.trim()) {
+        res.status(400).json({ error: "smtpPass is required." });
+        return;
+      }
+      const normalizedSmtpSecure = resolveSmtpSecureForPort(smtpPort, smtpSecure);
+      const profile = await emailStore.saveSenderProfile({
+        fromName,
+        fromEmail,
+        replyTo,
+        smtpHost,
+        smtpPort,
+        smtpUser,
+        smtpPass: effectiveSmtpPass,
+        smtpSecure: normalizedSmtpSecure,
+        includeUnsubscribeFooter,
+        checks
+      });
+      res.status(200).json({ profile });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save sender profile." });
+    }
+  });
+
+  app.get("/api/email/analytics/summary", requireAdminAuth, async (_req, res) => {
+    try {
+      const summary = await emailStore.getAnalyticsSummary();
+      res.status(200).json(summary);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load email analytics summary." });
+    }
+  });
+
   app.get("/api/analytics/summary", requireAdminAuth, async (_req, res) => {
     const summary = await analyticsStore.summary();
     res.status(200).json(summary);
   });
 
+  const startupSenderProfile = await emailStore.getSenderProfile();
+  const startupMissingFields: string[] = [];
+  if (!EMAIL_PATTERN.test(startupSenderProfile.fromEmail)) startupMissingFields.push("fromEmail");
+  if (!startupSenderProfile.smtpHost.trim()) startupMissingFields.push("smtpHost");
+  if (
+    !Number.isFinite(Number(startupSenderProfile.smtpPort)) ||
+    Number(startupSenderProfile.smtpPort) < 1 ||
+    Number(startupSenderProfile.smtpPort) > 65535
+  ) {
+    startupMissingFields.push("smtpPort");
+  }
+  if (!startupSenderProfile.smtpUser.trim()) startupMissingFields.push("smtpUser");
+  if (!startupSenderProfile.smtpPass.trim()) startupMissingFields.push("smtpPass");
+  const startupSmtpReady = startupMissingFields.length === 0;
+  const startupEffectiveSecure = resolveSmtpSecureForPort(Number(startupSenderProfile.smtpPort), startupSenderProfile.smtpSecure);
+
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(`API running on http://localhost:${PORT}`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[email] smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+        startupSenderProfile.smtpPort
+      )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
+        Boolean(startupSenderProfile.smtpUser.trim())
+      )} tlsRejectUnauthorized=${String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false")} fromEmail=${
+        startupSenderProfile.fromEmail || "(empty)"
+      } missing=${startupMissingFields.length ? startupMissingFields.join(",") : "none"}`
+    );
   });
 };
 

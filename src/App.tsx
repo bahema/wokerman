@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import Admin from "./pages/Admin";
+import ConfirmResultPage from "./pages/ConfirmResultPage";
 import Home from "./pages/Home";
 import PolicyPage from "./pages/PolicyPage";
 import Signup from "./pages/Signup";
+import UnsubscribeResultPage from "./pages/UnsubscribeResultPage";
 import { hasAdminAccess } from "./utils/authTrust";
 import { setSeo } from "./utils/seo";
 
@@ -52,10 +54,28 @@ const normalizePath = (rawPath: string) => {
     cleaned === "/earnings-disclaimer" ||
     cleaned === "/privacy" ||
     cleaned === "/terms"
+    || cleaned === "/confirm"
+    || cleaned === "/unsubscribe"
   ) {
     return cleaned;
   }
   return "/404";
+};
+
+const getAppPathWithQueryAndHash = () => `${toAppPath(window.location.pathname)}${window.location.search}${window.location.hash}`;
+
+const sanitizePostLoginPath = (raw?: string) => {
+  if (!raw) return "/admin";
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.origin !== window.location.origin) return "/admin";
+    if (parsed.pathname === "/admin" || parsed.pathname.startsWith("/boss/")) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return "/admin";
+  } catch {
+    return "/admin";
+  }
 };
 
 const categorySectionByPath: Record<PublicCategoryPath, "forex" | "betting" | "software" | "social"> = {
@@ -105,6 +125,37 @@ function App() {
         setIsAuthed(ok);
         setCheckingAuth(false);
       }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedPath]);
+
+  useEffect(() => {
+    if (normalizedPath !== "/admin" || checkingAuth || isAuthed) return;
+    const currentAppPath = toAppPath(window.location.pathname);
+    if (!currentAppPath.startsWith("/boss/")) return;
+    const next = encodeURIComponent(getAppPathWithQueryAndHash());
+    const loginPath = toBrowserPath(`/boss/login?next=${next}`);
+    window.history.replaceState({}, "", loginPath);
+    setPath(toAppPath(window.location.pathname));
+  }, [checkingAuth, isAuthed, normalizedPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (normalizedPath !== "/signup") return;
+    setCheckingAuth(true);
+    void (async () => {
+      const ok = await hasAdminAccess();
+      if (cancelled) return;
+      setIsAuthed(ok);
+      if (ok) {
+        const nextRaw = new URLSearchParams(window.location.search).get("next") ?? "/admin";
+        const nextPath = sanitizePostLoginPath(nextRaw);
+        window.history.replaceState({}, "", toBrowserPath(nextPath));
+        setPath(toAppPath(window.location.pathname));
+      }
+      setCheckingAuth(false);
     })();
     return () => {
       cancelled = true;
@@ -175,6 +226,18 @@ function App() {
         title: "Terms of Use | AutoHub",
         description: "Review the AutoHub terms of use for website content and third-party product links.",
         canonicalPath: "/terms"
+      },
+      "/unsubscribe": {
+        title: "Email Preferences | AutoHub",
+        description: "Manage your AutoHub email subscription status.",
+        canonicalPath: "/unsubscribe",
+        robots: "noindex,nofollow"
+      },
+      "/confirm": {
+        title: "Email Confirmation | AutoHub",
+        description: "Confirmation result for your AutoHub email subscription.",
+        canonicalPath: "/confirm",
+        robots: "noindex,nofollow"
       }
     };
 
@@ -182,11 +245,23 @@ function App() {
     setSeo(seo);
   }, [normalizedPath]);
 
-  if (normalizedPath === "/signup") return <Signup />;
+  if (normalizedPath === "/signup") {
+    if (checkingAuth) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          Checking secure session...
+        </div>
+      );
+    }
+    const nextRaw = new URLSearchParams(window.location.search).get("next") ?? undefined;
+    return <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />;
+  }
   if (normalizedPath === "/affiliate-disclosure") return <PolicyPage kind="affiliate-disclosure" />;
   if (normalizedPath === "/earnings-disclaimer") return <PolicyPage kind="earnings-disclaimer" />;
   if (normalizedPath === "/privacy") return <PolicyPage kind="privacy" />;
   if (normalizedPath === "/terms") return <PolicyPage kind="terms" />;
+  if (normalizedPath === "/confirm") return <ConfirmResultPage />;
+  if (normalizedPath === "/unsubscribe") return <UnsubscribeResultPage />;
   if (normalizedPath === "/admin") {
     if (checkingAuth) {
       return (
@@ -195,7 +270,7 @@ function App() {
         </div>
       );
     }
-    if (!isAuthed) return <Signup />;
+    if (!isAuthed) return <Signup postLoginPath={sanitizePostLoginPath(getAppPathWithQueryAndHash())} />;
     return <Admin />;
   }
   if (normalizedPath === "/404") {

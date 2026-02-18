@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import ModalShell from "./ModalShell";
+import { apiJson } from "../api/client";
 
 type QuickGrabsModalProps = {
   open: boolean;
@@ -12,18 +13,48 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
   const [email, setEmail] = useState("");
   const [contact, setContact] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [alreadySubscribedInfo, setAlreadySubscribedInfo] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setSubmitted(false);
+    setSubmitting(false);
+    setSubmitError("");
+    setAlreadySubscribedInfo("");
     setName("");
     setEmail("");
     setContact("");
   }, [open]);
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(true);
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError("");
+    setAlreadySubscribedInfo("");
+    try {
+      await apiJson<{ ok: boolean; subscriberId: string; status: string }>(
+        "/api/email/subscribe",
+        "POST",
+        {
+        name,
+        email,
+        phone: contact
+        }
+      );
+      setSubmitted(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to subscribe. Please try again.";
+      if (/already subscribed|already_subscribed/i.test(message)) {
+        setAlreadySubscribedInfo("This email is already subscribed. Check your inbox for past emails, or use unsubscribe if you want to stop emails.");
+      } else {
+        setSubmitError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -76,11 +107,16 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
             </label>
 
             <div className="pt-1">
+              {alreadySubscribedInfo ? (
+                <p className="mb-2 rounded-lg border border-blue-700 bg-blue-950/40 px-3 py-2 text-sm text-blue-200">{alreadySubscribedInfo}</p>
+              ) : null}
+              {submitError ? <p className="mb-2 text-sm text-rose-300">{submitError}</p> : null}
               <button
                 type="submit"
+                disabled={submitting}
                 className="mt-2 inline-flex w-full justify-center rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-500 sm:w-auto"
               >
-                Subscribe
+                {submitting ? "Subscribing..." : "Subscribe"}
               </button>
             </div>
           </form>
@@ -88,7 +124,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
       ) : (
         <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-4">
           <p className="text-sm font-semibold text-emerald-300">Subscription received.</p>
-          <p className="mt-2 text-sm text-emerald-300">Please confirm your email to complete the process.</p>
+          <p className="mt-2 text-sm text-emerald-300">Check your inbox and use the confirmation email to complete your subscription.</p>
           <button
             type="button"
             onClick={onClose}

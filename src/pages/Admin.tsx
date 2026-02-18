@@ -4,6 +4,8 @@ import BrandingEditor from "../components/admin/BrandingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AnalyticsEditor from "../components/admin/AnalyticsEditor";
+import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
+import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
 import HeroEditor from "../components/admin/HeroEditor";
@@ -28,6 +30,20 @@ import { defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
+
+const bossSectionByPath: Record<string, AdminSection> = {
+  "/boss/email-analytics": "email-analytics",
+  "/boss/email-sender": "email-sender",
+  "/boss/account-settings": "account-settings"
+};
+
+const pathByBossSection: Partial<Record<AdminSection, string>> = {
+  "email-analytics": "/boss/email-analytics",
+  "email-sender": "/boss/email-sender",
+  "account-settings": "/boss/account-settings"
+};
+
+const toCleanPath = (value: string) => (value.length > 1 ? value.replace(/\/+$/, "") : value);
 
 const Admin = () => {
   const [content, setContent] = useState(defaultSiteContent);
@@ -55,6 +71,18 @@ const Admin = () => {
         window.clearTimeout(autoPublishTimerRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const syncSectionFromPath = () => {
+      const match = bossSectionByPath[toCleanPath(window.location.pathname)];
+      if (match) {
+        setActiveSection(match);
+      }
+    };
+    syncSectionFromPath();
+    window.addEventListener("popstate", syncSectionFromPath);
+    return () => window.removeEventListener("popstate", syncSectionFromPath);
   }, []);
 
   const queueAutoPublish = (nextContent: typeof content, successMessage: string, fallbackErrorMessage: string) => {
@@ -111,6 +139,24 @@ const Admin = () => {
         return (
           <EditorShell title="Account Settings" description="Manage account-only profile and security preferences.">
             <AccountSettingsEditor />
+          </EditorShell>
+        );
+      case "email-analytics":
+        return (
+          <EditorShell
+            title="Email Analytics"
+            description="Track campaign performance, subscriber lifecycle, and recent email activity."
+          >
+            <EmailAnalyticsEditor />
+          </EditorShell>
+        );
+      case "email-sender":
+        return (
+          <EditorShell
+            title="Email Sender"
+            description="Compose campaigns, preview output, and manage scheduling controls."
+          >
+            <EmailSenderEditor />
           </EditorShell>
         );
       case "product-media":
@@ -448,7 +494,16 @@ const Admin = () => {
           </div>
         </div>
       ) : null}
-      <AdminLayout activeSection={activeSection} onSectionChange={setActiveSection}>
+      <AdminLayout
+        activeSection={activeSection}
+        onSectionChange={(section) => {
+          setActiveSection(section);
+          const nextPath = pathByBossSection[section] ?? "/admin";
+          if (window.location.pathname !== nextPath) {
+            window.history.pushState({}, "", nextPath);
+          }
+        }}
+      >
         {sectionNode}
       </AdminLayout>
       <Drawer title="Mini Preview" open={previewEnabled} onClose={() => setPreviewEnabled(false)}>

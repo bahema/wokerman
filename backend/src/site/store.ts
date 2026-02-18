@@ -3,6 +3,7 @@ import path from "node:path";
 import type { SiteContent } from "../../../shared/siteTypes";
 import { defaultPublishedContent } from "../db/defaultPublishedContent.js";
 import { validateSiteContent } from "./validateContent.js";
+import { createAsyncQueue } from "../utils/asyncQueue.js";
 
 type SiteStoreRecord = {
   published: SiteContent;
@@ -52,6 +53,7 @@ export const createSiteStore = async (baseDir: string) => {
       ? { ...existing, published: clone(defaultPublishedContent), updatedAt: new Date().toISOString() }
       : existing;
   await writeJson(dataPath, hydrated);
+  const runExclusive = createAsyncQueue();
 
   const read = async () => readJson<SiteStoreRecord>(dataPath, initial);
 
@@ -80,34 +82,40 @@ export const createSiteStore = async (baseDir: string) => {
   };
 
   const saveDraft = async (draft: SiteContent) => {
-    const validation = validateSiteContent(draft);
-    if (!validation.ok) throw new Error(validation.error);
-    const record = await read();
-    await save({ ...record, draft: validation.content });
-    return validation.content;
+    return runExclusive(async () => {
+      const validation = validateSiteContent(draft);
+      if (!validation.ok) throw new Error(validation.error);
+      const record = await read();
+      await save({ ...record, draft: validation.content });
+      return validation.content;
+    });
   };
 
   const publish = async (payload?: SiteContent) => {
-    const record = await read();
-    const nextPublished = payload ?? record.draft ?? record.published;
-    const validation = validateSiteContent(nextPublished);
-    if (!validation.ok) throw new Error(validation.error);
-    const next = await save({
-      ...record,
-      published: validation.content,
-      draft: null
+    return runExclusive(async () => {
+      const record = await read();
+      const nextPublished = payload ?? record.draft ?? record.published;
+      const validation = validateSiteContent(nextPublished);
+      if (!validation.ok) throw new Error(validation.error);
+      const next = await save({
+        ...record,
+        published: validation.content,
+        draft: null
+      });
+      return next.published;
     });
-    return next.published;
   };
 
   const reset = async () => {
-    const next: SiteStoreRecord = {
-      published: clone(defaultPublishedContent),
-      draft: null,
-      updatedAt: new Date().toISOString()
-    };
-    await writeJson(dataPath, next);
-    return next;
+    return runExclusive(async () => {
+      const next: SiteStoreRecord = {
+        published: clone(defaultPublishedContent),
+        draft: null,
+        updatedAt: new Date().toISOString()
+      };
+      await writeJson(dataPath, next);
+      return next;
+    });
   };
 
   return {

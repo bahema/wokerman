@@ -4,7 +4,25 @@ import { resolveLoginStart, resolveSignupStart } from "./signupFlow";
 
 type Mode = "signup" | "login";
 
-const Signup = () => {
+type SignupProps = {
+  postLoginPath?: string;
+};
+
+const resolvePostLoginPath = (input?: string) => {
+  if (!input) return "/admin";
+  try {
+    const parsed = new URL(input, window.location.origin);
+    if (parsed.origin !== window.location.origin) return "/admin";
+    if (parsed.pathname === "/admin" || parsed.pathname.startsWith("/boss/")) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return "/admin";
+  } catch {
+    return "/admin";
+  }
+};
+
+const Signup = ({ postLoginPath }: SignupProps) => {
   const [mode, setMode] = useState<Mode>("login");
   const [hasOwner, setHasOwner] = useState(false);
   const [statusReady, setStatusReady] = useState(false);
@@ -15,6 +33,7 @@ const Signup = () => {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const nextPathAfterLogin = resolvePostLoginPath(postLoginPath);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +229,7 @@ const Signup = () => {
               <button
                 type="button"
                 onClick={() => {
-                  window.history.pushState({}, "", "/admin");
+                  window.history.pushState({}, "", nextPathAfterLogin);
                   window.dispatchEvent(new PopStateEvent("popstate"));
                 }}
                 className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"

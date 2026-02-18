@@ -1,4 +1,6 @@
 export type AdminSection =
+  | "email-analytics"
+  | "email-sender"
   | "account-settings"
   | "analytics"
   | "product-media"
@@ -48,7 +50,11 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
   },
   {
     title: "Account",
-    items: [{ key: "account-settings", label: "Account Settings" }]
+    items: [
+      { key: "email-analytics", label: "Email Analytics" },
+      { key: "email-sender", label: "Email Sender" },
+      { key: "account-settings", label: "Account Settings" }
+    ]
   }
 ];
 

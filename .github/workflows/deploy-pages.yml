@@ -50,6 +50,18 @@ jobs:
           echo "Using SITE_URL=$EFFECTIVE_SITE_URL"
           echo "Using VITE_BASE_PATH=$BASE_PATH"
 
+      - name: Validate API URL config
+        shell: bash
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "::error::Missing repository variable VITE_API_BASE_URL. Set it to your Railway backend URL."
+            exit 1
+          fi
+          if [[ ! "$VITE_API_BASE_URL" =~ ^https?:// ]]; then
+            echo "::error::VITE_API_BASE_URL must start with http:// or https://."
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
 

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createAsyncQueue } from "../utils/asyncQueue.js";
 
 export type AnalyticsEvent = {
   id: string;
@@ -32,20 +33,23 @@ export const createAnalyticsStore = async (baseDir: string) => {
   await ensureDir(dataDir);
   const existing = await readJson<AnalyticsEvent[]>(eventsPath, []);
   await writeJson(eventsPath, existing);
+  const runExclusive = createAsyncQueue();
 
   const list = async () => readJson<AnalyticsEvent[]>(eventsPath, []);
 
   const add = async (eventName: string, payload: Record<string, unknown>) => {
-    const event: AnalyticsEvent = {
-      id: randomUUID(),
-      eventName,
-      payload,
-      createdAt: new Date().toISOString()
-    };
-    const items = await list();
-    items.push(event);
-    await writeJson(eventsPath, items);
-    return event;
+    return runExclusive(async () => {
+      const event: AnalyticsEvent = {
+        id: randomUUID(),
+        eventName,
+        payload,
+        createdAt: new Date().toISOString()
+      };
+      const items = await list();
+      items.push(event);
+      await writeJson(eventsPath, items);
+      return event;
+    });
   };
 
   const summary = async () => {

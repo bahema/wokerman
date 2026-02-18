@@ -1,0 +1,123 @@
+import { FormEvent, useMemo, useState } from "react";
+import { apiJson } from "../api/client";
+
+type StatusMode = "success" | "error" | "loading";
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const UnsubscribeResultPage = () => {
+  const params = new URLSearchParams(window.location.search);
+  const statusParam = (params.get("status") || "").toLowerCase();
+  const mode: StatusMode = statusParam === "success" ? "success" : statusParam === "error" ? "error" : "loading";
+
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [alreadySubscribedInfo, setAlreadySubscribedInfo] = useState("");
+  const [submitDone, setSubmitDone] = useState(false);
+
+  const copy = useMemo(() => {
+    if (mode === "success") {
+      return {
+        icon: "✅",
+        title: "You're unsubscribed",
+        body: "You won't receive any more emails from us. If this was a mistake, you can re-subscribe below.",
+        next: "Re-subscribing will send a confirmation email to protect your inbox."
+      };
+    }
+    if (mode === "error") {
+      return {
+        icon: "⚠️",
+        title: "This unsubscribe link isn't valid",
+        body: "The link may be expired or already used. You can still re-subscribe below.",
+        next: "If you keep having trouble, try subscribing again with the email you used before."
+      };
+    }
+    return {
+      icon: "⏳",
+      title: "Checking your unsubscribe status",
+      body: "Please wait while we confirm your request.",
+      next: "If this takes too long, refresh the page or try the link from your email again."
+    };
+  }, [mode]);
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      setSubmitError("Please enter a valid email address.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    setAlreadySubscribedInfo("");
+    setSubmitDone(false);
+    try {
+      await apiJson<{ ok: boolean; subscriberId: string; status: string }>(
+        "/api/email/subscribe",
+        "POST",
+        { name: "Subscriber", email: normalizedEmail, source: "unsubscribe-page" }
+      );
+      setSubmitDone(true);
+      setEmail(normalizedEmail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to subscribe. Please try again.";
+      if (/already subscribed|already_subscribed/i.test(message)) {
+        setAlreadySubscribedInfo("This email is already subscribed. Check your inbox for past emails, or use unsubscribe if you want to stop emails.");
+      } else {
+        setSubmitError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-10 text-slate-900">
+      <div className="mx-auto w-full max-w-2xl space-y-5">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-2xl" aria-hidden="true">
+            {copy.icon}
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">{copy.title}</h1>
+          <p className="mt-2 text-sm text-slate-600">{copy.body}</p>
+          <p className="mt-3 text-xs font-medium text-slate-500">{copy.next}</p>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold">Re-subscribe</h2>
+          <p className="mt-1 text-sm text-slate-600">Enter your email and we will send a new confirmation link.</p>
+
+          <form className="mt-4 space-y-3" onSubmit={onSubmit}>
+            <label className="block text-sm font-medium text-slate-700">
+              Email
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none ring-blue-500 transition focus:border-blue-400 focus:ring-2"
+              />
+            </label>
+
+            {submitError ? <p className="text-sm text-rose-600">{submitError}</p> : null}
+            {alreadySubscribedInfo ? <p className="text-sm text-blue-700">{alreadySubscribedInfo}</p> : null}
+            {submitDone ? <p className="text-sm font-medium text-emerald-700">Done — check your inbox to confirm.</p> : null}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Sending..." : "Send confirmation email"}
+            </button>
+          </form>
+        </section>
+      </div>
+    </div>
+  );
+};
+
+export default UnsubscribeResultPage;

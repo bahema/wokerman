@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createAsyncQueue } from "../utils/asyncQueue.js";
 
 export type StoredMediaItem = {
   id: string;
@@ -36,6 +37,7 @@ export const createMediaStore = async (baseDir: string) => {
   await ensureDir(uploadsDir);
   const existing = await readJson<StoredMediaItem[]>(metadataPath, []);
   await writeJson(metadataPath, existing);
+  const runExclusive = createAsyncQueue();
 
   const list = async () => {
     const items = await readJson<StoredMediaItem[]>(metadataPath, []);
@@ -43,30 +45,34 @@ export const createMediaStore = async (baseDir: string) => {
   };
 
   const add = async (input: Omit<StoredMediaItem, "id" | "createdAt">) => {
-    const next: StoredMediaItem = {
-      ...input,
-      id: randomUUID(),
-      createdAt: new Date().toISOString()
-    };
-    const items = await readJson<StoredMediaItem[]>(metadataPath, []);
-    items.unshift(next);
-    await writeJson(metadataPath, items);
-    return next;
+    return runExclusive(async () => {
+      const next: StoredMediaItem = {
+        ...input,
+        id: randomUUID(),
+        createdAt: new Date().toISOString()
+      };
+      const items = await readJson<StoredMediaItem[]>(metadataPath, []);
+      items.unshift(next);
+      await writeJson(metadataPath, items);
+      return next;
+    });
   };
 
   const remove = async (id: string) => {
-    const items = await readJson<StoredMediaItem[]>(metadataPath, []);
-    const target = items.find((item) => item.id === id);
-    if (!target) return null;
-    const next = items.filter((item) => item.id !== id);
-    await writeJson(metadataPath, next);
-    const fullPath = path.join(uploadsDir, target.fileName);
-    try {
-      await fs.unlink(fullPath);
-    } catch {
-      // ignore if file already removed
-    }
-    return target;
+    return runExclusive(async () => {
+      const items = await readJson<StoredMediaItem[]>(metadataPath, []);
+      const target = items.find((item) => item.id === id);
+      if (!target) return null;
+      const next = items.filter((item) => item.id !== id);
+      await writeJson(metadataPath, next);
+      const fullPath = path.join(uploadsDir, target.fileName);
+      try {
+        await fs.unlink(fullPath);
+      } catch {
+        // ignore if file already removed
+      }
+      return target;
+    });
   };
 
   return {

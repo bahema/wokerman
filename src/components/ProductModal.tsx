@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "../data/siteData";
+import { acquireBodyScrollLock } from "../utils/scrollLock";
 
 type ProductModalProps = {
   product: Product | null;
@@ -36,11 +37,7 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
 
   useEffect(() => {
     if (!product) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
+    return acquireBodyScrollLock();
   }, [product]);
 
   if (!product) return null;

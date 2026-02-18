@@ -354,12 +354,12 @@ const Home = ({ initialSection }: HomeProps) => {
                 </button>
               </div>
 
-              <div className="reveal min-w-0 rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
+              <div className="reveal min-w-0 max-w-full rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
                 <h3 className="text-lg font-semibold">Performance Snapshot</h3>
                 <p className="mt-1 text-sm text-slate-100">Products tuned for speed, confidence, and measurable outcomes.</p>
                 <div className="mt-6 grid gap-3 sm:grid-cols-3">
                   {content.hero.stats.map((stat) => (
-                    <div key={stat.label} className="rounded-xl bg-white/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] dark:shadow-none">
+                    <div key={stat.label} className="min-w-0 rounded-xl bg-white/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] dark:shadow-none">
                       <p className="text-xs uppercase tracking-wide text-slate-100">{stat.label}</p>
                       <p className="mt-1 text-2xl font-bold">{stat.value}</p>
                     </div>

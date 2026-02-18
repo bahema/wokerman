@@ -14,14 +14,17 @@ const SMTP_USER = process.env.SMTP_USER ?? "";
 const SMTP_PASS = process.env.SMTP_PASS ?? "";
 const SMTP_FROM = process.env.SMTP_FROM ?? "";
 const DISABLE_SMTP = process.env.DISABLE_SMTP === "true" || process.env.NODE_ENV === "test";
+const ALLOW_OTP_CONSOLE_LOGS = process.env.ALLOW_OTP_CONSOLE_LOGS === "true";
 
 const smtpReady = () => Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && SMTP_FROM);
 
 export const sendOtp = async ({ email, code, purpose }: SendOtpInput) => {
   if (DISABLE_SMTP || !smtpReady()) {
-    // Dev fallback: OTP is visible in backend logs until SMTP is configured.
-    // eslint-disable-next-line no-console
-    console.log(`[OTP:${purpose}] ${email} -> ${code}`);
+    if (ALLOW_OTP_CONSOLE_LOGS) {
+      // Explicit local-dev opt-in for OTP logs.
+      // eslint-disable-next-line no-console
+      console.log(`[OTP:${purpose}] ${email} -> ${code}`);
+    }
     return { delivered: false, provider: "console" as const };
   }
 

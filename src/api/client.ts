@@ -1,7 +1,25 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
+const resolveApiBaseUrl = () => {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:4000";
+    }
+  }
+  return "";
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 const AUTH_TOKEN_KEY = "admin:auth:token";
 
-const buildUrl = (path: string) => `${API_BASE_URL}${path}`;
+const buildUrl = (path: string) => {
+  if (!API_BASE_URL) {
+    throw new Error("Missing VITE_API_BASE_URL. Set it in GitHub repository variables before production deploy.");
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+};
 
 const getAuthHeaders = (): Record<string, string> => {
   let token = "";
@@ -16,8 +34,8 @@ const getAuthHeaders = (): Record<string, string> => {
 
 const parseError = async (response: Response) => {
   try {
-    const body = (await response.json()) as { error?: string };
-    return body.error ?? `Request failed (${response.status})`;
+    const body = (await response.json()) as { error?: string; message?: string };
+    return body.message ?? body.error ?? `Request failed (${response.status})`;
   } catch {
     return `Request failed (${response.status})`;
   }
