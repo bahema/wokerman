@@ -50,6 +50,21 @@ const toHtmlFromRich = (value: string) => {
 };
 
 const asFrom = (name: string, email: string) => `${name} <${email}>`;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const extractEmail = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/<([^<>]+)>/);
+  const candidate = (match?.[1] ?? trimmed).trim().toLowerCase();
+  return EMAIL_PATTERN.test(candidate) ? candidate : "";
+};
+const resolveEffectiveFromEmail = (fromEmail: string, smtpUser: string) => {
+  const preferred = extractEmail(fromEmail);
+  const auth = extractEmail(smtpUser);
+  if (!auth) return preferred || fromEmail;
+  if (!preferred || preferred !== auth) return auth;
+  return preferred;
+};
 
 export const sendConfirmationEmail = async (input: ConfirmationInput) => {
   const renderedSubject = renderTemplate(input.subject, input);
@@ -68,6 +83,11 @@ export const sendConfirmationEmail = async (input: ConfirmationInput) => {
 
   try {
     const rejectUnauthorized = process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false";
+    const effectiveFromEmail = resolveEffectiveFromEmail(input.fromEmail, input.smtpUser);
+    if (effectiveFromEmail !== input.fromEmail) {
+      // eslint-disable-next-line no-console
+      console.log(`[email] sender adjusted from=${input.fromEmail} to=${effectiveFromEmail} for smtpUser=${input.smtpUser}`);
+    }
     // eslint-disable-next-line no-console
     console.log(`[email] smtp transport host=${input.smtpHost} port=${String(input.smtpPort)} secure=${String(input.smtpSecure)} tlsRejectUnauthorized=${String(rejectUnauthorized)}`);
     const transport = nodemailer.createTransport({
@@ -84,9 +104,9 @@ export const sendConfirmationEmail = async (input: ConfirmationInput) => {
     });
 
     await transport.sendMail({
-      from: asFrom(input.fromName, input.fromEmail),
+      from: asFrom(input.fromName, effectiveFromEmail),
       to: input.toEmail,
-      replyTo: input.replyTo || input.fromEmail,
+      replyTo: input.replyTo || effectiveFromEmail,
       subject: renderedSubject,
       text: renderedPreview ? `${renderedPreview}\n\n${textContent}` : textContent,
       html: renderedPreview
