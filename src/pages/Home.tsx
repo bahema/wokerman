@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import BackToTop from "../components/BackToTop";
 import CheckoutModal from "../components/CheckoutModal";
 import Navbar from "../components/Navbar";
@@ -16,12 +16,13 @@ import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
+import { getEventThemeCssVars } from "../utils/eventTheme";
 
 type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
 };
 
-const Home = ({ initialSection }: HomeProps) => {
+const Home = (_props: HomeProps) => {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState(defaultSiteContent);
   const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
@@ -44,7 +45,22 @@ const Home = ({ initialSection }: HomeProps) => {
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
   const productSections = content.productSections ?? defaultProductSections;
-  const homeUi = content.homeUi ?? defaultHomeUi;
+  const homeUi = {
+    ...defaultHomeUi,
+    ...(content.homeUi ?? {}),
+    adsectionMan: {
+      ...defaultHomeUi.adsectionMan,
+      ...(content.homeUi?.adsectionMan ?? {}),
+      gadgets: {
+        ...defaultHomeUi.adsectionMan.gadgets,
+        ...(content.homeUi?.adsectionMan?.gadgets ?? {})
+      },
+      ai: {
+        ...defaultHomeUi.adsectionMan.ai,
+        ...(content.homeUi?.adsectionMan?.ai ?? {})
+      }
+    }
+  };
 
   useEffect(() => {
     updateTheme(theme);
@@ -181,12 +197,6 @@ const Home = ({ initialSection }: HomeProps) => {
   }, [content.industries.length, industriesScrollPaused]);
 
   useEffect(() => {
-    if (loadingContent || !initialSection) return;
-    const timer = window.setTimeout(() => smoothScrollToId(initialSection), 60);
-    return () => window.clearTimeout(timer);
-  }, [initialSection, loadingContent]);
-
-  useEffect(() => {
     const origin = window.location.origin;
     const productLists = [
       { id: "forex", name: "Forex", items: content.products.forex },
@@ -252,6 +262,8 @@ const Home = ({ initialSection }: HomeProps) => {
     smoothScrollToId(target.replace("#", ""));
   };
 
+  const resolveImage = (input: string) => (input.startsWith("http") ? input : withBasePath(input));
+
   const industriesForTrack =
     content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
 
@@ -315,14 +327,24 @@ const Home = ({ initialSection }: HomeProps) => {
     );
   }
 
+  const eventTheme = content.branding.eventTheme ?? "none";
+  const eventThemeActive = eventTheme !== "none";
+  const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
+
   return (
-    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div
+      className={`min-h-screen overflow-x-hidden text-slate-900 dark:text-slate-100 ${
+        eventThemeActive ? "event-page" : "bg-slate-50 dark:bg-slate-950"
+      }`}
+      style={eventThemeVars}
+    >
       <Navbar
         activeSection={activeSection}
         theme={theme}
         onThemeToggle={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
         logoText={content.branding.logoText}
         socials={content.socials}
+        eventThemeActive={eventThemeActive}
       />
 
       <main className="overflow-x-hidden">
@@ -331,7 +353,7 @@ const Home = ({ initialSection }: HomeProps) => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="relative grid items-center gap-8 lg:grid-cols-2">
               <div className="reveal min-w-0 space-y-6">
-                <span className="inline-flex rounded-full border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${eventThemeActive ? "event-chip" : "border-blue-300 bg-blue-100 text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300"}`}>
                   {homeUi.heroEyebrow}
                 </span>
                 <h1 className="break-words text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">{content.hero.headline}</h1>
@@ -340,14 +362,20 @@ const Home = ({ initialSection }: HomeProps) => {
                   <button
                     type="button"
                     onClick={() => runTarget(content.hero.ctaPrimary.target)}
-                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-500"
+                    className={`rounded-xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5 ${
+                      eventThemeActive ? "event-btn-primary hover:brightness-110" : "bg-blue-600 text-white hover:bg-blue-500"
+                    }`}
                   >
                     {content.hero.ctaPrimary.label}
                   </button>
                   <button
                     type="button"
                     onClick={() => runTarget(content.hero.ctaSecondary.target)}
-                    className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className={`rounded-xl border px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5 ${
+                      eventThemeActive
+                        ? "event-btn-secondary hover:brightness-95"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                    }`}
                   >
                     {content.hero.ctaSecondary.label}
                   </button>
@@ -358,22 +386,99 @@ const Home = ({ initialSection }: HomeProps) => {
                     setQuickGrabsTrigger(event.currentTarget);
                     setQuickGrabsOpen(true);
                   }}
-                  className="inline-flex w-fit max-w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-500"
+                  className={`inline-flex w-fit max-w-full rounded-xl px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 ${
+                    eventThemeActive ? "event-btn-primary hover:brightness-110" : "bg-red-600 hover:bg-red-500"
+                  }`}
                 >
                   {homeUi.heroQuickGrabsLabel}
                 </button>
+
+                <div className="min-w-0 max-w-full rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
+                  <h3 className="text-lg font-semibold">{homeUi.performanceSnapshotTitle}</h3>
+                  <p className="mt-1 text-sm text-slate-100">{homeUi.performanceSnapshotSubtext}</p>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    {content.hero.stats.map((stat) => (
+                      <div key={stat.label} className="min-w-0 rounded-xl bg-white/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] dark:shadow-none">
+                        <p className="text-xs uppercase tracking-wide text-slate-100">{stat.label}</p>
+                        <p className="mt-1 text-2xl font-bold">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div className="reveal min-w-0 max-w-full rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
-                <h3 className="text-lg font-semibold">{homeUi.performanceSnapshotTitle}</h3>
-                <p className="mt-1 text-sm text-slate-100">{homeUi.performanceSnapshotSubtext}</p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  {content.hero.stats.map((stat) => (
-                    <div key={stat.label} className="min-w-0 rounded-xl bg-white/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] dark:shadow-none">
-                      <p className="text-xs uppercase tracking-wide text-slate-100">{stat.label}</p>
-                      <p className="mt-1 text-2xl font-bold">{stat.value}</p>
+              <div className="reveal min-w-0 space-y-4">
+                <div
+                  className={`rounded-3xl border p-6 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] ${
+                    eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
+                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white shadow-lg">
+                      <span className="rounded-full bg-white/20 px-1.5 py-0.5 leading-none">{homeUi.adsectionMan.gadgets.badgePrimary}</span>
+                      <span className="leading-none">{homeUi.adsectionMan.gadgets.badgeSecondary}</span>
                     </div>
-                  ))}
+                    <div className="absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/55 p-3 text-white backdrop-blur-md">
+                      <span className="mb-2 inline-flex w-fit rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-100 sm:hidden">
+                        {homeUi.adsectionMan.gadgets.scrollHint}
+                      </span>
+                      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-none">
+                        <p className="text-sm font-bold tracking-tight">{homeUi.adsectionMan.gadgets.overlayTitle}</p>
+                        <p className="mt-1 text-xs text-slate-200">{homeUi.adsectionMan.gadgets.overlayText}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => runTarget(homeUi.adsectionMan.gadgets.buttonTarget)}
+                        className="mt-2 inline-flex w-fit shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
+                      >
+                        {homeUi.adsectionMan.gadgets.buttonLabel}
+                      </button>
+                    </div>
+                    <img
+                      src={resolveImage(homeUi.adsectionMan.gadgets.imageUrl)}
+                      alt="Newer gadgets preview"
+                      className="h-52 w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
+                </div>
+                <div
+                  className={`rounded-3xl border p-6 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] ${
+                    eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
+                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white shadow-lg">
+                      <span className="rounded-full bg-white/20 px-1.5 py-0.5 leading-none">{homeUi.adsectionMan.ai.badgePrimary}</span>
+                      <span className="leading-none">{homeUi.adsectionMan.ai.badgeSecondary}</span>
+                    </div>
+                    <div className="absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/55 p-3 text-white backdrop-blur-md">
+                      <span className="mb-2 inline-flex w-fit rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-100 sm:hidden">
+                        {homeUi.adsectionMan.ai.scrollHint}
+                      </span>
+                      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-none">
+                        <p className="text-sm font-bold tracking-tight">{homeUi.adsectionMan.ai.overlayTitle}</p>
+                        <p className="mt-1 text-xs text-slate-200">{homeUi.adsectionMan.ai.overlayText}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => runTarget(homeUi.adsectionMan.ai.buttonTarget)}
+                        className="mt-2 inline-flex w-fit shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
+                      >
+                        {homeUi.adsectionMan.ai.buttonLabel}
+                      </button>
+                    </div>
+                    <img
+                      src={resolveImage(homeUi.adsectionMan.ai.imageUrl)}
+                      alt="New AI tools preview"
+                      className="h-52 w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

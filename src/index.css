@@ -76,3 +76,47 @@ body {
   background: rgba(37, 99, 235, 0.4);
   color: #f8fafc;
 }
+
+.event-nav {
+  background: var(--event-nav-bg);
+  border-color: var(--event-nav-border);
+}
+
+.event-nav-text {
+  color: var(--event-nav-text);
+}
+
+.event-nav-muted {
+  color: var(--event-nav-muted);
+}
+
+.event-nav-active {
+  background: var(--event-nav-active-bg);
+  color: var(--event-nav-active-text);
+}
+
+.event-page {
+  background: var(--event-page-bg);
+}
+
+.event-hero-surface {
+  background: var(--event-hero-surface);
+  border-color: var(--event-hero-border);
+}
+
+.event-chip {
+  background: var(--event-chip-bg);
+  color: var(--event-chip-text);
+  border-color: color-mix(in srgb, var(--event-chip-text) 28%, transparent);
+}
+
+.event-btn-primary {
+  background: var(--event-btn-primary-bg);
+  color: var(--event-btn-primary-text);
+}
+
+.event-btn-secondary {
+  background: var(--event-btn-secondary-bg);
+  color: var(--event-btn-secondary-text);
+  border-color: color-mix(in srgb, var(--event-btn-secondary-text) 30%, transparent);
+}

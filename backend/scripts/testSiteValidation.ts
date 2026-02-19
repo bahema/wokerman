@@ -177,6 +177,20 @@ const run = async () => {
     const draftError = String(invalidDraftResponse.error ?? "");
     assertCondition(draftError.includes("socials.facebookUrl"), "Expected backend draft validation error for invalid social URL.");
 
+    const invalidEventThemeDraft = structuredClone(publishedContent ?? {});
+    if (typeof invalidEventThemeDraft === "object" && invalidEventThemeDraft && "branding" in invalidEventThemeDraft) {
+      const branding = invalidEventThemeDraft.branding as JsonRecord;
+      branding.eventTheme = "halloween";
+    }
+    const invalidEventThemeResponse = await requestJson("/api/site/draft", {
+      method: "PUT",
+      token,
+      body: { content: invalidEventThemeDraft },
+      expectedStatus: 400
+    });
+    const eventThemeError = String(invalidEventThemeResponse.error ?? "");
+    assertCondition(eventThemeError.includes("branding.eventTheme"), "Expected backend draft validation error for invalid event theme.");
+
     const validDraftResponse = await requestJson("/api/site/draft", {
       method: "PUT",
       token,

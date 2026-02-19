@@ -71,6 +71,22 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
   ) {
     return { ok: false, error: "branding.defaultTheme must be one of system/light/dark." };
   }
+  if (
+    branding.eventTheme !== undefined &&
+    branding.eventTheme !== null &&
+    branding.eventTheme !== "none" &&
+    branding.eventTheme !== "christmas" &&
+    branding.eventTheme !== "new-year" &&
+    branding.eventTheme !== "valentine" &&
+    branding.eventTheme !== "easter" &&
+    branding.eventTheme !== "ramadan" &&
+    branding.eventTheme !== "eid"
+  ) {
+    return {
+      ok: false,
+      error: "branding.eventTheme must be one of none/christmas/new-year/valentine/easter/ramadan/eid."
+    };
+  }
 
   if (!isObject(socials)) return { ok: false, error: "socials is required." };
   if (!isHttpUrl(socials.facebookUrl)) return { ok: false, error: "socials.facebookUrl must be a valid http(s) URL." };

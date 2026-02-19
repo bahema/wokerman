@@ -13,6 +13,7 @@ type NavbarProps = {
   onThemeToggle: () => void;
   logoText: string;
   socials: { facebookUrl: string; whatsappUrl: string; other?: Array<{ name: string; url: string }> };
+  eventThemeActive?: boolean;
 };
 
 const navLinks = [
@@ -22,7 +23,7 @@ const navLinks = [
   { id: "social", label: "Social" }
 ];
 
-const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: NavbarProps) => {
+const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventThemeActive = false }: NavbarProps) => {
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -56,7 +57,13 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
   }, [mobileMenuOpen]);
 
   return (
-    <header className="relative z-[1000] border-b border-slate-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/95">
+    <header
+      className={`relative z-[1000] border-b shadow-sm backdrop-blur ${
+        eventThemeActive
+          ? "event-nav"
+          : "border-slate-200/70 bg-white/85 dark:border-slate-700/80 dark:bg-slate-950/95"
+      }`}
+    >
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 min-w-0 items-center justify-between gap-3">
           <a
@@ -68,11 +75,15 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
               window.scrollTo({ top: 0, behavior: "smooth" });
               setMobileMenuOpen(false);
             }}
-            className="inline-flex min-w-0 max-w-[68%] items-center gap-2 rounded-xl p-1 pr-2 transition hover:bg-slate-100 dark:hover:bg-slate-800 md:max-w-none"
+            className={`inline-flex min-w-0 max-w-[68%] items-center gap-2 rounded-xl p-1 pr-2 transition md:max-w-none ${
+              eventThemeActive ? "hover:bg-white/10" : "hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
             aria-label="AutoHub home"
           >
             <img src={logo} alt="AutoHub logo" className="h-9 w-9 rounded-lg object-cover" />
-            <span className="truncate text-base font-bold tracking-tight text-slate-900 dark:text-slate-50">{logoText || "AutoHub"}</span>
+            <span className={`truncate text-base font-bold tracking-tight ${eventThemeActive ? "event-nav-text" : "text-slate-900 dark:text-slate-50"}`}>
+              {logoText || "AutoHub"}
+            </span>
           </a>
 
           <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
@@ -90,8 +101,12 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
                   }}
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     isActive
-                      ? "bg-blue-600 text-white shadow"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
+                      ? eventThemeActive
+                        ? "event-nav-active shadow"
+                        : "bg-blue-600 text-white shadow"
+                      : eventThemeActive
+                        ? "event-nav-muted hover:bg-white/10"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
                   }`}
                 >
                   {link.label}
@@ -110,7 +125,9 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
               onClick={() => setOpenPopover((prev) => !prev)}
               aria-expanded={openPopover}
               aria-haspopup="dialog"
-              className="hidden rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-500 md:inline-flex"
+              className={`hidden rounded-xl px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 md:inline-flex ${
+                eventThemeActive ? "event-nav-active hover:brightness-110" : "bg-slate-900 hover:bg-slate-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+              }`}
             >
               Follow us
             </button>
@@ -165,8 +182,12 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
                     }}
                     className={`rounded-xl px-3 py-2 text-center text-sm font-medium transition ${
                       isActive
-                        ? "bg-blue-600 text-white shadow"
-                        : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
+                        ? eventThemeActive
+                          ? "event-nav-active text-white shadow"
+                          : "bg-blue-600 text-white shadow"
+                        : eventThemeActive
+                          ? "bg-black/35 text-white hover:bg-black/45"
+                          : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
                     }`}
                   >
                     {link.label}

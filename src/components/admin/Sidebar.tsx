@@ -7,6 +7,7 @@ export type AdminSection =
   | "branding"
   | "social-links"
   | "hero"
+  | "adsection-man"
   | "testimonials"
   | "industries"
   | "footer"
@@ -34,6 +35,7 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
     title: "Homepage",
     items: [
       { key: "hero", label: "Hero" },
+      { key: "adsection-man", label: "Adsection Man" },
       { key: "testimonials", label: "Testimonials" },
       { key: "industries", label: "Industries Slider" },
       { key: "footer", label: "Footer" }

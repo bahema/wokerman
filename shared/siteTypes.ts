@@ -1,5 +1,6 @@
 export type ProductCategory = "Forex" | "Betting" | "Software" | "Social";
 export type AdminThemePreference = "system" | "light" | "dark";
+export type SiteEventTheme = "none" | "christmas" | "new-year" | "valentine" | "easter" | "ramadan" | "eid";
 export type ProductSectionKey = "forex" | "betting" | "software" | "social";
 
 export type ProductSectionCopy = {
@@ -28,6 +29,7 @@ export type SiteContent = {
     logoText: string;
     accentColor?: string;
     defaultTheme?: AdminThemePreference;
+    eventTheme?: SiteEventTheme;
   };
   socials: {
     facebookUrl: string;
@@ -46,6 +48,30 @@ export type SiteContent = {
     heroQuickGrabsLabel: string;
     performanceSnapshotTitle: string;
     performanceSnapshotSubtext: string;
+    adsectionMan: {
+      gadgets: {
+        sectionTitle: string;
+        imageUrl: string;
+        badgePrimary: string;
+        badgeSecondary: string;
+        overlayTitle: string;
+        overlayText: string;
+        buttonLabel: string;
+        buttonTarget: string;
+        scrollHint: string;
+      };
+      ai: {
+        sectionTitle: string;
+        imageUrl: string;
+        badgePrimary: string;
+        badgeSecondary: string;
+        overlayTitle: string;
+        overlayText: string;
+        buttonLabel: string;
+        buttonTarget: string;
+        scrollHint: string;
+      };
+    };
     industriesHeading: string;
     industriesEmptyMessage: string;
     productCardNewBadgeLabel: string;

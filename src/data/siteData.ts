@@ -1,5 +1,5 @@
 import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
-export type { Product, SiteContent, ProductCategory, AdminThemePreference } from "../../shared/siteTypes";
+export type { Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
 
 const makeLink = (slug: string) => `https://example.com/checkout/${slug}`;
 
@@ -327,6 +327,30 @@ export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
   heroQuickGrabsLabel: "Quick Grabs",
   performanceSnapshotTitle: "Performance Snapshot",
   performanceSnapshotSubtext: "Products tuned for speed, confidence, and measurable outcomes.",
+  adsectionMan: {
+    gadgets: {
+      sectionTitle: "Newer Gadgets",
+      imageUrl: "/logo.png",
+      badgePrimary: "New",
+      badgeSecondary: "Coming Soon",
+      overlayTitle: "Gadget Drop",
+      overlayText: "Tap in early for fresh utility tools.",
+      buttonLabel: "Check Fresh Drop",
+      buttonTarget: "forex",
+      scrollHint: "Scroll"
+    },
+    ai: {
+      sectionTitle: "New AI Tools",
+      imageUrl: "/logo.png",
+      badgePrimary: "New",
+      badgeSecondary: "Coming Soon",
+      overlayTitle: "AI Update",
+      overlayText: "Discover the next wave of smart tools.",
+      buttonLabel: "Check Fresh AI",
+      buttonTarget: "software",
+      scrollHint: "Scroll"
+    }
+  },
   industriesHeading: "Industries We Work With",
   industriesEmptyMessage: "No industries published yet. Add industries from Admin to show them here.",
   productCardNewBadgeLabel: "NEW",
@@ -338,7 +362,7 @@ export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
 };
 
 export const defaultSiteContent: SiteContent = {
-  branding: { logoText: "AutoHub", accentColor: "#2563eb", defaultTheme: "system" },
+  branding: { logoText: "AutoHub", accentColor: "#2563eb", defaultTheme: "system", eventTheme: "none" },
   socials: {
     facebookUrl: "https://facebook.com",
     whatsappUrl: "https://wa.me/",

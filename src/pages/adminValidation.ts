@@ -11,7 +11,20 @@ const isValidUrl = (input: string) => {
 
 export const validateContentForSave = (content: SiteContent) => {
   if (content.homeUi) {
-    const requiredHomeUiKeys: Array<keyof NonNullable<SiteContent["homeUi"]>> = [
+    const requiredHomeUiKeys: Array<
+      | "heroEyebrow"
+      | "heroQuickGrabsLabel"
+      | "performanceSnapshotTitle"
+      | "performanceSnapshotSubtext"
+      | "industriesHeading"
+      | "industriesEmptyMessage"
+      | "productCardNewBadgeLabel"
+      | "productCardNewReleaseLabel"
+      | "productCardKeyFeaturesSuffix"
+      | "productCardCheckoutLabel"
+      | "productCardMoreInfoLabel"
+      | "productCardAffiliateDisclosure"
+    > = [
       "heroEyebrow",
       "heroQuickGrabsLabel",
       "performanceSnapshotTitle",
@@ -27,6 +40,19 @@ export const validateContentForSave = (content: SiteContent) => {
     ];
     for (const key of requiredHomeUiKeys) {
       if (!content.homeUi[key]?.trim()) return `Home UI validation failed: ${key} is required.`;
+    }
+
+    const adSections = content.homeUi.adsectionMan;
+    const adEntries: Array<{ label: string; fields: Record<string, string> }> = [
+      { label: "gadgets", fields: adSections.gadgets },
+      { label: "ai", fields: adSections.ai }
+    ];
+    for (const entry of adEntries) {
+      for (const [field, value] of Object.entries(entry.fields)) {
+        if (!value?.trim()) {
+          return `Home UI validation failed: adsection ${entry.label}.${field} is required.`;
+        }
+      }
     }
   }
 

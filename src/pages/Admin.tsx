@@ -4,6 +4,7 @@ import BrandingEditor from "../components/admin/BrandingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AnalyticsEditor from "../components/admin/AnalyticsEditor";
+import AdsectionManEditor from "../components/admin/AdsectionManEditor";
 import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
 import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
@@ -35,12 +36,14 @@ import { withBasePath } from "../utils/basePath";
 const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
+  "/boss/adsection-man": "adsection-man",
   "/boss/account-settings": "account-settings"
 };
 
 const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
+  "adsection-man": "/boss/adsection-man",
   "account-settings": "/boss/account-settings"
 };
 
@@ -234,6 +237,36 @@ const Admin = () => {
                 }}
               />
             </div>
+          </EditorShell>
+        );
+      case "adsection-man":
+        return (
+          <EditorShell
+            title="Adsection Man"
+            description="Control the two new hero-side ad boxes (top: Newer Gadgets, bottom: AI Update)."
+          >
+            <AdsectionManEditor
+              value={{
+                ...defaultHomeUi,
+                ...(content.homeUi ?? {}),
+                adsectionMan: {
+                  ...defaultHomeUi.adsectionMan,
+                  ...(content.homeUi?.adsectionMan ?? {}),
+                  gadgets: {
+                    ...defaultHomeUi.adsectionMan.gadgets,
+                    ...(content.homeUi?.adsectionMan?.gadgets ?? {})
+                  },
+                  ai: {
+                    ...defaultHomeUi.adsectionMan.ai,
+                    ...(content.homeUi?.adsectionMan?.ai ?? {})
+                  }
+                }
+              }}
+              onChange={(next) => {
+                const nextContent = { ...content, homeUi: next };
+                queueAutoPublish(nextContent, "Adsection settings updated and published.", "Failed to publish adsection settings.");
+              }}
+            />
           </EditorShell>
         );
       case "testimonials":

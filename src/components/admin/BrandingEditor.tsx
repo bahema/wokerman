@@ -1,4 +1,4 @@
-import type { AdminThemePreference, SiteContent } from "../../data/siteData";
+import type { AdminThemePreference, SiteContent, SiteEventTheme } from "../../data/siteData";
 
 type BrandingEditorProps = {
   value: SiteContent["branding"];
@@ -41,6 +41,22 @@ const BrandingEditor = ({ value, onChange }: BrandingEditorProps) => (
         <option value="system">System</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
+      </select>
+    </label>
+    <label className="space-y-1 text-sm">
+      <span className="font-medium">Event theme</span>
+      <select
+        value={value.eventTheme ?? "none"}
+        onChange={(event) => onChange({ ...value, eventTheme: event.target.value as SiteEventTheme })}
+        className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+      >
+        <option value="none">None</option>
+        <option value="christmas">Christmas</option>
+        <option value="new-year">New Year</option>
+        <option value="valentine">Valentine</option>
+        <option value="easter">Easter</option>
+        <option value="ramadan">Ramadan</option>
+        <option value="eid">Eid</option>
       </select>
     </label>
   </div>
