@@ -135,6 +135,33 @@ const run = async () => {
     const publishedContent = published.content as JsonRecord | undefined;
     assertCondition(Boolean(publishedContent), "Expected published content payload.");
 
+    const invalidAdsectionDraft = structuredClone(publishedContent ?? {});
+    if (
+      typeof invalidAdsectionDraft === "object" &&
+      invalidAdsectionDraft &&
+      "homeUi" in invalidAdsectionDraft &&
+      typeof invalidAdsectionDraft.homeUi === "object" &&
+      invalidAdsectionDraft.homeUi &&
+      "adsectionMan" in (invalidAdsectionDraft.homeUi as JsonRecord)
+    ) {
+      const homeUi = invalidAdsectionDraft.homeUi as JsonRecord;
+      const adsectionMan = homeUi.adsectionMan as JsonRecord;
+      const gadgets = adsectionMan.gadgets as JsonRecord;
+      gadgets.buttonTarget = "";
+    }
+
+    const invalidAdsectionResponse = await requestJson("/api/site/draft", {
+      method: "PUT",
+      token,
+      body: { content: invalidAdsectionDraft },
+      expectedStatus: 400
+    });
+    const adsectionError = String(invalidAdsectionResponse.error ?? "");
+    assertCondition(
+      adsectionError.includes("homeUi.adsectionMan.gadgets.buttonTarget"),
+      "Expected backend draft validation error for adsectionMan.gadgets.buttonTarget."
+    );
+
     const invalidDraft = structuredClone(publishedContent ?? {});
     if (typeof invalidDraft === "object" && invalidDraft && "socials" in invalidDraft) {
       const socials = invalidDraft.socials as JsonRecord;
@@ -204,4 +231,3 @@ void run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-

@@ -139,6 +139,31 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
         return { ok: false, error: `homeUi.${key} is required.` };
       }
     }
+
+    const adsectionMan = homeUi.adsectionMan;
+    if (!isObject(adsectionMan)) return { ok: false, error: "homeUi.adsectionMan is required." };
+
+    const requiredAdSectionFields = [
+      "sectionTitle",
+      "imageUrl",
+      "badgePrimary",
+      "badgeSecondary",
+      "overlayTitle",
+      "overlayText",
+      "buttonLabel",
+      "buttonTarget",
+      "scrollHint"
+    ] as const;
+
+    for (const sectionKey of ["gadgets", "ai"] as const) {
+      const section = adsectionMan[sectionKey];
+      if (!isObject(section)) return { ok: false, error: `homeUi.adsectionMan.${sectionKey} is required.` };
+      for (const field of requiredAdSectionFields) {
+        if (!asNonEmptyString(section[field])) {
+          return { ok: false, error: `homeUi.adsectionMan.${sectionKey}.${field} is required.` };
+        }
+      }
+    }
   }
 
   if (!isObject(products)) return { ok: false, error: "products is required." };
