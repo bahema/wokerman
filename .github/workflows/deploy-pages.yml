@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -53,8 +56,8 @@ jobs:
       - name: Resolve API URL config
         shell: bash
         run: |
+          FALLBACK_API_URL="https://autohub-backend-production-5a29.up.railway.app"
           if [ -z "$VITE_API_BASE_URL" ]; then
-            FALLBACK_API_URL="https://autohub-backend-production-5a29.up.railway.app"
             echo "::warning::Missing repository variable VITE_API_BASE_URL. Falling back to $FALLBACK_API_URL"
             echo "VITE_API_BASE_URL=$FALLBACK_API_URL" >> "$GITHUB_ENV"
           else
