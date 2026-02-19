@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { withBasePath } from "../utils/basePath";
 import { apiJson } from "../api/client";
 import {
@@ -12,7 +12,7 @@ import {
 } from "../utils/cookieConsent";
 
 type ConsentDraft = Pick<CookieConsent, "analytics" | "marketing" | "preferences">;
-const COOKIE_BANNER_DELAY_MS = 120000;
+const COOKIE_BANNER_APPEAR_DELAY_MS = 300;
 
 const Toggle = ({
   value,
@@ -41,13 +41,17 @@ const Toggle = ({
 );
 
 const CookieConsent = () => {
+  const [hasMounted, setHasMounted] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ConsentDraft>({ analytics: false, marketing: false, preferences: false });
-  const scrollTimerRef = useRef<number | null>(null);
-  const delayStartedRef = useRef(false);
 
   useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
     const stored = readCookieConsent();
     if (stored && hasValidCookieConsent()) {
       setDraft({
@@ -55,30 +59,17 @@ const CookieConsent = () => {
         marketing: stored.marketing,
         preferences: stored.preferences
       });
+      setShowBanner(false);
       return;
     }
 
-    const startDelayAfterScroll = () => {
-      if (delayStartedRef.current) return;
-      delayStartedRef.current = true;
-      scrollTimerRef.current = window.setTimeout(() => {
-        if (!hasValidCookieConsent()) setShowBanner(true);
-      }, COOKIE_BANNER_DELAY_MS);
-    };
-
-    const onScroll = () => startDelayAfterScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-
-    if (window.scrollY > 0) startDelayAfterScroll();
-
+    const timer = window.setTimeout(() => {
+      if (!hasValidCookieConsent()) setShowBanner(true);
+    }, COOKIE_BANNER_APPEAR_DELAY_MS);
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (scrollTimerRef.current !== null) {
-        window.clearTimeout(scrollTimerRef.current);
-        scrollTimerRef.current = null;
-      }
+      window.clearTimeout(timer);
     };
-  }, []);
+  }, [hasMounted]);
 
   useEffect(() => {
     const onOpen = () => {
@@ -150,6 +141,7 @@ const CookieConsent = () => {
 
   const showAny = showBanner || modalOpen;
 
+  if (!hasMounted) return null;
   const categories = useMemo(
     () => [
       {
