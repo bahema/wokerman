@@ -40,14 +40,13 @@ const BackToTop = () => {
     <button
       type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className="fixed right-3 z-[1050] inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-blue-600 px-4 py-2 text-white shadow-[0_12px_28px_-10px_rgba(37,99,235,0.85)] transition hover:-translate-y-0.5 hover:bg-blue-500 sm:right-6"
+      className="fixed right-3 z-[1050] inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-blue-600 text-white shadow-[0_12px_28px_-10px_rgba(37,99,235,0.85)] transition hover:-translate-y-0.5 hover:bg-blue-500 sm:right-6"
       style={{ bottom: bottomOffset }}
       aria-label="Back to top"
     >
       <span aria-hidden="true" className="text-base leading-none">
         ↑
       </span>
-      <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Fresh Up</span>
     </button>
   );
 };
