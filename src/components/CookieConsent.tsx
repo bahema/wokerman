@@ -11,7 +11,7 @@ import {
 } from "../utils/cookieConsent";
 
 type ConsentDraft = Pick<CookieConsent, "analytics" | "marketing" | "preferences">;
-const COOKIE_BANNER_APPEAR_DELAY_MS = 300;
+const COOKIE_BANNER_APPEAR_DELAY_MS = 180000;
 
 const Toggle = ({
   value,
@@ -62,11 +62,25 @@ const CookieConsent = () => {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      if (!readCookieConsent()) setShowBanner(true);
-    }, COOKIE_BANNER_APPEAR_DELAY_MS);
+    let timer: number | null = null;
+    const startBannerTimer = () => {
+      if (timer !== null) return;
+      timer = window.setTimeout(() => {
+        if (!readCookieConsent()) setShowBanner(true);
+      }, COOKIE_BANNER_APPEAR_DELAY_MS);
+    };
+
+    const onLoaded = () => startBannerTimer();
+
+    if (document.readyState === "complete") {
+      startBannerTimer();
+    } else {
+      window.addEventListener("load", onLoaded, { once: true });
+    }
+
     return () => {
-      window.clearTimeout(timer);
+      window.removeEventListener("load", onLoaded);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [hasMounted]);
 

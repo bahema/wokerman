@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
-import Admin from "./pages/Admin";
+import { Suspense, lazy, useEffect, useState } from "react";
 import CookieConsent from "./components/CookieConsent";
-import ConfirmResultPage from "./pages/ConfirmResultPage";
 import Home from "./pages/Home";
-import PolicyPage from "./pages/PolicyPage";
-import Signup from "./pages/Signup";
-import UnsubscribeResultPage from "./pages/UnsubscribeResultPage";
 import { hasAdminAccess } from "./utils/authTrust";
 import { setSeo } from "./utils/seo";
+
+const Admin = lazy(() => import("./pages/Admin"));
+const ConfirmResultPage = lazy(() => import("./pages/ConfirmResultPage"));
+const PolicyPage = lazy(() => import("./pages/PolicyPage"));
+const Signup = lazy(() => import("./pages/Signup"));
+const UnsubscribeResultPage = lazy(() => import("./pages/UnsubscribeResultPage"));
 
 type PublicCategoryPath = "/forex" | "/betting" | "/software" | "/social";
 
@@ -255,14 +256,18 @@ function App() {
       );
     }
     const nextRaw = new URLSearchParams(window.location.search).get("next") ?? undefined;
-    return <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />;
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">Loading...</div>}>
+        <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />
+      </Suspense>
+    );
   }
-  if (normalizedPath === "/affiliate-disclosure") return withCookieConsent(<PolicyPage kind="affiliate-disclosure" />);
-  if (normalizedPath === "/earnings-disclaimer") return withCookieConsent(<PolicyPage kind="earnings-disclaimer" />);
-  if (normalizedPath === "/privacy") return withCookieConsent(<PolicyPage kind="privacy" />);
-  if (normalizedPath === "/terms") return withCookieConsent(<PolicyPage kind="terms" />);
-  if (normalizedPath === "/confirm") return withCookieConsent(<ConfirmResultPage />);
-  if (normalizedPath === "/unsubscribe") return withCookieConsent(<UnsubscribeResultPage />);
+  if (normalizedPath === "/affiliate-disclosure") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="affiliate-disclosure" /></Suspense>);
+  if (normalizedPath === "/earnings-disclaimer") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="earnings-disclaimer" /></Suspense>);
+  if (normalizedPath === "/privacy") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="privacy" /></Suspense>);
+  if (normalizedPath === "/terms") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="terms" /></Suspense>);
+  if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
+  if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
   if (normalizedPath === "/admin") {
     if (checkingAuth) {
       return (
@@ -272,7 +277,11 @@ function App() {
       );
     }
     if (!isAuthed) return <Signup postLoginPath={sanitizePostLoginPath(getAppPathWithQueryAndHash())} />;
-    return <Admin />;
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">Loading admin...</div>}>
+        <Admin />
+      </Suspense>
+    );
   }
   if (normalizedPath === "/404") {
     return withCookieConsent(
