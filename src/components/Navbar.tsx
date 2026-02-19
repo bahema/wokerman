@@ -27,6 +27,23 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const navigateToSection = (sectionId: string, options?: { closeMobileMenu?: boolean }) => {
+    const nextPath = withBasePath(`/${sectionId}`);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+
+    if (options?.closeMobileMenu) {
+      setMobileMenuOpen(false);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => smoothScrollToId(sectionId));
+      });
+      return;
+    }
+
+    smoothScrollToId(sectionId);
+  };
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -95,9 +112,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                   href={withBasePath(`/${link.id}`)}
                   onClick={(event) => {
                     event.preventDefault();
-                    window.history.pushState({}, "", withBasePath(`/${link.id}`));
-                    window.dispatchEvent(new PopStateEvent("popstate"));
-                    smoothScrollToId(link.id);
+                    navigateToSection(link.id);
                   }}
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     isActive
@@ -175,10 +190,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                     href={withBasePath(`/${link.id}`)}
                     onClick={(event) => {
                       event.preventDefault();
-                      window.history.pushState({}, "", withBasePath(`/${link.id}`));
-                      window.dispatchEvent(new PopStateEvent("popstate"));
-                      smoothScrollToId(link.id);
-                      setMobileMenuOpen(false);
+                      navigateToSection(link.id, { closeMobileMenu: true });
                     }}
                     className={`rounded-xl px-3 py-2 text-center text-sm font-medium transition ${
                       isActive
