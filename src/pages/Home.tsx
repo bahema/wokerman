@@ -11,7 +11,7 @@ import { smoothScrollToId } from "../utils/smoothScroll";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useProductFilters } from "../utils/useProductFilters";
 import { useSectionObserver } from "../utils/useSectionObserver";
-import { defaultSiteContent } from "../data/siteData";
+import { defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
@@ -43,6 +43,7 @@ const Home = ({ initialSection }: HomeProps) => {
   const [checkoutTrigger, setCheckoutTrigger] = useState<HTMLElement | null>(null);
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
+  const productSections = content.productSections ?? defaultProductSections;
 
   useEffect(() => {
     updateTheme(theme);
@@ -412,8 +413,8 @@ const Home = ({ initialSection }: HomeProps) => {
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400" />
             <SectionHeader
               eyebrow="Forex"
-              title="Forex New Items"
-              description="Freshly released forex tools with strong ratings and practical execution workflows."
+              title={productSections.forex.title}
+              description={productSections.forex.description}
               searchValue={forex.search}
               sortValue={forex.sort}
               onSearchChange={(value) => {
@@ -437,8 +438,8 @@ const Home = ({ initialSection }: HomeProps) => {
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-emerald-500 via-green-400 to-lime-400" />
             <SectionHeader
               eyebrow="Betting System"
-              title="Betting System Products"
-              description="High-performing betting tools and systems."
+              title={productSections.betting.title}
+              description={productSections.betting.description}
               searchValue={betting.search}
               sortValue={betting.sort}
               onSearchChange={(value) => {
@@ -462,8 +463,8 @@ const Home = ({ initialSection }: HomeProps) => {
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-rose-500 via-red-400 to-pink-400" />
             <SectionHeader
               eyebrow="Software"
-              title="New Released Software"
-              description="Browse newly released software products."
+              title={productSections.software.title}
+              description={productSections.software.description}
               searchValue={software.search}
               sortValue={software.sort}
               onSearchChange={(value) => {
@@ -487,8 +488,8 @@ const Home = ({ initialSection }: HomeProps) => {
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-cyan-500 via-blue-400 to-indigo-400" />
             <SectionHeader
               eyebrow="Social"
-              title="Social Media Automation"
-              description="Automation-focused social products for scheduling, response workflows, and campaign optimization."
+              title={productSections.social.title}
+              description={productSections.social.description}
               searchValue={social.search}
               sortValue={social.sort}
               onSearchChange={(value) => {

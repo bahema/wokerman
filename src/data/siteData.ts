@@ -1,4 +1,4 @@
-import type { Product, SiteContent } from "../../shared/siteTypes";
+import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
 export type { Product, SiteContent, ProductCategory, AdminThemePreference } from "../../shared/siteTypes";
 
 const makeLink = (slug: string) => `https://example.com/checkout/${slug}`;
@@ -303,6 +303,25 @@ const socialProducts: Product[] = [
   }
 ];
 
+export const defaultProductSections: ProductSections = {
+  forex: {
+    title: "Forex New Items",
+    description: "Freshly released forex tools with strong ratings and practical execution workflows."
+  },
+  betting: {
+    title: "Betting System Products",
+    description: "High-performing betting tools and systems."
+  },
+  software: {
+    title: "New Released Software",
+    description: "Browse newly released software products."
+  },
+  social: {
+    title: "Social Media Automation",
+    description: "Automation-focused social products for scheduling, response workflows, and campaign optimization."
+  }
+};
+
 export const defaultSiteContent: SiteContent = {
   branding: { logoText: "AutoHub", accentColor: "#2563eb", defaultTheme: "system" },
   socials: {
@@ -351,6 +370,7 @@ export const defaultSiteContent: SiteContent = {
     software: softwareProducts,
     social: socialProducts
   },
+  productSections: defaultProductSections,
   industries: [
     { id: "ind-1", label: "Finance", icon: "💹" },
     { id: "ind-2", label: "Sports Betting", icon: "🎯" },

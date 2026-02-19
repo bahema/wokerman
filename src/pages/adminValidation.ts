@@ -10,6 +10,15 @@ const isValidUrl = (input: string) => {
 };
 
 export const validateContentForSave = (content: SiteContent) => {
+  if (content.productSections) {
+    const sections = content.productSections;
+    const keys: Array<keyof typeof sections> = ["forex", "betting", "software", "social"];
+    for (const key of keys) {
+      if (!sections[key]?.title?.trim()) return `${key} section: Title is required.`;
+      if (!sections[key]?.description?.trim()) return `${key} section: Description is required.`;
+    }
+  }
+
   if (!content.socials.facebookUrl.trim() || !isValidUrl(content.socials.facebookUrl)) {
     return "Social links validation failed: Facebook URL must be a valid http(s) URL.";
   }

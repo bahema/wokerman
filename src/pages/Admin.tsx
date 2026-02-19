@@ -26,7 +26,7 @@ import {
 } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useEffect } from "react";
-import { defaultSiteContent } from "../data/siteData";
+import { defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
@@ -72,6 +72,25 @@ const Admin = () => {
       }
     };
   }, []);
+
+  const saveProductSectionCopy = async (
+    section: "forex" | "betting" | "software" | "social",
+    nextCopy: { title: string; description: string }
+  ) => {
+    const currentSections = content.productSections ?? defaultProductSections;
+    const nextContent = {
+      ...content,
+      productSections: {
+        ...currentSections,
+        [section]: nextCopy
+      }
+    };
+    setContent(nextContent);
+    await saveDraftContent(nextContent);
+    await publishContent(nextContent);
+    setStatus("Published");
+    setActionMessage("Section copy updated and published.");
+  };
 
   useEffect(() => {
     const syncSectionFromPath = () => {
@@ -272,6 +291,9 @@ const Admin = () => {
               title="Forex Products"
               category="Forex"
               items={content.products.forex}
+              sectionTitle={(content.productSections ?? defaultProductSections).forex.title}
+              sectionDescription={(content.productSections ?? defaultProductSections).forex.description}
+              onSectionCopySave={(next) => saveProductSectionCopy("forex", next)}
               onChange={(next) => setContent((prev) => ({ ...prev, products: { ...prev.products, forex: next } }))}
               onSaveAndPublish={async (nextItems) => {
                 const nextContent = { ...content, products: { ...content.products, forex: nextItems } };
@@ -300,6 +322,9 @@ const Admin = () => {
               title="Betting Products"
               category="Betting"
               items={content.products.betting}
+              sectionTitle={(content.productSections ?? defaultProductSections).betting.title}
+              sectionDescription={(content.productSections ?? defaultProductSections).betting.description}
+              onSectionCopySave={(next) => saveProductSectionCopy("betting", next)}
               onChange={(next) => setContent((prev) => ({ ...prev, products: { ...prev.products, betting: next } }))}
               onSaveAndPublish={async (nextItems) => {
                 const nextContent = { ...content, products: { ...content.products, betting: nextItems } };
@@ -328,6 +353,9 @@ const Admin = () => {
               title="Software Products"
               category="Software"
               items={content.products.software}
+              sectionTitle={(content.productSections ?? defaultProductSections).software.title}
+              sectionDescription={(content.productSections ?? defaultProductSections).software.description}
+              onSectionCopySave={(next) => saveProductSectionCopy("software", next)}
               onChange={(next) => setContent((prev) => ({ ...prev, products: { ...prev.products, software: next } }))}
               onSaveAndPublish={async (nextItems) => {
                 const nextContent = { ...content, products: { ...content.products, software: nextItems } };
@@ -356,6 +384,9 @@ const Admin = () => {
               title="Social Products"
               category="Social"
               items={content.products.social}
+              sectionTitle={(content.productSections ?? defaultProductSections).social.title}
+              sectionDescription={(content.productSections ?? defaultProductSections).social.description}
+              onSectionCopySave={(next) => saveProductSectionCopy("social", next)}
               onChange={(next) => setContent((prev) => ({ ...prev, products: { ...prev.products, social: next } }))}
               onSaveAndPublish={async (nextItems) => {
                 const nextContent = { ...content, products: { ...content.products, social: nextItems } };

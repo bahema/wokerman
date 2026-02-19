@@ -9,6 +9,9 @@ type ProductManagerProps = {
   title: string;
   category: ProductCategory;
   items: Product[];
+  sectionTitle: string;
+  sectionDescription: string;
+  onSectionCopySave: (next: { title: string; description: string }) => Promise<void> | void;
   onChange: (next: Product[]) => void;
   onPreviewDraft: (nextItems: Product[]) => void;
   onSaveAndPublish?: (nextItems: Product[]) => Promise<void> | void;
@@ -37,7 +40,17 @@ const normalizePosition = (value: unknown, fallback: number) => {
 const getNextPosition = (items: Product[]) =>
   items.reduce((max, item) => Math.max(max, normalizePosition(item.position, 0)), 0) + 1;
 
-const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSaveAndPublish }: ProductManagerProps) => {
+const ProductManager = ({
+  title,
+  category,
+  items,
+  sectionTitle,
+  sectionDescription,
+  onSectionCopySave,
+  onChange,
+  onPreviewDraft,
+  onSaveAndPublish
+}: ProductManagerProps) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftItem, setDraftItem] = useState<Product>(createNewProduct(category));
@@ -50,7 +63,14 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
   const [mediaError, setMediaError] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sectionCopyError, setSectionCopyError] = useState("");
+  const [sectionCopySaving, setSectionCopySaving] = useState(false);
+  const [sectionCopyDraft, setSectionCopyDraft] = useState({ title: sectionTitle, description: sectionDescription });
   const filteredMedia = mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase()));
+
+  useEffect(() => {
+    setSectionCopyDraft({ title: sectionTitle, description: sectionDescription });
+  }, [sectionDescription, sectionTitle]);
 
   const persistProductList = async (nextItems: Product[]) => {
     onChange(nextItems);
@@ -191,8 +211,85 @@ const ProductManager = ({ title, category, items, onChange, onPreviewDraft, onSa
     onPreviewDraft(nextItems);
   };
 
+  const saveSectionCopy = (target: "title" | "description") => {
+    const nextTitle = sectionCopyDraft.title.trim();
+    const nextDescription = sectionCopyDraft.description.trim();
+    if (!nextTitle) {
+      setSectionCopyError("Section title is required.");
+      return;
+    }
+    if (!nextDescription) {
+      setSectionCopyError("Section description is required.");
+      return;
+    }
+    void (async () => {
+      setSectionCopySaving(true);
+      try {
+        await onSectionCopySave({ title: nextTitle, description: nextDescription });
+        setSectionCopyError("");
+      } catch (error) {
+        setSectionCopyError(error instanceof Error ? error.message : `Failed to save section ${target}.`);
+      } finally {
+        setSectionCopySaving(false);
+      }
+    })();
+  };
+
   return (
     <div className="space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-950/40">
+        <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">Section Copy</h4>
+        <div className="mt-3 grid gap-3">
+          {sectionCopyError ? (
+            <p className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+              {sectionCopyError}
+            </p>
+          ) : null}
+          <div className="grid gap-2 sm:grid-cols-[1fr,auto] sm:items-end">
+            <label className="block space-y-1 text-sm">
+              <span>Section title</span>
+              <input
+                value={sectionCopyDraft.title}
+                onChange={(event) => {
+                  setSectionCopyError("");
+                  setSectionCopyDraft((prev) => ({ ...prev, title: event.target.value }));
+                }}
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => saveSectionCopy("title")}
+              disabled={sectionCopySaving}
+              className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700"
+            >
+              {sectionCopySaving ? "Saving..." : "Save Title"}
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[1fr,auto] sm:items-end">
+            <label className="block space-y-1 text-sm">
+              <span>Section description</span>
+              <textarea
+                value={sectionCopyDraft.description}
+                onChange={(event) => {
+                  setSectionCopyError("");
+                  setSectionCopyDraft((prev) => ({ ...prev, description: event.target.value }));
+                }}
+                rows={2}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => saveSectionCopy("description")}
+              disabled={sectionCopySaving}
+              className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700"
+            >
+              {sectionCopySaving ? "Saving..." : "Save Description"}
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">{title}</h3>
         <button type="button" onClick={openAdd} className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white">

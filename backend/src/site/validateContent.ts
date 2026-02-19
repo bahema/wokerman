@@ -52,6 +52,7 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
   const hero = value.hero;
   const testimonials = value.testimonials;
   const products = value.products;
+  const productSections = value.productSections;
   const industries = value.industries;
   const footer = value.footer;
 
@@ -129,6 +130,16 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
     for (let i = 0; i < entries.length; i += 1) {
       const productError = validateProduct(entries[i], group.label, i);
       if (productError) return { ok: false, error: productError };
+    }
+  }
+
+  if (productSections !== undefined) {
+    if (!isObject(productSections)) return { ok: false, error: "productSections must be an object when provided." };
+    for (const key of ["forex", "betting", "software", "social"] as const) {
+      const section = productSections[key];
+      if (!isObject(section)) return { ok: false, error: `productSections.${key} is required.` };
+      if (!asNonEmptyString(section.title)) return { ok: false, error: `productSections.${key}.title is required.` };
+      if (!asNonEmptyString(section.description)) return { ok: false, error: `productSections.${key}.description is required.` };
     }
   }
 

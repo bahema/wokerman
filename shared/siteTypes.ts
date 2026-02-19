@@ -1,5 +1,13 @@
 export type ProductCategory = "Forex" | "Betting" | "Software" | "Social";
 export type AdminThemePreference = "system" | "light" | "dark";
+export type ProductSectionKey = "forex" | "betting" | "software" | "social";
+
+export type ProductSectionCopy = {
+  title: string;
+  description: string;
+};
+
+export type ProductSections = Record<ProductSectionKey, ProductSectionCopy>;
 
 export type Product = {
   id: string;
@@ -40,6 +48,7 @@ export type SiteContent = {
     software: Product[];
     social: Product[];
   };
+  productSections?: ProductSections;
   industries: Array<{ id: string; label: string; icon?: string; imageUrl?: string; link?: string }>;
   footer: { note: string; copyright: string };
 };

@@ -1,6 +1,11 @@
 let lockCount = 0;
+let lockedScrollY = 0;
 let originalOverflow = "";
-let originalPaddingRight = "";
+let originalPosition = "";
+let originalTop = "";
+let originalLeft = "";
+let originalRight = "";
+let originalWidth = "";
 
 export const acquireBodyScrollLock = () => {
   if (typeof document === "undefined" || typeof window === "undefined") {
@@ -10,15 +15,20 @@ export const acquireBodyScrollLock = () => {
   lockCount += 1;
   if (lockCount === 1) {
     const body = document.body;
+    lockedScrollY = window.scrollY;
     originalOverflow = body.style.overflow;
-    originalPaddingRight = body.style.paddingRight;
+    originalPosition = body.style.position;
+    originalTop = body.style.top;
+    originalLeft = body.style.left;
+    originalRight = body.style.right;
+    originalWidth = body.style.width;
 
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    body.style.position = "fixed";
+    body.style.top = `-${lockedScrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
     body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      const computedPaddingRight = Number.parseFloat(window.getComputedStyle(body).paddingRight) || 0;
-      body.style.paddingRight = `${computedPaddingRight + scrollbarWidth}px`;
-    }
   }
 
   let released = false;
@@ -29,7 +39,12 @@ export const acquireBodyScrollLock = () => {
     if (lockCount === 0) {
       const body = document.body;
       body.style.overflow = originalOverflow;
-      body.style.paddingRight = originalPaddingRight;
+      body.style.position = originalPosition;
+      body.style.top = originalTop;
+      body.style.left = originalLeft;
+      body.style.right = originalRight;
+      body.style.width = originalWidth;
+      window.scrollTo(0, lockedScrollY);
     }
   };
 };
