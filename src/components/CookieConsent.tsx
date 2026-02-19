@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { withBasePath } from "../utils/basePath";
 import { apiJson } from "../api/client";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../utils/cookieConsent";
 
 type ConsentDraft = Pick<CookieConsent, "analytics" | "marketing" | "preferences">;
+const COOKIE_BANNER_DELAY_MS = 120000;
 
 const Toggle = ({
   value,
@@ -43,18 +44,40 @@ const CookieConsent = () => {
   const [showBanner, setShowBanner] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ConsentDraft>({ analytics: false, marketing: false, preferences: false });
+  const scrollTimerRef = useRef<number | null>(null);
+  const delayStartedRef = useRef(false);
 
   useEffect(() => {
     const stored = readCookieConsent();
-    if (!stored || !hasValidCookieConsent()) {
-      setShowBanner(true);
+    if (stored && hasValidCookieConsent()) {
+      setDraft({
+        analytics: stored.analytics,
+        marketing: stored.marketing,
+        preferences: stored.preferences
+      });
       return;
     }
-    setDraft({
-      analytics: stored.analytics,
-      marketing: stored.marketing,
-      preferences: stored.preferences
-    });
+
+    const startDelayAfterScroll = () => {
+      if (delayStartedRef.current) return;
+      delayStartedRef.current = true;
+      scrollTimerRef.current = window.setTimeout(() => {
+        if (!hasValidCookieConsent()) setShowBanner(true);
+      }, COOKIE_BANNER_DELAY_MS);
+    };
+
+    const onScroll = () => startDelayAfterScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    if (window.scrollY > 0) startDelayAfterScroll();
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (scrollTimerRef.current !== null) {
+        window.clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
