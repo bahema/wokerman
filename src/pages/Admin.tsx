@@ -13,8 +13,10 @@ import HeroEditor from "../components/admin/HeroEditor";
 import HomeUiEditor from "../components/admin/HomeUiEditor";
 import IndustryManager from "../components/admin/IndustryManager";
 import ProductManager from "../components/admin/ProductManager";
+import PreDeployChecklistEditor from "../components/admin/PreDeployChecklistEditor";
 import { type AdminSection } from "../components/admin/Sidebar";
 import SocialLinksEditor from "../components/admin/SocialLinksEditor";
+import SystemHealthEditor from "../components/admin/SystemHealthEditor";
 import TestimonialManager from "../components/admin/TestimonialManager";
 import TopBar from "../components/admin/TopBar";
 import Drawer from "../components/admin/Drawer";
@@ -34,6 +36,8 @@ import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
 
 const bossSectionByPath: Record<string, AdminSection> = {
+  "/boss/pre-deploy-checklist": "pre-deploy-checklist",
+  "/boss/system-health": "system-health",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
   "/boss/adsection-man": "adsection-man",
@@ -41,6 +45,8 @@ const bossSectionByPath: Record<string, AdminSection> = {
 };
 
 const pathByBossSection: Partial<Record<AdminSection, string>> = {
+  "pre-deploy-checklist": "/boss/pre-deploy-checklist",
+  "system-health": "/boss/system-health",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
   "adsection-man": "/boss/adsection-man",
@@ -158,6 +164,21 @@ const Admin = () => {
 
   const sectionNode = useMemo(() => {
     switch (activeSection) {
+      case "pre-deploy-checklist":
+        return (
+          <EditorShell
+            title="Pre-Deploy Checklist"
+            description="Track release readiness tasks and deployment notes before going live."
+          >
+            <PreDeployChecklistEditor />
+          </EditorShell>
+        );
+      case "system-health":
+        return (
+          <EditorShell title="System Health" description="Run quick local checks to ensure frontend and backend are ready.">
+            <SystemHealthEditor />
+          </EditorShell>
+        );
       case "account-settings":
         return (
           <EditorShell title="Account Settings" description="Manage account-only profile and security preferences.">

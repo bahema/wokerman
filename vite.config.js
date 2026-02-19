@@ -5,6 +5,10 @@ export default defineConfig(function (_a) {
     var env = loadEnv(mode, ".", "");
     return {
         plugins: [react()],
-        base: env.VITE_BASE_PATH || "/"
+        base: env.VITE_BASE_PATH || "/",
+        server: {
+            host: "127.0.0.1",
+            port: 5180
+        }
     };
 });

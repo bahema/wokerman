@@ -1,4 +1,6 @@
 export type AdminSection =
+  | "pre-deploy-checklist"
+  | "system-health"
   | "email-analytics"
   | "email-sender"
   | "account-settings"
@@ -22,6 +24,13 @@ type SidebarProps = {
 };
 
 const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: string }> }> = [
+  {
+    title: "Operations",
+    items: [
+      { key: "pre-deploy-checklist", label: "Pre-Deploy Checklist" },
+      { key: "system-health", label: "System Health" }
+    ]
+  },
   {
     title: "Site Setup",
     items: [
