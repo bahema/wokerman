@@ -4,13 +4,14 @@ import express from "express";
 import type { SiteContent } from "../../shared/siteTypes";
 import multer from "multer";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
+import { createCookieConsentStore } from "./cookies/store.js";
 import { EmailDeliveryError, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import {
@@ -87,6 +88,7 @@ const bootstrap = async () => {
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
+  const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
 
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, mediaStore.uploadsDir),
@@ -211,6 +213,20 @@ const bootstrap = async () => {
       timezone,
       estimatedRecipients
     };
+  };
+
+  const getClientIp = (req: express.Request) => {
+    const xForwardedFor = req.header("x-forwarded-for");
+    if (xForwardedFor) {
+      const first = xForwardedFor.split(",")[0]?.trim();
+      if (first) return first;
+    }
+    return req.ip || req.socket.remoteAddress || "";
+  };
+
+  const hashValue = (value: string) => {
+    if (!value.trim()) return "";
+    return createHash("sha256").update(value).digest("hex");
   };
 
   const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
@@ -535,6 +551,72 @@ const bootstrap = async () => {
 
     const created = await analyticsStore.add(eventName, payload);
     res.status(201).json({ item: created });
+  });
+
+  app.post("/api/cookies/consent", async (req, res) => {
+    const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+    const consentId = typeof payload.consentId === "string" ? payload.consentId.trim().toLowerCase() : "";
+    const versionRaw = typeof payload.version === "number" ? payload.version : Number(payload.version ?? 1);
+    const version = Number.isFinite(versionRaw) ? Math.max(1, Math.floor(versionRaw)) : 1;
+    const source = typeof payload.source === "string" && payload.source.trim() ? payload.source.trim() : "web";
+    if (!consentId || consentId.length < 10 || consentId.length > 120) {
+      res.status(400).json({ error: "A valid consentId is required." });
+      return;
+    }
+    try {
+      const saved = await cookieConsentStore.upsertConsent({
+        consentId,
+        version,
+        analytics: payload.analytics === true,
+        marketing: payload.marketing === true,
+        preferences: payload.preferences === true,
+        source,
+        ipHash: hashValue(getClientIp(req)),
+        userAgent: (req.header("user-agent") ?? "").slice(0, 320)
+      });
+      res.status(200).json({
+        ok: true,
+        consent: {
+          id: saved.id,
+          version: saved.version,
+          essential: true,
+          analytics: saved.analytics,
+          marketing: saved.marketing,
+          preferences: saved.preferences,
+          updatedAt: saved.updatedAt
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save cookie consent." });
+    }
+  });
+
+  app.get("/api/cookies/consent/:id", async (req, res) => {
+    const consentId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!consentId?.trim()) {
+      res.status(400).json({ error: "consent id is required." });
+      return;
+    }
+    try {
+      const consent = await cookieConsentStore.getById(consentId);
+      if (!consent) {
+        res.status(404).json({ error: "Consent record not found." });
+        return;
+      }
+      res.status(200).json({
+        consent: {
+          id: consent.id,
+          version: consent.version,
+          essential: true,
+          analytics: consent.analytics,
+          marketing: consent.marketing,
+          preferences: consent.preferences,
+          updatedAt: consent.updatedAt
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to read cookie consent." });
+    }
   });
 
   app.post("/api/email/subscribe", async (req, res) => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Admin from "./pages/Admin";
+import CookieConsent from "./components/CookieConsent";
 import ConfirmResultPage from "./pages/ConfirmResultPage";
 import Home from "./pages/Home";
 import PolicyPage from "./pages/PolicyPage";
@@ -256,12 +257,12 @@ function App() {
     const nextRaw = new URLSearchParams(window.location.search).get("next") ?? undefined;
     return <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />;
   }
-  if (normalizedPath === "/affiliate-disclosure") return <PolicyPage kind="affiliate-disclosure" />;
-  if (normalizedPath === "/earnings-disclaimer") return <PolicyPage kind="earnings-disclaimer" />;
-  if (normalizedPath === "/privacy") return <PolicyPage kind="privacy" />;
-  if (normalizedPath === "/terms") return <PolicyPage kind="terms" />;
-  if (normalizedPath === "/confirm") return <ConfirmResultPage />;
-  if (normalizedPath === "/unsubscribe") return <UnsubscribeResultPage />;
+  if (normalizedPath === "/affiliate-disclosure") return withCookieConsent(<PolicyPage kind="affiliate-disclosure" />);
+  if (normalizedPath === "/earnings-disclaimer") return withCookieConsent(<PolicyPage kind="earnings-disclaimer" />);
+  if (normalizedPath === "/privacy") return withCookieConsent(<PolicyPage kind="privacy" />);
+  if (normalizedPath === "/terms") return withCookieConsent(<PolicyPage kind="terms" />);
+  if (normalizedPath === "/confirm") return withCookieConsent(<ConfirmResultPage />);
+  if (normalizedPath === "/unsubscribe") return withCookieConsent(<UnsubscribeResultPage />);
   if (normalizedPath === "/admin") {
     if (checkingAuth) {
       return (
@@ -274,7 +275,7 @@ function App() {
     return <Admin />;
   }
   if (normalizedPath === "/404") {
-    return (
+    return withCookieConsent(
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">404</p>
@@ -297,7 +298,13 @@ function App() {
     );
   }
   const section = normalizedPath in categorySectionByPath ? categorySectionByPath[normalizedPath as PublicCategoryPath] : undefined;
-  return <Home initialSection={section} />;
+  return withCookieConsent(<Home initialSection={section} />);
 }
 
 export default App;
+  const withCookieConsent = (page: JSX.Element) => (
+    <>
+      {page}
+      <CookieConsent />
+    </>
+  );

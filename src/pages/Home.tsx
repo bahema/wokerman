@@ -17,6 +17,7 @@ import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
 import { getEventThemeCssVars } from "../utils/eventTheme";
+import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 
 type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
@@ -800,6 +801,13 @@ const Home = (_props: HomeProps) => {
                   >
                     Terms of Use
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new Event(OPEN_COOKIE_SETTINGS_EVENT))}
+                    className="block text-left transition hover:text-emerald-700 dark:hover:text-emerald-400"
+                  >
+                    Cookie settings
+                  </button>
                 </div>
               </div>
             </div>
