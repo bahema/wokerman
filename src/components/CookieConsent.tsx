@@ -4,7 +4,6 @@ import { apiJson } from "../api/client";
 import {
   getDefaultCookieConsent,
   getOrCreateCookieConsentId,
-  hasValidCookieConsent,
   OPEN_COOKIE_SETTINGS_EVENT,
   readCookieConsent,
   saveCookieConsent,
@@ -53,7 +52,7 @@ const CookieConsent = () => {
   useEffect(() => {
     if (!hasMounted) return;
     const stored = readCookieConsent();
-    if (stored && hasValidCookieConsent()) {
+    if (stored) {
       setDraft({
         analytics: stored.analytics,
         marketing: stored.marketing,
@@ -64,7 +63,7 @@ const CookieConsent = () => {
     }
 
     const timer = window.setTimeout(() => {
-      if (!hasValidCookieConsent()) setShowBanner(true);
+      if (!readCookieConsent()) setShowBanner(true);
     }, COOKIE_BANNER_APPEAR_DELAY_MS);
     return () => {
       window.clearTimeout(timer);
@@ -139,9 +138,6 @@ const CookieConsent = () => {
     void applyConsent(draft, "save_preferences");
   };
 
-  const showAny = showBanner || modalOpen;
-
-  if (!hasMounted) return null;
   const categories = useMemo(
     () => [
       {
@@ -173,6 +169,9 @@ const CookieConsent = () => {
     [draft]
   );
 
+  const showAny = showBanner || modalOpen;
+
+  if (!hasMounted) return null;
   if (!showAny) return null;
 
   return (

@@ -50,7 +50,11 @@ export const saveCookieConsent = (consent: Omit<CookieConsent, "version" | "upda
     marketing: Boolean(consent.marketing),
     preferences: Boolean(consent.preferences)
   };
-  localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify(next));
+  } catch {
+    // Keep UI functional even when storage is blocked (private mode / browser policy).
+  }
   return next;
 };
 
