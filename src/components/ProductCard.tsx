@@ -47,9 +47,13 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
         <div className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
         <div className="absolute left-3 top-3 flex gap-2">
           {product.isNew && (
-            <span className="rounded-full bg-white/95 px-2 py-0.5 text-xs font-bold text-blue-700">{labels?.newBadgeLabel ?? "NEW"}</span>
+            <span className="rounded-full border border-blue-700/30 bg-white px-2.5 py-1 text-[11px] font-extrabold text-blue-700 shadow-sm">
+              {labels?.newBadgeLabel ?? "NEW"}
+            </span>
           )}
-          <span className="rounded-full bg-black/40 px-2 py-0.5 text-xs font-semibold text-white">{product.category}</span>
+          <span className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+            {product.category}
+          </span>
         </div>
       </div>
       <div className="flex flex-1 flex-col p-4">

@@ -17,6 +17,15 @@ type EventThemeTokens = {
   heroButtonSecondaryText: string;
   chipBg: string;
   chipText: string;
+  adBadgeBg: string;
+  adBadgeText: string;
+  adOverlayBg: string;
+  adOverlayBorder: string;
+  adOverlayTitle: string;
+  adOverlayText: string;
+  adOverlayButtonBg: string;
+  adOverlayButtonText: string;
+  adFrameBorder: string;
 };
 
 const defaultLightTokens: EventThemeTokens = {
@@ -34,7 +43,16 @@ const defaultLightTokens: EventThemeTokens = {
   heroButtonSecondaryBg: "#ffffff",
   heroButtonSecondaryText: "#334155",
   chipBg: "#dbeafe",
-  chipText: "#1d4ed8"
+  chipText: "#1d4ed8",
+  adBadgeBg: "rgba(15,23,42,0.82)",
+  adBadgeText: "#ffffff",
+  adOverlayBg: "rgba(2,6,23,0.72)",
+  adOverlayBorder: "rgba(255,255,255,0.28)",
+  adOverlayTitle: "#ffffff",
+  adOverlayText: "#e2e8f0",
+  adOverlayButtonBg: "rgba(255,255,255,0.22)",
+  adOverlayButtonText: "#ffffff",
+  adFrameBorder: "#cbd5e1"
 };
 
 const defaultDarkTokens: EventThemeTokens = {
@@ -52,7 +70,16 @@ const defaultDarkTokens: EventThemeTokens = {
   heroButtonSecondaryBg: "#0f172a",
   heroButtonSecondaryText: "#e2e8f0",
   chipBg: "rgba(30,58,138,0.42)",
-  chipText: "#bfdbfe"
+  chipText: "#bfdbfe",
+  adBadgeBg: "rgba(2,6,23,0.88)",
+  adBadgeText: "#ffffff",
+  adOverlayBg: "rgba(2,6,23,0.78)",
+  adOverlayBorder: "rgba(255,255,255,0.22)",
+  adOverlayTitle: "#f8fafc",
+  adOverlayText: "#cbd5e1",
+  adOverlayButtonBg: "rgba(255,255,255,0.16)",
+  adOverlayButtonText: "#f8fafc",
+  adFrameBorder: "#334155"
 };
 
 const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<EventThemeTokens>; dark: Partial<EventThemeTokens> }> = {
@@ -67,7 +94,9 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#166534",
       heroButtonSecondaryBg: "#ffffff",
       chipBg: "#dcfce7",
-      chipText: "#166534"
+      chipText: "#166534",
+      adBadgeBg: "rgba(21,128,61,0.85)",
+      adFrameBorder: "#86efac"
     },
     dark: {
       navBg: "rgba(6,26,18,0.92)",
@@ -79,7 +108,9 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#16a34a",
       heroButtonSecondaryBg: "#052e16",
       chipBg: "rgba(20,83,45,0.62)",
-      chipText: "#dcfce7"
+      chipText: "#dcfce7",
+      adBadgeBg: "rgba(22,101,52,0.85)",
+      adFrameBorder: "#166534"
     }
   },
   "new-year": {
@@ -89,7 +120,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroBorder: "#a5b4fc",
       heroButtonPrimaryBg: "#3730a3",
       chipBg: "#e0e7ff",
-      chipText: "#3730a3"
+      chipText: "#3730a3",
+      adFrameBorder: "#a5b4fc"
     },
     dark: {
       navBg: "rgba(17,24,39,0.94)",
@@ -101,7 +133,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#4f46e5",
       heroButtonSecondaryBg: "#111827",
       chipBg: "rgba(67,56,202,0.45)",
-      chipText: "#e0e7ff"
+      chipText: "#e0e7ff",
+      adFrameBorder: "#4b5563"
     }
   },
   valentine: {
@@ -111,7 +144,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroBorder: "#f9a8d4",
       heroButtonPrimaryBg: "#be185d",
       chipBg: "#fce7f3",
-      chipText: "#9d174d"
+      chipText: "#9d174d",
+      adFrameBorder: "#f9a8d4"
     },
     dark: {
       navBg: "rgba(40,12,28,0.92)",
@@ -123,7 +157,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#db2777",
       heroButtonSecondaryBg: "#3f032f",
       chipBg: "rgba(131,24,67,0.55)",
-      chipText: "#fce7f3"
+      chipText: "#fce7f3",
+      adFrameBorder: "#831843"
     }
   },
   easter: {
@@ -133,7 +168,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroBorder: "#c4b5fd",
       heroButtonPrimaryBg: "#7c3aed",
       chipBg: "#ede9fe",
-      chipText: "#5b21b6"
+      chipText: "#5b21b6",
+      adFrameBorder: "#c4b5fd"
     },
     dark: {
       navBg: "rgba(23,14,52,0.92)",
@@ -144,7 +180,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#8b5cf6",
       heroButtonSecondaryBg: "#312e81",
       chipBg: "rgba(91,33,182,0.55)",
-      chipText: "#ede9fe"
+      chipText: "#ede9fe",
+      adFrameBorder: "#4338ca"
     }
   },
   ramadan: {
@@ -154,7 +191,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroBorder: "#67e8f9",
       heroButtonPrimaryBg: "#0f766e",
       chipBg: "#cffafe",
-      chipText: "#155e75"
+      chipText: "#155e75",
+      adFrameBorder: "#67e8f9"
     },
     dark: {
       navBg: "rgba(6,28,33,0.92)",
@@ -165,7 +203,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#0e7490",
       heroButtonSecondaryBg: "#083344",
       chipBg: "rgba(21,94,117,0.55)",
-      chipText: "#cffafe"
+      chipText: "#cffafe",
+      adFrameBorder: "#0e7490"
     }
   },
   eid: {
@@ -175,7 +214,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroBorder: "#86efac",
       heroButtonPrimaryBg: "#15803d",
       chipBg: "#dcfce7",
-      chipText: "#166534"
+      chipText: "#166534",
+      adFrameBorder: "#86efac"
     },
     dark: {
       navBg: "rgba(5,26,14,0.93)",
@@ -186,7 +226,8 @@ const themePresets: Record<Exclude<SiteEventTheme, "none">, { light: Partial<Eve
       heroButtonPrimaryBg: "#16a34a",
       heroButtonSecondaryBg: "#14532d",
       chipBg: "rgba(22,101,52,0.6)",
-      chipText: "#dcfce7"
+      chipText: "#dcfce7",
+      adFrameBorder: "#166534"
     }
   }
 };
@@ -206,7 +247,16 @@ const toCssVars = (tokens: EventThemeTokens): Record<string, string> => ({
   "--event-btn-secondary-bg": tokens.heroButtonSecondaryBg,
   "--event-btn-secondary-text": tokens.heroButtonSecondaryText,
   "--event-chip-bg": tokens.chipBg,
-  "--event-chip-text": tokens.chipText
+  "--event-chip-text": tokens.chipText,
+  "--event-ad-badge-bg": tokens.adBadgeBg,
+  "--event-ad-badge-text": tokens.adBadgeText,
+  "--event-ad-overlay-bg": tokens.adOverlayBg,
+  "--event-ad-overlay-border": tokens.adOverlayBorder,
+  "--event-ad-overlay-title": tokens.adOverlayTitle,
+  "--event-ad-overlay-text": tokens.adOverlayText,
+  "--event-ad-overlay-button-bg": tokens.adOverlayButtonBg,
+  "--event-ad-overlay-button-text": tokens.adOverlayButtonText,
+  "--event-ad-frame-border": tokens.adFrameBorder
 });
 
 export const getEventThemeCssVars = (eventTheme: SiteEventTheme | undefined, mode: Theme): Record<string, string> => {

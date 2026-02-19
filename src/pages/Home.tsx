@@ -414,23 +414,33 @@ const Home = (_props: HomeProps) => {
                   }`}
                 >
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
-                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white shadow-lg">
+                  <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
+                    <div
+                      className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
+                        eventThemeActive ? "event-ad-badge" : "bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 text-white"
+                      }`}
+                    >
                       <span className="rounded-full bg-white/20 px-1.5 py-0.5 leading-none">{homeUi.adsectionMan.gadgets.badgePrimary}</span>
                       <span className="leading-none">{homeUi.adsectionMan.gadgets.badgeSecondary}</span>
                     </div>
-                    <div className="absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/55 p-3 text-white backdrop-blur-md">
+                    <div
+                      className={`absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border p-3 backdrop-blur-md ${
+                        eventThemeActive ? "event-ad-overlay" : "border-white/20 bg-slate-950/55 text-white"
+                      }`}
+                    >
                       <span className="mb-2 inline-flex w-fit rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-100 sm:hidden">
                         {homeUi.adsectionMan.gadgets.scrollHint}
                       </span>
                       <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-none">
-                        <p className="text-sm font-bold tracking-tight">{homeUi.adsectionMan.gadgets.overlayTitle}</p>
-                        <p className="mt-1 text-xs text-slate-200">{homeUi.adsectionMan.gadgets.overlayText}</p>
+                        <p className={`text-sm font-bold tracking-tight ${eventThemeActive ? "event-ad-overlay-title" : ""}`}>{homeUi.adsectionMan.gadgets.overlayTitle}</p>
+                        <p className={`mt-1 text-xs ${eventThemeActive ? "event-ad-overlay-text" : "text-slate-200"}`}>{homeUi.adsectionMan.gadgets.overlayText}</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => runTarget(homeUi.adsectionMan.gadgets.buttonTarget)}
-                        className="mt-2 inline-flex w-fit shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
+                        className={`mt-2 inline-flex w-fit shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                          eventThemeActive ? "event-ad-overlay-btn hover:brightness-110" : "bg-white/15 text-white hover:bg-white/25"
+                        }`}
                       >
                         {homeUi.adsectionMan.gadgets.buttonLabel}
                       </button>
@@ -450,23 +460,33 @@ const Home = (_props: HomeProps) => {
                   }`}
                 >
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
-                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white shadow-lg">
+                  <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
+                    <div
+                      className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
+                        eventThemeActive ? "event-ad-badge" : "bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white"
+                      }`}
+                    >
                       <span className="rounded-full bg-white/20 px-1.5 py-0.5 leading-none">{homeUi.adsectionMan.ai.badgePrimary}</span>
                       <span className="leading-none">{homeUi.adsectionMan.ai.badgeSecondary}</span>
                     </div>
-                    <div className="absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/55 p-3 text-white backdrop-blur-md">
+                    <div
+                      className={`absolute bottom-3 left-3 z-10 flex min-h-[120px] min-w-[160px] max-w-[70%] flex-col overflow-hidden rounded-2xl border p-3 backdrop-blur-md ${
+                        eventThemeActive ? "event-ad-overlay" : "border-white/20 bg-slate-950/55 text-white"
+                      }`}
+                    >
                       <span className="mb-2 inline-flex w-fit rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-100 sm:hidden">
                         {homeUi.adsectionMan.ai.scrollHint}
                       </span>
                       <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-none">
-                        <p className="text-sm font-bold tracking-tight">{homeUi.adsectionMan.ai.overlayTitle}</p>
-                        <p className="mt-1 text-xs text-slate-200">{homeUi.adsectionMan.ai.overlayText}</p>
+                        <p className={`text-sm font-bold tracking-tight ${eventThemeActive ? "event-ad-overlay-title" : ""}`}>{homeUi.adsectionMan.ai.overlayTitle}</p>
+                        <p className={`mt-1 text-xs ${eventThemeActive ? "event-ad-overlay-text" : "text-slate-200"}`}>{homeUi.adsectionMan.ai.overlayText}</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => runTarget(homeUi.adsectionMan.ai.buttonTarget)}
-                        className="mt-2 inline-flex w-fit shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
+                        className={`mt-2 inline-flex w-fit shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                          eventThemeActive ? "event-ad-overlay-btn hover:brightness-110" : "bg-white/15 text-white hover:bg-white/25"
+                        }`}
                       >
                         {homeUi.adsectionMan.ai.buttonLabel}
                       </button>
