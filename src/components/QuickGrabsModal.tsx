@@ -114,7 +114,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
               <button
                 type="submit"
                 disabled={submitting}
-                className="mt-2 inline-flex w-full justify-center rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-500 sm:w-auto"
+                className="mt-2 inline-flex w-fit max-w-full justify-center rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-500"
               >
                 {submitting ? "Subscribing..." : "Subscribe"}
               </button>
@@ -128,7 +128,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
           <button
             type="button"
             onClick={onClose}
-            className="mt-4 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+            className="mt-4 inline-flex w-fit max-w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
           >
             Close
           </button>

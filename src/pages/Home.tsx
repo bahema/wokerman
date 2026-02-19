@@ -349,7 +349,7 @@ const Home = ({ initialSection }: HomeProps) => {
                     setQuickGrabsTrigger(event.currentTarget);
                     setQuickGrabsOpen(true);
                   }}
-                  className="w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-500 sm:w-auto"
+                  className="inline-flex w-fit max-w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-500"
                 >
                   Quick Grabs
                 </button>
