@@ -262,9 +262,22 @@ const Admin = () => {
                   }
                 }
               }}
-              onChange={(next) => {
-                const nextContent = { ...content, homeUi: next };
-                queueAutoPublish(nextContent, "Adsection settings updated and published.", "Failed to publish adsection settings.");
+              onSaveSection={async (box, nextSection) => {
+                const nextHomeUi = {
+                  ...defaultHomeUi,
+                  ...(content.homeUi ?? {}),
+                  adsectionMan: {
+                    ...defaultHomeUi.adsectionMan,
+                    ...(content.homeUi?.adsectionMan ?? {}),
+                    [box]: nextSection
+                  }
+                };
+                const nextContent = { ...content, homeUi: nextHomeUi };
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage(`${box === "gadgets" ? "Top" : "Bottom"} ad box updated and published.`);
               }}
             />
           </EditorShell>
