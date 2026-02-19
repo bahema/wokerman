@@ -11,7 +11,7 @@ import { smoothScrollToId } from "../utils/smoothScroll";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useProductFilters } from "../utils/useProductFilters";
 import { useSectionObserver } from "../utils/useSectionObserver";
-import { defaultProductSections, defaultSiteContent } from "../data/siteData";
+import { defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
@@ -44,6 +44,7 @@ const Home = ({ initialSection }: HomeProps) => {
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
   const productSections = content.productSections ?? defaultProductSections;
+  const homeUi = content.homeUi ?? defaultHomeUi;
 
   useEffect(() => {
     updateTheme(theme);
@@ -275,6 +276,14 @@ const Home = ({ initialSection }: HomeProps) => {
       <ProductCard
         key={product.id}
         product={product}
+        labels={{
+          newBadgeLabel: homeUi.productCardNewBadgeLabel,
+          newReleaseLabel: homeUi.productCardNewReleaseLabel,
+          keyFeaturesSuffix: homeUi.productCardKeyFeaturesSuffix,
+          checkoutLabel: homeUi.productCardCheckoutLabel,
+          moreInfoLabel: homeUi.productCardMoreInfoLabel,
+          affiliateDisclosure: homeUi.productCardAffiliateDisclosure
+        }}
         onCheckout={(item, trigger) => {
           trackAnalyticsEvent("product_link_click", {
             productId: item.id,
@@ -323,7 +332,7 @@ const Home = ({ initialSection }: HomeProps) => {
             <div className="relative grid items-center gap-8 lg:grid-cols-2">
               <div className="reveal min-w-0 space-y-6">
                 <span className="inline-flex rounded-full border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300">
-                  Smart automation for modern operators
+                  {homeUi.heroEyebrow}
                 </span>
                 <h1 className="break-words text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">{content.hero.headline}</h1>
                 <p className="max-w-xl break-words text-base text-slate-600 dark:text-slate-200">{content.hero.subtext}</p>
@@ -351,13 +360,13 @@ const Home = ({ initialSection }: HomeProps) => {
                   }}
                   className="inline-flex w-fit max-w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-500"
                 >
-                  Quick Grabs
+                  {homeUi.heroQuickGrabsLabel}
                 </button>
               </div>
 
               <div className="reveal min-w-0 max-w-full rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-800 p-6 text-white shadow-[0_24px_45px_-26px_rgba(30,64,175,0.8)] dark:border-slate-700 dark:from-slate-900 dark:via-blue-900 dark:to-slate-800">
-                <h3 className="text-lg font-semibold">Performance Snapshot</h3>
-                <p className="mt-1 text-sm text-slate-100">Products tuned for speed, confidence, and measurable outcomes.</p>
+                <h3 className="text-lg font-semibold">{homeUi.performanceSnapshotTitle}</h3>
+                <p className="mt-1 text-sm text-slate-100">{homeUi.performanceSnapshotSubtext}</p>
                 <div className="mt-6 grid gap-3 sm:grid-cols-3">
                   {content.hero.stats.map((stat) => (
                     <div key={stat.label} className="min-w-0 rounded-xl bg-white/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] dark:shadow-none">
@@ -513,11 +522,11 @@ const Home = ({ initialSection }: HomeProps) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-5 text-center">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Industries</p>
-            <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Industries We Work With</h3>
+            <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{homeUi.industriesHeading}</h3>
           </div>
           {content.industries.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-              No industries published yet. Add industries from Admin to show them here.
+              {homeUi.industriesEmptyMessage}
             </div>
           ) : (
             <div

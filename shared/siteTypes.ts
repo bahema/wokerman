@@ -41,6 +41,20 @@ export type SiteContent = {
     ctaSecondary: { label: string; target: "forex" | "betting" | "social" | string };
     stats: Array<{ label: string; value: string }>;
   };
+  homeUi?: {
+    heroEyebrow: string;
+    heroQuickGrabsLabel: string;
+    performanceSnapshotTitle: string;
+    performanceSnapshotSubtext: string;
+    industriesHeading: string;
+    industriesEmptyMessage: string;
+    productCardNewBadgeLabel: string;
+    productCardNewReleaseLabel: string;
+    productCardKeyFeaturesSuffix: string;
+    productCardCheckoutLabel: string;
+    productCardMoreInfoLabel: string;
+    productCardAffiliateDisclosure: string;
+  };
   testimonials: Array<{ id: string; name: string; role: string; rating: number; quote: string; avatarUrl?: string }>;
   products: {
     forex: Product[];

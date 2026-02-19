@@ -5,6 +5,14 @@ type ProductCardProps = {
   product: Product;
   onCheckout: (product: Product, trigger: HTMLButtonElement) => void;
   onMoreInfo: (product: Product, trigger: HTMLButtonElement) => void;
+  labels?: {
+    newBadgeLabel: string;
+    newReleaseLabel: string;
+    keyFeaturesSuffix: string;
+    checkoutLabel: string;
+    moreInfoLabel: string;
+    affiliateDisclosure: string;
+  };
 };
 
 const gradientByCategory: Record<Product["category"], string> = {
@@ -14,10 +22,10 @@ const gradientByCategory: Record<Product["category"], string> = {
   Social: "from-orange-500 via-rose-600 to-red-700"
 };
 
-const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
+const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardProps) => {
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
-  const trustLabel = product.isNew ? "New release" : `${product.features.length} key features`;
+  const trustLabel = product.isNew ? (labels?.newReleaseLabel ?? "New release") : `${product.features.length} ${labels?.keyFeaturesSuffix ?? "key features"}`;
 
   useEffect(() => {
     setImageFailed(false);
@@ -39,7 +47,7 @@ const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
         <div className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
         <div className="absolute left-3 top-3 flex gap-2">
           {product.isNew && (
-            <span className="rounded-full bg-white/95 px-2 py-0.5 text-xs font-bold text-blue-700">NEW</span>
+            <span className="rounded-full bg-white/95 px-2 py-0.5 text-xs font-bold text-blue-700">{labels?.newBadgeLabel ?? "NEW"}</span>
           )}
           <span className="rounded-full bg-black/40 px-2 py-0.5 text-xs font-semibold text-white">{product.category}</span>
         </div>
@@ -65,18 +73,18 @@ const ProductCard = ({ product, onCheckout, onMoreInfo }: ProductCardProps) => {
           onClick={(event) => onCheckout(product, event.currentTarget)}
           className="h-10 w-fit min-w-[220px] max-w-full rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-4 text-sm font-semibold text-white transition hover:brightness-110 sm:w-full sm:min-w-0 dark:bg-none dark:bg-blue-600 dark:hover:bg-blue-500 dark:hover:brightness-100"
         >
-          Proceed to Checkout
+          {labels?.checkoutLabel ?? "Proceed to Checkout"}
         </button>
         <button
           type="button"
           onClick={(event) => onMoreInfo(product, event.currentTarget)}
           className="h-10 w-fit min-w-[220px] max-w-full rounded-xl border-2 border-slate-400 bg-slate-50 px-4 text-sm font-semibold text-slate-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] transition hover:bg-slate-100 sm:w-full sm:min-w-0 dark:border-slate-400 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
         >
-          Get More Info
+          {labels?.moreInfoLabel ?? "Get More Info"}
         </button>
       </div>
       <p className="px-4 pb-4 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-        Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you.
+        {labels?.affiliateDisclosure ?? "Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you."}
       </p>
     </article>
   );

@@ -51,6 +51,7 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
   const socials = value.socials;
   const hero = value.hero;
   const testimonials = value.testimonials;
+  const homeUi = value.homeUi;
   const products = value.products;
   const productSections = value.productSections;
   const industries = value.industries;
@@ -114,6 +115,29 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
     }
     if (item.avatarUrl !== undefined && item.avatarUrl !== null && typeof item.avatarUrl !== "string") {
       return { ok: false, error: `testimonials #${i + 1}: avatarUrl must be a string when provided.` };
+    }
+  }
+
+  if (homeUi !== undefined) {
+    if (!isObject(homeUi)) return { ok: false, error: "homeUi must be an object when provided." };
+    const requiredHomeUiKeys = [
+      "heroEyebrow",
+      "heroQuickGrabsLabel",
+      "performanceSnapshotTitle",
+      "performanceSnapshotSubtext",
+      "industriesHeading",
+      "industriesEmptyMessage",
+      "productCardNewBadgeLabel",
+      "productCardNewReleaseLabel",
+      "productCardKeyFeaturesSuffix",
+      "productCardCheckoutLabel",
+      "productCardMoreInfoLabel",
+      "productCardAffiliateDisclosure"
+    ] as const;
+    for (const key of requiredHomeUiKeys) {
+      if (!asNonEmptyString(homeUi[key])) {
+        return { ok: false, error: `homeUi.${key} is required.` };
+      }
     }
   }
 

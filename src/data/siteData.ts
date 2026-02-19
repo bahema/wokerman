@@ -322,6 +322,21 @@ export const defaultProductSections: ProductSections = {
   }
 };
 
+export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
+  heroEyebrow: "Smart automation for modern operators",
+  heroQuickGrabsLabel: "Quick Grabs",
+  performanceSnapshotTitle: "Performance Snapshot",
+  performanceSnapshotSubtext: "Products tuned for speed, confidence, and measurable outcomes.",
+  industriesHeading: "Industries We Work With",
+  industriesEmptyMessage: "No industries published yet. Add industries from Admin to show them here.",
+  productCardNewBadgeLabel: "NEW",
+  productCardNewReleaseLabel: "New release",
+  productCardKeyFeaturesSuffix: "key features",
+  productCardCheckoutLabel: "Proceed to Checkout",
+  productCardMoreInfoLabel: "Get More Info",
+  productCardAffiliateDisclosure: "Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you."
+};
+
 export const defaultSiteContent: SiteContent = {
   branding: { logoText: "AutoHub", accentColor: "#2563eb", defaultTheme: "system" },
   socials: {
@@ -341,6 +356,7 @@ export const defaultSiteContent: SiteContent = {
       { label: "Live tools", value: "24" }
     ]
   },
+  homeUi: defaultHomeUi,
   testimonials: [
     {
       id: "t-1",

@@ -9,6 +9,7 @@ import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
 import HeroEditor from "../components/admin/HeroEditor";
+import HomeUiEditor from "../components/admin/HomeUiEditor";
 import IndustryManager from "../components/admin/IndustryManager";
 import ProductManager from "../components/admin/ProductManager";
 import { type AdminSection } from "../components/admin/Sidebar";
@@ -26,7 +27,7 @@ import {
 } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useEffect } from "react";
-import { defaultProductSections, defaultSiteContent } from "../data/siteData";
+import { defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
@@ -217,13 +218,22 @@ const Admin = () => {
       case "hero":
         return (
           <EditorShell title="Hero" description="Edit headline, supporting copy, CTA actions and stat chips.">
-            <HeroEditor
-              value={content.hero}
-              onChange={(next) => {
-                const nextContent = { ...content, hero: next };
-                queueAutoPublish(nextContent, "Hero updated and published.", "Failed to publish hero updates.");
-              }}
-            />
+            <div className="space-y-4">
+              <HeroEditor
+                value={content.hero}
+                onChange={(next) => {
+                  const nextContent = { ...content, hero: next };
+                  queueAutoPublish(nextContent, "Hero updated and published.", "Failed to publish hero updates.");
+                }}
+              />
+              <HomeUiEditor
+                value={content.homeUi ?? defaultHomeUi}
+                onChange={(next) => {
+                  const nextContent = { ...content, homeUi: next };
+                  queueAutoPublish(nextContent, "Home UI copy updated and published.", "Failed to publish home UI copy updates.");
+                }}
+              />
+            </div>
           </EditorShell>
         );
       case "testimonials":

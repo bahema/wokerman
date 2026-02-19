@@ -10,6 +10,26 @@ const isValidUrl = (input: string) => {
 };
 
 export const validateContentForSave = (content: SiteContent) => {
+  if (content.homeUi) {
+    const requiredHomeUiKeys: Array<keyof NonNullable<SiteContent["homeUi"]>> = [
+      "heroEyebrow",
+      "heroQuickGrabsLabel",
+      "performanceSnapshotTitle",
+      "performanceSnapshotSubtext",
+      "industriesHeading",
+      "industriesEmptyMessage",
+      "productCardNewBadgeLabel",
+      "productCardNewReleaseLabel",
+      "productCardKeyFeaturesSuffix",
+      "productCardCheckoutLabel",
+      "productCardMoreInfoLabel",
+      "productCardAffiliateDisclosure"
+    ];
+    for (const key of requiredHomeUiKeys) {
+      if (!content.homeUi[key]?.trim()) return `Home UI validation failed: ${key} is required.`;
+    }
+  }
+
   if (content.productSections) {
     const sections = content.productSections;
     const keys: Array<keyof typeof sections> = ["forex", "betting", "software", "social"];
