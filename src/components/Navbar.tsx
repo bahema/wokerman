@@ -56,7 +56,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
   }, [mobileMenuOpen]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/95">
+    <header className="fixed inset-x-0 top-0 z-40 border-b border-slate-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/95">
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 min-w-0 items-center justify-between gap-3">
           <a

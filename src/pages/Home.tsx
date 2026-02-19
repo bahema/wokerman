@@ -315,7 +315,7 @@ const Home = ({ initialSection }: HomeProps) => {
         socials={content.socials}
       />
 
-      <main className="overflow-x-hidden">
+      <main className="overflow-x-hidden pt-16">
         <section className="relative overflow-hidden py-16">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50 via-sky-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
