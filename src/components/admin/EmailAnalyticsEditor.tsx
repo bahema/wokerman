@@ -305,8 +305,15 @@ const EmailAnalyticsEditor = () => {
     setSubscriberActionNotice("");
     setSubscriberActionBusyId(lead.id);
     try {
-      await apiJson<{ ok: boolean; queued?: boolean; subscriberId: string }>(`/api/email/subscribers/${encodeURIComponent(lead.id)}/resend-confirmation`, "POST");
-      setSubscriberActionNotice(`Confirmation email queued for ${lead.email}.`);
+      const response = await apiJson<{ ok: boolean; delivery?: "sent" | "queued"; subscriberId: string; messageId?: string }>(
+        `/api/email/subscribers/${encodeURIComponent(lead.id)}/resend-confirmation`,
+        "POST"
+      );
+      if (response.delivery === "sent") {
+        setSubscriberActionNotice(`Confirmation email sent to ${lead.email}.`);
+      } else {
+        setSubscriberActionNotice(`Confirmation email queued for ${lead.email}.`);
+      }
       await load();
     } catch (error) {
       setSubscriberActionError(error instanceof Error ? error.message : "Failed to resend confirmation email.");

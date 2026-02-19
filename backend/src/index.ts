@@ -11,7 +11,7 @@ import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
-import { EmailDeliveryError, sendConfirmationEmail } from "./email/confirmationSender.js";
+import { EmailDeliveryError, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
@@ -32,7 +32,13 @@ const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
 const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
 const EMAIL_SUBSCRIPTIONS_ENABLED = process.env.EMAIL_SUBSCRIPTIONS_ENABLED !== "false";
-const EMAIL_CONFIRMATION_SEND_MODE = process.env.EMAIL_CONFIRMATION_SEND_MODE === "sync" ? "sync" : "async";
+const isProduction = process.env.NODE_ENV === "production";
+const resolveConfirmationMode = () => {
+  const raw = (process.env.EMAIL_CONFIRM_MODE ?? process.env.EMAIL_CONFIRMATION_SEND_MODE ?? "").trim().toLowerCase();
+  if (raw === "sync" || raw === "async") return raw;
+  return isProduction ? "async" : "sync";
+};
+const EMAIL_CONFIRM_MODE = resolveConfirmationMode();
 const _siteContentContract: SiteContent | null = null;
 const PERSISTENCE_MODE = "filesystem";
 
@@ -209,12 +215,20 @@ const bootstrap = async () => {
 
   const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
 
+  const buildConfirmationLinks = (input: { confirmToken: string; unsubscribeToken: string }) => {
+    const confirmUrl = `${API_PUBLIC_BASE_URL}/api/email/confirm?token=${encodeURIComponent(input.confirmToken)}`;
+    const unsubscribeUrl = `${API_PUBLIC_BASE_URL}/api/email/unsubscribe?token=${encodeURIComponent(input.unsubscribeToken)}`;
+    return { confirmUrl, unsubscribeUrl };
+  };
+
   const deliverConfirmationEmail = async (input: { name: string; email: string; confirmToken: string; unsubscribeToken: string }) => {
     // eslint-disable-next-line no-console
     console.log(`[email] confirmation send requested email=${input.email}`);
     const [template, senderProfile] = await Promise.all([emailStore.getConfirmationTemplate(), emailStore.getSenderProfile()]);
-    const confirmUrl = `${API_PUBLIC_BASE_URL}/api/email/confirm?token=${encodeURIComponent(input.confirmToken)}`;
-    const unsubscribeUrl = `${API_PUBLIC_BASE_URL}/api/email/unsubscribe?token=${encodeURIComponent(input.unsubscribeToken)}`;
+    const { confirmUrl, unsubscribeUrl } = buildConfirmationLinks({
+      confirmToken: input.confirmToken,
+      unsubscribeToken: input.unsubscribeToken
+    });
     const result = await sendConfirmationEmail({
       toEmail: input.email,
       firstName: toFirstName(input.name),
@@ -235,7 +249,11 @@ const bootstrap = async () => {
       smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
     });
     // eslint-disable-next-line no-console
-    console.log(`[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider}`);
+    console.log(
+      `[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider} messageId=${
+        result.messageId
+      }`
+    );
     return result;
   };
 
@@ -249,16 +267,49 @@ const bootstrap = async () => {
   }) => {
     void (async () => {
       try {
-        await deliverConfirmationEmail({
+        const result = await deliverConfirmationEmail({
           name: input.name,
           email: input.email,
           confirmToken: input.confirmToken,
           unsubscribeToken: input.unsubscribeToken
         });
+        await emailStore.addEvent({
+          eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
+          subscriberId: input.id,
+          meta: {
+            source: input.source,
+            confirmationDispatch: {
+              state: "sent",
+              messageId: result.messageId,
+              accepted: result.accepted,
+              rejected: result.rejected,
+              at: new Date().toISOString()
+            }
+          }
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown confirmation delivery error.";
+        const detailCode =
+          error instanceof EmailDeliveryError && typeof error.detailCode === "string" && error.detailCode.trim()
+            ? error.detailCode.trim()
+            : "UNKNOWN";
+        await emailStore.addEvent({
+          eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
+          subscriberId: input.id,
+          meta: {
+            source: input.source,
+            confirmationDispatch: {
+              state: "failed",
+              errorCode: detailCode,
+              errorMessage: message,
+              at: new Date().toISOString()
+            }
+          }
+        });
         // eslint-disable-next-line no-console
-        console.error(`[email] confirmation async send failed source=${input.source} email=${input.email} message=${message}`);
+        console.error(
+          `[email] confirmation async send failed source=${input.source} email=${input.email} code=${detailCode} message=${message}`
+        );
       }
     })();
   };
@@ -553,9 +604,15 @@ const bootstrap = async () => {
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadSubscribed,
         subscriberId: subscriber.id,
-        meta: { source: "quick_grabs", confirmationDispatch: "queued" }
+        meta: {
+          source: "quick_grabs",
+          confirmationDispatch: {
+            state: EMAIL_CONFIRM_MODE === "sync" ? "sending" : "queued",
+            at: new Date().toISOString()
+          }
+        }
       });
-      if (EMAIL_CONFIRMATION_SEND_MODE === "sync") {
+      if (EMAIL_CONFIRM_MODE === "sync") {
         const confirmationResult = await deliverConfirmationEmail({
           name: subscriber.name,
           email: subscriber.email,
@@ -567,10 +624,31 @@ const bootstrap = async () => {
           subscriberId: subscriber.id,
           meta: {
             source: "auto_subscription_flow_sync",
-            deliveryProvider: confirmationResult.provider,
-            delivered: confirmationResult.delivered
+            confirmationDispatch: {
+              state: "sent",
+              messageId: confirmationResult.messageId,
+              accepted: confirmationResult.accepted,
+              rejected: confirmationResult.rejected,
+              at: new Date().toISOString()
+            }
           }
         });
+        const links = buildConfirmationLinks({
+          confirmToken: subscriber.confirmToken,
+          unsubscribeToken: subscriber.unsubscribeToken
+        });
+        res.status(201).json({
+          ok: true,
+          subscriberId: subscriber.id,
+          status: subscriber.status,
+          delivery: "sent",
+          messageId: confirmationResult.messageId,
+          accepted: confirmationResult.accepted,
+          rejected: confirmationResult.rejected,
+          confirmUrl: links.confirmUrl,
+          unsubscribeUrl: links.unsubscribeUrl
+        });
+        return;
       } else {
         // Send confirmation in the background so client subscribe calls stay responsive.
         queueConfirmationDelivery({
@@ -585,11 +663,16 @@ const bootstrap = async () => {
       res.status(201).json({
         ok: true,
         subscriberId: subscriber.id,
-        status: subscriber.status
+        status: subscriber.status,
+        delivery: "queued"
       });
     } catch (error) {
       if (error instanceof EmailDeliveryError) {
-        res.status(502).json({ error: error.code, message: error.message });
+        res.status(502).json({
+          error: "CONFIRMATION_SEND_FAILED",
+          message: error.message,
+          detailCode: error.detailCode ?? error.code
+        });
         return;
       }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
@@ -608,7 +691,7 @@ const bootstrap = async () => {
         res.status(400).json({ error: "Only pending subscribers can receive confirmation resend." });
         return;
       }
-      if (EMAIL_CONFIRMATION_SEND_MODE === "sync") {
+      if (EMAIL_CONFIRM_MODE === "sync") {
         const confirmationResult = await deliverConfirmationEmail({
           name: subscriber.name,
           email: subscriber.email,
@@ -620,11 +703,16 @@ const bootstrap = async () => {
           subscriberId: subscriber.id,
           meta: {
             source: "admin_email_analytics_sync",
-            deliveryProvider: confirmationResult.provider,
-            delivered: confirmationResult.delivered
+            confirmationDispatch: {
+              state: "sent",
+              messageId: confirmationResult.messageId,
+              accepted: confirmationResult.accepted,
+              rejected: confirmationResult.rejected,
+              at: new Date().toISOString()
+            }
           }
         });
-        res.status(200).json({ ok: true, queued: false, subscriberId: subscriber.id });
+        res.status(200).json({ ok: true, delivery: "sent", subscriberId: subscriber.id, messageId: confirmationResult.messageId });
         return;
       }
 
@@ -639,12 +727,22 @@ const bootstrap = async () => {
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadConfirmationResent,
         subscriberId: subscriber.id,
-        meta: { source: "admin_email_analytics", confirmationDispatch: "queued" }
+        meta: {
+          source: "admin_email_analytics",
+          confirmationDispatch: {
+            state: "queued",
+            at: new Date().toISOString()
+          }
+        }
       });
-      res.status(200).json({ ok: true, queued: true, subscriberId: subscriber.id });
+      res.status(200).json({ ok: true, delivery: "queued", subscriberId: subscriber.id });
     } catch (error) {
       if (error instanceof EmailDeliveryError) {
-        res.status(502).json({ error: error.code, message: error.message });
+        res.status(502).json({
+          error: "CONFIRMATION_SEND_FAILED",
+          message: error.message,
+          detailCode: error.detailCode ?? error.code
+        });
         return;
       }
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
@@ -725,6 +823,52 @@ const bootstrap = async () => {
       res.redirect(303, redirectToUnsubscribe("success"));
     } catch (error) {
       res.redirect(303, redirectToUnsubscribe("error", "failed"));
+    }
+  });
+
+  app.post("/api/email/test-smtp", requireAdminAuth, async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      res.status(404).json({ error: "Not found." });
+      return;
+    }
+
+    const toEmail = typeof req.body?.to === "string" ? req.body.to.trim().toLowerCase() : "";
+    if (!EMAIL_PATTERN.test(toEmail)) {
+      res.status(400).json({ error: "A valid recipient email is required in field 'to'." });
+      return;
+    }
+
+    try {
+      const senderProfile = await emailStore.getSenderProfile();
+      const result = await sendSmtpTestEmail({
+        toEmail,
+        fromName: senderProfile.fromName,
+        fromEmail: senderProfile.fromEmail,
+        replyTo: senderProfile.replyTo,
+        smtpHost: senderProfile.smtpHost,
+        smtpPort: senderProfile.smtpPort,
+        smtpUser: senderProfile.smtpUser,
+        smtpPass: senderProfile.smtpPass,
+        smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
+      });
+      res.status(200).json({
+        ok: true,
+        delivery: "sent",
+        provider: result.provider,
+        messageId: result.messageId,
+        accepted: result.accepted,
+        rejected: result.rejected
+      });
+    } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        res.status(502).json({
+          error: "SMTP_TEST_FAILED",
+          message: error.message,
+          detailCode: error.detailCode ?? error.code
+        });
+        return;
+      }
+      res.status(500).json({ error: "SMTP_TEST_FAILED", message: error instanceof Error ? error.message : "SMTP test failed." });
     }
   });
 
@@ -1128,7 +1272,7 @@ const bootstrap = async () => {
     console.log(`API running on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(
-      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRMATION_SEND_MODE} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRM_MODE} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())

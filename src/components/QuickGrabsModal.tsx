@@ -35,7 +35,7 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
     setSubmitError("");
     setAlreadySubscribedInfo("");
     try {
-      await apiJson<{ ok: boolean; subscriberId: string; status: string }>(
+      await apiJson<{ ok: boolean; subscriberId: string; status: string; delivery?: "sent" | "queued"; messageId?: string }>(
         "/api/email/subscribe",
         "POST",
         {
@@ -49,6 +49,8 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
       const message = error instanceof Error ? error.message : "Failed to subscribe. Please try again.";
       if (/already subscribed|already_subscribed/i.test(message)) {
         setAlreadySubscribedInfo("This email is already subscribed. Check your inbox for past emails, or use unsubscribe if you want to stop emails.");
+      } else if (/confirmation_send_failed|couldn.?t send the confirmation email|smtp/i.test(message)) {
+        setSubmitError("We couldn't send the confirmation email right now. Please try again in a minute.");
       } else {
         setSubmitError(message);
       }
