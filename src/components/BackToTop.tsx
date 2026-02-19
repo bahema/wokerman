@@ -5,6 +5,11 @@ const BackToTop = () => {
 
   useEffect(() => {
     const onScroll = () => {
+      const isMobile = window.innerWidth < 640;
+      if (isMobile) {
+        setVisible(window.scrollY > 160);
+        return;
+      }
       const viewportBottom = window.scrollY + window.innerHeight;
       const pageBottom = document.documentElement.scrollHeight;
       setVisible(viewportBottom >= pageBottom - 48);

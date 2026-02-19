@@ -55,8 +55,8 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
       <div className="flex flex-1 flex-col p-4">
         <h3 className="min-w-0 break-words text-lg font-bold text-slate-900 dark:text-slate-50">{product.title}</h3>
         <p className="mt-2 line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{product.shortDescription}</p>
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-1 text-amber-500" aria-label={`Rated ${product.rating} out of 5`}>
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+          <div className="flex shrink-0 items-center gap-1 text-amber-500" aria-label={`Rated ${product.rating} out of 5`}>
             {Array.from({ length: 5 }).map((_, idx) => (
               <span key={`${product.id}-star-${idx}`} className={`text-base leading-none ${idx < roundedRating ? "" : "text-slate-400"}`}>
                 ★
@@ -64,21 +64,21 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
             ))}
             <span className="ml-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{product.rating.toFixed(1)}</span>
           </div>
-          <span className="text-xs text-slate-600 dark:text-slate-300">{trustLabel}</span>
+          <span className="min-w-0 truncate text-xs text-slate-600 dark:text-slate-300">{trustLabel}</span>
         </div>
       </div>
-      <div className="mt-auto grid grid-cols-1 justify-items-center gap-3 px-4 pb-4 sm:grid-cols-2 sm:justify-items-stretch">
+      <div className="mt-auto grid grid-cols-1 justify-items-start gap-3 px-4 pb-4 sm:grid-cols-2 sm:justify-items-stretch">
         <button
           type="button"
           onClick={(event) => onCheckout(product, event.currentTarget)}
-          className="h-10 w-fit min-w-[220px] max-w-full rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-4 text-sm font-semibold text-white transition hover:brightness-110 sm:w-full sm:min-w-0 dark:bg-none dark:bg-blue-600 dark:hover:bg-blue-500 dark:hover:brightness-100"
+          className="h-10 w-fit max-w-full rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-4 text-sm font-semibold text-white transition hover:brightness-110 sm:w-full dark:bg-none dark:bg-blue-600 dark:hover:bg-blue-500 dark:hover:brightness-100"
         >
           {labels?.checkoutLabel ?? "Proceed to Checkout"}
         </button>
         <button
           type="button"
           onClick={(event) => onMoreInfo(product, event.currentTarget)}
-          className="h-10 w-fit min-w-[220px] max-w-full rounded-xl border-2 border-slate-400 bg-slate-50 px-4 text-sm font-semibold text-slate-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] transition hover:bg-slate-100 sm:w-full sm:min-w-0 dark:border-slate-400 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          className="h-10 w-fit max-w-full rounded-xl border-2 border-slate-400 bg-slate-50 px-4 text-sm font-semibold text-slate-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] transition hover:bg-slate-100 sm:w-full dark:border-slate-400 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
         >
           {labels?.moreInfoLabel ?? "Get More Info"}
         </button>

@@ -325,7 +325,7 @@ const Home = ({ initialSection }: HomeProps) => {
         socials={content.socials}
       />
 
-      <main className="overflow-x-hidden pt-16">
+      <main className="overflow-x-hidden">
         <section className="relative overflow-hidden py-16">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50 via-sky-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -336,7 +336,7 @@ const Home = ({ initialSection }: HomeProps) => {
                 </span>
                 <h1 className="break-words text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">{content.hero.headline}</h1>
                 <p className="max-w-xl break-words text-base text-slate-600 dark:text-slate-200">{content.hero.subtext}</p>
-                <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex flex-col items-start gap-3 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => runTarget(content.hero.ctaPrimary.target)}

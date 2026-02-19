@@ -63,14 +63,14 @@ const SectionHeader = ({
         id={`${eyebrow}-sort`}
         value={sortValue}
         onChange={(event) => onSortChange(event.target.value as SortOption)}
-        className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition focus:border-blue-400 focus:ring-2 dark:border-slate-500 dark:bg-slate-800 dark:text-white"
+        className="h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition focus:border-blue-400 focus:ring-2 dark:border-slate-500 dark:bg-slate-800 dark:text-white"
       >
         <option value="position">Manual order</option>
         <option value="rating">Highest rating</option>
         <option value="newest">Newest first</option>
         <option value="az">A-Z</option>
       </select>
-      <span className="flex min-w-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+      <span className="flex min-w-0 items-center justify-center break-words rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
         {updatedLabel}
       </span>
     </div>

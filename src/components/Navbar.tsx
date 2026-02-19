@@ -56,7 +56,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
   }, [mobileMenuOpen]);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-slate-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/95">
+    <header className="relative z-[1000] border-b border-slate-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/95">
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 min-w-0 items-center justify-between gap-3">
           <a
@@ -133,21 +133,20 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
           </div>
         </div>
         {mobileMenuOpen ? (
-          <button
-            type="button"
+          <div
+            className="fixed inset-0 top-16 z-[1100] bg-black/40 backdrop-blur-sm md:hidden"
             onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 top-16 z-40 bg-slate-950/20 backdrop-blur-[1px] md:hidden"
-            aria-label="Close mobile menu"
+            role="presentation"
           />
         ) : null}
         <nav
           id="mobile-nav-menu"
           aria-label="Primary mobile"
-          className={`absolute left-4 right-4 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl transition duration-200 dark:border-slate-700 dark:bg-slate-900 md:hidden sm:left-auto sm:w-80 ${
+          className={`fixed left-4 right-4 top-16 z-[1110] mt-2 rounded-2xl border border-white/10 bg-slate-950/90 p-3 text-white shadow-xl backdrop-blur-md transition duration-200 md:hidden sm:left-auto sm:w-80 ${
             mobileMenuOpen ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"
           }`}
         >
-          <div className="mb-2 border-b border-slate-200 pb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-700 dark:text-slate-300">
+          <div className="mb-2 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
             Menu
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -167,7 +166,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials }: Navb
                     className={`rounded-xl px-3 py-2 text-center text-sm font-medium transition ${
                       isActive
                         ? "bg-blue-600 text-white shadow"
-                        : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                        : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
                     }`}
                   >
                     {link.label}
