@@ -144,7 +144,10 @@ const configuredAuthCookieSameSite = parseAuthCookieSameSite(process.env.AUTH_CO
 const frontendPublicOrigin = parseOrigin(CLIENT_PUBLIC_BASE_URL);
 const apiPublicOrigin = parseOrigin(normalizePublicBaseUrl(API_PUBLIC_BASE_URL));
 const requiresCrossSiteCookie = isProduction && Boolean(frontendPublicOrigin && apiPublicOrigin && frontendPublicOrigin !== apiPublicOrigin);
-const authCookieSameSite: AuthCookieSameSite = configuredAuthCookieSameSite ?? (requiresCrossSiteCookie ? "none" : "strict");
+// In production, default to `none` so auth cookies survive cross-origin frontend/backend deployments
+// even when public URL env vars are missing or misconfigured.
+const authCookieSameSite: AuthCookieSameSite =
+  configuredAuthCookieSameSite ?? (isProduction ? "none" : requiresCrossSiteCookie ? "none" : "strict");
 const authCookieSecure = isProduction || authCookieSameSite === "none";
 const isLocalLoopbackOrigin = (origin: string) => {
   try {
