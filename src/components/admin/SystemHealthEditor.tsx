@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { appBasePath } from "../../utils/basePath";
 
 type CheckResult = {
   status: "pass" | "fail";
@@ -7,6 +8,14 @@ type CheckResult = {
 };
 
 const normalizeBase = (value: string) => value.trim().replace(/\/+$/, "");
+const toAppPath = (pathname: string) => {
+  const clean = pathname || "/";
+  if (!appBasePath) return clean;
+  if (clean === appBasePath) return "/";
+  if (clean.startsWith(`${appBasePath}/`)) return clean.slice(appBasePath.length) || "/";
+  return clean;
+};
+const resolveFrontendUrl = () => `${window.location.origin}${appBasePath || ""}/`;
 
 const resolveApiBaseUrl = () => {
   const configured = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -51,7 +60,7 @@ const SystemHealthEditor = () => {
     setRunning(true);
     const checks: Array<Promise<[string, CheckResult]>> = [
       runCheck("frontend", async () => {
-        const response = await fetch(window.location.origin, { method: "GET" });
+        const response = await fetch(resolveFrontendUrl(), { method: "GET" });
         if (!response.ok) throw new Error(`Frontend HTTP ${response.status}`);
       }),
       runCheck("backend-health", async () => {
@@ -63,7 +72,7 @@ const SystemHealthEditor = () => {
         if (!response.ok) throw new Error(`Auth status HTTP ${response.status}`);
       }),
       runCheck("boss-routes", async () => {
-        const current = window.location.pathname;
+        const current = toAppPath(window.location.pathname);
         if (!current.startsWith("/boss/") && current !== "/admin") {
           throw new Error(`Unexpected admin path: ${current}`);
         }
