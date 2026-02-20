@@ -189,7 +189,6 @@ const EmailSenderEditor = () => {
   const [isSavingCompliance, setIsSavingCompliance] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
-  const [authRequired, setAuthRequired] = useState(false);
 
   const richRef = useRef<HTMLTextAreaElement>(null);
   const htmlRef = useRef<HTMLTextAreaElement>(null);
@@ -197,18 +196,8 @@ const EmailSenderEditor = () => {
   const confirmTemplateRichRef = useRef<HTMLTextAreaElement>(null);
   const confirmTemplateHtmlRef = useRef<HTMLTextAreaElement>(null);
 
-  const goToLogin = () => {
-    const next = encodeURIComponent(`${window.location.pathname}${window.location.search}${window.location.hash}`);
-    window.history.replaceState({}, "", `/boss/login?next=${next}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
-
   const resolveErrorMessage = (error: unknown, fallback: string) => {
     const message = error instanceof Error ? error.message : fallback;
-    if (/unauthorized|login required/i.test(message)) {
-      setAuthRequired(true);
-      return "Admin login required.";
-    }
     return message;
   };
 
@@ -539,21 +528,6 @@ const EmailSenderEditor = () => {
       setIsSavingCampaign(false);
     }
   };
-
-  if (authRequired) {
-    return (
-      <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
-        <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">Admin login required.</p>
-        <button
-          type="button"
-          onClick={goToLogin}
-          className="mt-3 rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-700 dark:border-rose-700 dark:text-rose-300"
-        >
-          Go to login
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-5">

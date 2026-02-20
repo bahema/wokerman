@@ -64,8 +64,9 @@ const SystemHealthEditor = () => {
         if (!response.ok) throw new Error(`Frontend HTTP ${response.status}`);
       }),
       runCheck("backend-health", async () => {
-        const response = await fetch(`${apiBaseUrl}/api/health`, { method: "GET" });
-        if (!response.ok) throw new Error(`Health HTTP ${response.status}`);
+        const url = `${apiBaseUrl}/api/health`;
+        const response = await fetch(url, { method: "GET" });
+        if (!response.ok) throw new Error(`Health HTTP ${response.status} at ${url}`);
       }),
       runCheck("auth-status", async () => {
         const response = await fetch(`${apiBaseUrl}/api/auth/status`, { method: "GET", credentials: "include" });
@@ -73,7 +74,7 @@ const SystemHealthEditor = () => {
       }),
       runCheck("boss-routes", async () => {
         const current = toAppPath(window.location.pathname);
-        if (!current.startsWith("/boss/") && current !== "/admin") {
+        if (!current.startsWith("/boss/") && current !== "/admin" && current !== "/signup") {
           throw new Error(`Unexpected admin path: ${current}`);
         }
       })

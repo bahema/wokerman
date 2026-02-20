@@ -156,23 +156,17 @@ const EmailAnalyticsEditor = () => {
   const [summary, setSummary] = useState<EmailSummaryResponse["totals"] | null>(null);
   const [timeline, setTimeline] = useState<EmailSummaryResponse["timeline"]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
-  const [authRequired, setAuthRequired] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState("");
   const [subscriberActionError, setSubscriberActionError] = useState("");
   const [subscriberActionNotice, setSubscriberActionNotice] = useState("");
   const [subscriberActionBusyId, setSubscriberActionBusyId] = useState("");
   const pageSize = 8;
 
-  const goToLogin = () => {
-    const next = encodeURIComponent(`${window.location.pathname}${window.location.search}${window.location.hash}`);
-    window.history.replaceState({}, "", `/boss/login?next=${next}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
-
   const load = useCallback(async (silent = false) => {
     if (!silent) {
       setDataState("loading");
     }
-    setAuthRequired(false);
+    setLoadErrorMessage("");
     try {
       const [subscribers, campaigns, nextSummary] = await Promise.all([
         apiGet<SubscribersResponse>("/api/email/subscribers?page=1&pageSize=1000"),
@@ -196,10 +190,8 @@ const EmailAnalyticsEditor = () => {
       setLastUpdatedAt(new Date().toISOString());
       setDataState(mappedCampaigns.length || subscribers.items.length ? "loaded" : "empty");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (/unauthorized|login required/i.test(message)) {
-        setAuthRequired(true);
-      }
+      const message = error instanceof Error ? error.message : "Failed to load analytics data.";
+      setLoadErrorMessage(message);
       if (!silent) {
         setDataState("error");
       }
@@ -448,18 +440,8 @@ const EmailAnalyticsEditor = () => {
 
         {dataState === "error" ? (
           <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
-            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
-              {authRequired ? "Admin login required." : "Unable to load campaign analytics."}
-            </p>
-            {authRequired ? (
-              <button
-                type="button"
-                onClick={goToLogin}
-                className="mt-3 rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-700 dark:border-rose-700 dark:text-rose-300"
-              >
-                Go to login
-              </button>
-            ) : null}
+            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">Unable to load campaign analytics.</p>
+            {loadErrorMessage ? <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">{loadErrorMessage}</p> : null}
           </div>
         ) : null}
 
