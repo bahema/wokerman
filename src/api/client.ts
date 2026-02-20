@@ -95,7 +95,14 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     const url = `${base}${normalizedPath}`;
     try {
       const response = await fetch(url, init);
+      const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
       if (response.ok) {
+        // Static hosts may return index.html (200 text/html) for unknown /api/* paths.
+        // Treat non-JSON API responses as wrong-origin hits and fall back to next base URL.
+        if (normalizedPath.startsWith("/api/") && !contentType.includes("application/json")) {
+          lastResponse = response;
+          continue;
+        }
         activeApiBaseUrl = base;
         return response;
       }
