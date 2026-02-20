@@ -43,7 +43,19 @@ const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_0
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const RATE_LIMIT_BUCKET_LIMIT = Number(process.env.RATE_LIMIT_BUCKET_LIMIT ?? 10_000);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
+const resolveTrustProxySetting = (): boolean | number | string => {
+  const raw = (process.env.TRUST_PROXY ?? "").trim();
+  if (!raw) return false;
+  const lowered = raw.toLowerCase();
+  if (lowered === "true" || lowered === "yes") return true;
+  if (lowered === "false" || lowered === "no") return false;
+  const asNumber = Number(raw);
+  if (Number.isInteger(asNumber) && asNumber >= 0) return asNumber;
+  return raw;
+};
+app.set("trust proxy", resolveTrustProxySetting());
 const resolveConfirmationMode = () => {
   const raw = (process.env.EMAIL_CONFIRM_MODE ?? process.env.EMAIL_CONFIRMATION_SEND_MODE ?? "").trim().toLowerCase();
   if (raw === "sync" || raw === "async") return raw;
@@ -316,24 +328,37 @@ const bootstrap = async () => {
   };
 
   const resolveRequestIp = (req: express.Request) => {
-    const forwarded = req.header("x-forwarded-for");
-    if (forwarded) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) return first;
-    }
     return req.ip || req.socket.remoteAddress || "unknown";
   };
 
   const createIpRateLimiter = (keyPrefix: string, options: { windowMs: number; max: number }) => {
     const buckets = new Map<string, { count: number; resetAt: number }>();
+    let lastCleanupMs = 0;
+    const maxBuckets = Number.isFinite(RATE_LIMIT_BUCKET_LIMIT) && RATE_LIMIT_BUCKET_LIMIT > 0 ? Math.floor(RATE_LIMIT_BUCKET_LIMIT) : 10_000;
+    const cleanupBuckets = (nowMs: number, force = false) => {
+      if (!force && nowMs - lastCleanupMs < options.windowMs) return;
+      lastCleanupMs = nowMs;
+      for (const [bucketKey, bucket] of buckets.entries()) {
+        if (bucket.resetAt <= nowMs) buckets.delete(bucketKey);
+      }
+      if (buckets.size <= maxBuckets) return;
+      const overflow = buckets.size - maxBuckets;
+      const oldestBuckets = [...buckets.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt).slice(0, overflow);
+      for (const [bucketKey] of oldestBuckets) {
+        buckets.delete(bucketKey);
+      }
+    };
+
     return (req: express.Request, res: express.Response, next: express.NextFunction) => {
       const nowMs = Date.now();
+      cleanupBuckets(nowMs);
       const ip = resolveRequestIp(req);
       const key = `${keyPrefix}:${ip}`;
       const existing = buckets.get(key);
       const bucket = !existing || existing.resetAt <= nowMs ? { count: 0, resetAt: nowMs + options.windowMs } : existing;
       bucket.count += 1;
       buckets.set(key, bucket);
+      if (buckets.size > maxBuckets) cleanupBuckets(nowMs, true);
 
       if (bucket.count > options.max) {
         const retryAfterSec = Math.max(1, Math.ceil((bucket.resetAt - nowMs) / 1000));
@@ -429,12 +454,7 @@ const bootstrap = async () => {
   };
 
   const getClientIp = (req: express.Request) => {
-    const xForwardedFor = req.header("x-forwarded-for");
-    if (xForwardedFor) {
-      const first = xForwardedFor.split(",")[0]?.trim();
-      if (first) return first;
-    }
-    return req.ip || req.socket.remoteAddress || "";
+    return resolveRequestIp(req);
   };
 
   const hashValue = (value: string) => {

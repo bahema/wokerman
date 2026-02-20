@@ -607,8 +607,9 @@ const Admin = () => {
         onSectionChange={(section) => {
           setActiveSection(section);
           const nextPath = pathByBossSection[section] ?? "/admin";
-          if (window.location.pathname !== nextPath) {
-            window.history.pushState({}, "", nextPath);
+          const browserPath = withBasePath(nextPath);
+          if (window.location.pathname !== browserPath) {
+            window.history.pushState({}, "", browserPath);
           }
         }}
       >

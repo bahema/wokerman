@@ -295,7 +295,7 @@ function App() {
           <button
             type="button"
             onClick={() => {
-              window.history.pushState({}, "", "/");
+              window.history.pushState({}, "", toBrowserPath("/"));
               window.dispatchEvent(new PopStateEvent("popstate"));
             }}
             className="mt-5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"

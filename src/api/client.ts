@@ -3,17 +3,12 @@ const normalizeBase = (value: string) => value.trim().replace(/\/+$/, "");
 const resolveApiBaseUrls = () => {
   const configured = import.meta.env.VITE_API_BASE_URL?.trim();
   if (configured) return [normalizeBase(configured)];
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return [`${window.location.protocol}//${host}:4000`];
-    }
+  if (typeof window === "undefined") return [""];
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") {
+    return [`${window.location.protocol}//${host}:4000`];
   }
-  return [
-    "https://autohub-backend-production-9663.up.railway.app",
-    "https://autohub-backend-production-5a29.up.railway.app",
-    "https://autohub-backend-production.up.railway.app"
-  ];
+  return [window.location.origin];
 };
 
 const API_BASE_URLS = resolveApiBaseUrls();
