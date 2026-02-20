@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAuthStatus, startLoginOtp, verifyLoginOtp } from "../utils/authTrust";
-import { resolveLoginStart } from "./signupFlow";
+import { getAuthStatus, startLoginOtp, startSignupOtp, verifyLoginOtp, verifySignupOtp } from "../utils/authTrust";
+import { resolveLoginStart, resolveSignupStart } from "./signupFlow";
 import { withBasePath } from "../utils/basePath";
 
 type SignupProps = {
@@ -61,8 +61,9 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     setInfo("");
     setBusy(true);
     try {
-      const response = await startLoginOtp(email.trim().toLowerCase(), password);
-      const next = resolveLoginStart({ requiresOtp: response.requiresOtp, devOtp: response.devOtp });
+      const next = hasOwner
+        ? resolveLoginStart(await startLoginOtp(email.trim().toLowerCase(), password))
+        : resolveSignupStart((await startSignupOtp(email.trim().toLowerCase(), password)).devOtp);
       setInfo(next.info);
       setStep(next.step);
     } catch (err) {
@@ -82,9 +83,13 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     setInfo("");
     setBusy(true);
     try {
-      await verifyLoginOtp(email.trim().toLowerCase(), otp.trim());
+      if (hasOwner) {
+        await verifyLoginOtp(email.trim().toLowerCase(), otp.trim());
+      } else {
+        await verifySignupOtp(email.trim().toLowerCase(), otp.trim());
+      }
       setStep("done");
-      setInfo("Login successful.");
+      setInfo(hasOwner ? "Login successful." : "Owner account created and authenticated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to verify OTP.");
     } finally {

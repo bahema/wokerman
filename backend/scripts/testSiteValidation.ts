@@ -9,6 +9,7 @@ const PORT = 4120;
 const BASE = `http://${HOST}:${PORT}`;
 const OWNER_EMAIL = "site-validation-test@example.com";
 const OWNER_PASSWORD = "BossPass123!";
+const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -28,36 +29,78 @@ const readJson = async (response: Response) => {
   }
 };
 
-const requestJson = async (
-  pathName: string,
-  options?: {
-    method?: "GET" | "POST" | "PUT" | "DELETE";
-    token?: string;
-    body?: unknown;
-    expectedStatus?: number;
-  }
-) => {
-  const method = options?.method ?? "GET";
-  const headers: Record<string, string> = {};
-  if (options?.token) headers.Authorization = `Bearer ${options.token}`;
-  let body: string | undefined;
-  if (options?.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(options.body);
-  }
-  const response = await fetch(`${BASE}${pathName}`, { method, headers, body });
-  const payload = await readJson(response);
+class CookieSessionClient {
+  private readonly cookies = new Map<string, string>();
 
-  if (options?.expectedStatus !== undefined) {
-    if (response.status !== options.expectedStatus) {
-      throw new Error(`${method} ${pathName} expected ${options.expectedStatus}, got ${response.status}: ${JSON.stringify(payload)}`);
+  private readSetCookieHeaders(response: Response) {
+    const withGetSetCookie = response.headers as Headers & { getSetCookie?: () => string[] };
+    if (typeof withGetSetCookie.getSetCookie === "function") return withGetSetCookie.getSetCookie();
+    const single = response.headers.get("set-cookie");
+    return single ? [single] : [];
+  }
+
+  private storeResponseCookies(response: Response) {
+    const headers = this.readSetCookieHeaders(response);
+    for (const header of headers) {
+      const firstPart = header.split(";")[0]?.trim();
+      if (!firstPart) continue;
+      const eqIndex = firstPart.indexOf("=");
+      if (eqIndex <= 0) continue;
+      const name = firstPart.slice(0, eqIndex).trim();
+      const value = firstPart.slice(eqIndex + 1);
+      if (!name) continue;
+      this.cookies.set(name, value);
     }
-  } else if (!response.ok) {
-    throw new Error(`${method} ${pathName} failed (${response.status}): ${JSON.stringify(payload)}`);
   }
 
-  return payload;
-};
+  private cookieHeader() {
+    if (this.cookies.size === 0) return "";
+    return Array.from(this.cookies.entries())
+      .map(([key, value]) => `${key}=${value}`)
+      .join("; ");
+  }
+
+  csrfToken() {
+    return this.cookies.get(CSRF_COOKIE_NAME) ?? "";
+  }
+
+  async request(
+    pathName: string,
+    options?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: unknown;
+      includeCsrf?: boolean;
+      expectedStatus?: number;
+    }
+  ) {
+    const method = options?.method ?? "GET";
+    const headers: Record<string, string> = {};
+    const cookie = this.cookieHeader();
+    if (cookie) headers.Cookie = cookie;
+    if (options?.includeCsrf) {
+      const csrf = this.csrfToken();
+      if (csrf) headers["x-csrf-token"] = csrf;
+    }
+    let body: string | undefined;
+    if (options?.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(options.body);
+    }
+    const response = await fetch(`${BASE}${pathName}`, { method, headers, body });
+    this.storeResponseCookies(response);
+    const payload = await readJson(response);
+
+    if (options?.expectedStatus !== undefined) {
+      if (response.status !== options.expectedStatus) {
+        throw new Error(`${method} ${pathName} expected ${options.expectedStatus}, got ${response.status}: ${JSON.stringify(payload)}`);
+      }
+    } else if (!response.ok) {
+      throw new Error(`${method} ${pathName} failed (${response.status}): ${JSON.stringify(payload)}`);
+    }
+
+    return payload;
+  }
+}
 
 const waitForHealth = async () => {
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -115,23 +158,23 @@ const run = async () => {
 
   try {
     child = await startBackend(mediaDir);
+    const client = new CookieSessionClient();
 
-    const signupStart = await requestJson("/api/auth/signup/start", {
+    const signupStart = await client.request("/api/auth/signup/start", {
       method: "POST",
       body: { email: OWNER_EMAIL, password: OWNER_PASSWORD }
     });
     const signupOtp = typeof signupStart.devOtp === "string" ? signupStart.devOtp : "";
     assertCondition(signupOtp.length > 0, "Expected dev OTP for signup.");
 
-    const signupVerify = await requestJson("/api/auth/signup/verify", {
+    await client.request("/api/auth/signup/verify", {
       method: "POST",
       body: { email: OWNER_EMAIL, otp: signupOtp }
     });
-    const session = signupVerify.session as JsonRecord | undefined;
-    const token = typeof session?.token === "string" ? session.token : "";
-    assertCondition(Boolean(token), "Expected auth token after signup.");
+    const session = await client.request("/api/auth/session");
+    assertCondition(session.valid === true, "Expected cookie session after signup.");
 
-    const published = await requestJson("/api/site/published");
+    const published = await client.request("/api/site/published");
     const publishedContent = published.content as JsonRecord | undefined;
     assertCondition(Boolean(publishedContent), "Expected published content payload.");
 
@@ -150,9 +193,9 @@ const run = async () => {
       gadgets.buttonTarget = "";
     }
 
-    const invalidAdsectionResponse = await requestJson("/api/site/draft", {
+    const invalidAdsectionResponse = await client.request("/api/site/draft", {
       method: "PUT",
-      token,
+      includeCsrf: true,
       body: { content: invalidAdsectionDraft },
       expectedStatus: 400
     });
@@ -168,9 +211,9 @@ const run = async () => {
       socials.facebookUrl = "invalid-url";
     }
 
-    const invalidDraftResponse = await requestJson("/api/site/draft", {
+    const invalidDraftResponse = await client.request("/api/site/draft", {
       method: "PUT",
-      token,
+      includeCsrf: true,
       body: { content: invalidDraft },
       expectedStatus: 400
     });
@@ -182,18 +225,18 @@ const run = async () => {
       const branding = invalidEventThemeDraft.branding as JsonRecord;
       branding.eventTheme = "halloween";
     }
-    const invalidEventThemeResponse = await requestJson("/api/site/draft", {
+    const invalidEventThemeResponse = await client.request("/api/site/draft", {
       method: "PUT",
-      token,
+      includeCsrf: true,
       body: { content: invalidEventThemeDraft },
       expectedStatus: 400
     });
     const eventThemeError = String(invalidEventThemeResponse.error ?? "");
     assertCondition(eventThemeError.includes("branding.eventTheme"), "Expected backend draft validation error for invalid event theme.");
 
-    const validDraftResponse = await requestJson("/api/site/draft", {
+    const validDraftResponse = await client.request("/api/site/draft", {
       method: "PUT",
-      token,
+      includeCsrf: true,
       body: { content: publishedContent }
     });
     assertCondition(Boolean(validDraftResponse.content), "Expected valid draft save success.");
@@ -218,18 +261,18 @@ const run = async () => {
       }
     }
 
-    const invalidPublishResponse = await requestJson("/api/site/publish", {
+    const invalidPublishResponse = await client.request("/api/site/publish", {
       method: "POST",
-      token,
+      includeCsrf: true,
       body: { content: invalidPublishPayload },
       expectedStatus: 400
     });
     const publishError = String(invalidPublishResponse.error ?? "");
     assertCondition(publishError.toLowerCase().includes("title"), "Expected backend publish validation error for invalid product title.");
 
-    const validPublishResponse = await requestJson("/api/site/publish", {
+    const validPublishResponse = await client.request("/api/site/publish", {
       method: "POST",
-      token,
+      includeCsrf: true,
       body: { content: publishedContent }
     });
     assertCondition(Boolean(validPublishResponse.content), "Expected valid publish success.");
