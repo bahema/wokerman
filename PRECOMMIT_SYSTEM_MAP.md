@@ -2,74 +2,171 @@
 
 Generated: 2026-02-20
 
-## 1) System Mapping
+## 1) Full System Mapping
 
-### Frontend (Vite + React + TypeScript)
-- Entry and routing shell: `src/App.tsx`
-- Main routes:
-  - `/` home
-  - `/signup` auth page
-  - `/admin` admin dashboard
-  - `/confirm` email confirmation proof page
-  - `/unsubscribe` unsubscribe proof/resubscribe page
-  - policy pages: `/privacy`, `/terms`, `/affiliate-disclosure`, `/earnings-disclaimer`
-- Key pages/components:
-  - `src/pages/ConfirmResultPage.tsx`
-  - `src/pages/UnsubscribeResultPage.tsx`
-  - `src/pages/Signup.tsx`
-  - `src/components/admin/*` (admin editors, analytics, sender config, system health)
+### Frontend Architecture (Vite + React + TypeScript)
+- App shell and route normalization: `src/App.tsx`
+- API client and base URL strategy: `src/api/client.ts`
+- Admin control surface: `src/pages/Admin.tsx`
+- Shared content schema defaults: `src/data/siteData.ts`
 
-### Backend (Express + TypeScript)
-- Server bootstrap: `backend/src/index.ts`
-- Core modules:
+### Frontend Public Route Map
+- `/` -> `Home`
+- `/forex` -> `Home` section: forex
+- `/betting` -> `Home` section: betting
+- `/software` -> `Home` section: software
+- `/social` -> `Home` section: social
+- `/signup` -> `Signup`
+- `/admin` -> `Admin` (requires session)
+- `/confirm` -> `ConfirmResultPage`
+- `/unsubscribe` -> `UnsubscribeResultPage`
+- `/affiliate-disclosure` -> `PolicyPage(kind="affiliate-disclosure")`
+- `/earnings-disclaimer` -> `PolicyPage(kind="earnings-disclaimer")`
+- `/privacy` -> `PolicyPage(kind="privacy")`
+- `/terms` -> `PolicyPage(kind="terms")`
+- `/404` -> inline not-found page
+
+### Frontend Admin Deep-Link Map
+- `/boss/login` -> normalized to `/signup`
+- `/boss/*` -> normalized to `/admin`
+- Section deep links:
+  - `/boss/pre-deploy-checklist`
+  - `/boss/system-health`
+  - `/boss/email-analytics`
+  - `/boss/email-sender`
+  - `/boss/adsection-man`
+  - `/boss/account-settings`
+
+### Frontend Admin Section Inventory
+- `pre-deploy-checklist`
+- `system-health`
+- `account-settings`
+- `email-analytics`
+- `email-sender`
+- `product-media`
+- `analytics`
+- `branding`
+- `social-links`
+- `hero`
+- `adsection-man`
+- `testimonials`
+- `industries`
+- `footer`
+- `products-forex`
+- `products-betting`
+- `products-software`
+- `products-social`
+
+### Backend Architecture (Express + TypeScript)
+- Bootstrap and middleware: `backend/src/index.ts`
+- Persistence model: filesystem stores under `storage`/`MEDIA_DIR`
+- Modules:
   - Auth: `backend/src/auth/*`
-  - Email subscription/campaign/store: `backend/src/email/*`
-  - Media: `backend/src/media/store.ts`
-  - Site content: `backend/src/site/store.ts`
-  - Analytics: `backend/src/analytics/store.ts`
-  - Cookie consent: `backend/src/cookies/store.ts`
-- Important API domains:
-  - Auth/session/account/password endpoints
-  - Site draft/publish/reset endpoints
-  - Email subscribe/confirm/unsubscribe/resend/campaign/analytics endpoints
-  - Media upload/list/delete endpoints
+  - Email: `backend/src/email/*`
+  - Site content: `backend/src/site/*`
+  - Media: `backend/src/media/*`
+  - Analytics: `backend/src/analytics/*`
+  - Cookie consent: `backend/src/cookies/*`
 
-### Email/Unsubscribe Flow Mapping
-- Subscribe: `POST /api/email/subscribe`
-- Confirm link: `GET /api/email/confirm?token=...` -> redirects to frontend proof page
-- Unsubscribe link: `GET /api/email/unsubscribe?token=...` -> redirects to frontend proof page
-- Repeat unsubscribe rule:
-  - if unsubscribe occurs after a resend confirmation event, subscriber is auto-deleted
-  - analytics notification event emitted
-  - admin alert email sent when recipient is configured
+### Backend Full API Route Inventory (42 endpoints)
+
+#### Health
+- `GET /api/health`
+
+#### Auth
+- `GET /api/auth/status`
+- `POST /api/auth/signup/start`
+- `POST /api/auth/signup/verify`
+- `POST /api/auth/login/start`
+- `POST /api/auth/login/verify`
+- `GET /api/auth/session`
+- `POST /api/auth/logout`
+- `POST /api/auth/logout-all`
+- `GET /api/auth/account`
+- `PUT /api/auth/account`
+- `PUT /api/auth/password`
+
+#### Media
+- `GET /api/media`
+- `POST /api/media`
+- `DELETE /api/media/:id`
+
+#### Site Content
+- `GET /api/site/published`
+- `GET /api/site/draft`
+- `GET /api/site/meta`
+- `PUT /api/site/draft`
+- `POST /api/site/publish`
+- `POST /api/site/reset`
+
+#### Analytics
+- `POST /api/analytics/events`
+- `GET /api/analytics/summary`
+
+#### Cookies/Consent
+- `POST /api/cookies/consent`
+- `GET /api/cookies/consent/:id`
+
+#### Email Subscription/Lifecycle
+- `POST /api/email/subscribe`
+- `POST /api/email/subscribers/:id/resend-confirmation`
+- `DELETE /api/email/subscribers/:id`
+- `GET /api/email/confirm`
+- `GET /api/email/unsubscribe`
+
+#### Email Admin Operations
+- `POST /api/email/test-smtp`
+- `GET /api/email/subscribers`
+- `GET /api/email/campaigns`
+- `POST /api/email/campaigns/draft`
+- `POST /api/email/campaigns/test`
+- `POST /api/email/campaigns/schedule`
+- `POST /api/email/campaigns/send`
+- `GET /api/email/templates/confirmation`
+- `PUT /api/email/templates/confirmation`
+- `GET /api/email/settings/sender-profile`
+- `PUT /api/email/settings/sender-profile`
+- `GET /api/email/analytics/summary`
+
+### Security And Runtime Controls
+- Auth session cookies + CSRF enforcement for cookie-auth state changes
+- CORS allowlist via `CORS_ORIGIN`
+- IP rate limiting:
+  - auth endpoints
+  - email subscribe endpoint
+- Rate-limiter bucket cleanup + cap (`RATE_LIMIT_BUCKET_LIMIT`)
+- `trust proxy` support (`TRUST_PROXY`)
+- Production security config checks for weak secrets and wildcard CORS
+- Startup fallback for cookie signing key:
+  - preferred: `AUTH_COOKIE_SIGNING_KEY`
+  - fallback names: `AUTH_COOKIE_SECRET`, `SESSION_SECRET`
+  - if missing in production: ephemeral key with warning (service still starts)
 
 ## 2) Validation Matrix
 
-### Frontend
+### Local Build Validation
 - `npm run build` (root): PASS
-- `npm run test:frontend-flows`: PASS (10/10)
+- `npm --prefix backend run build`: PASS
 
-### Backend
-- `npm run build` (`backend/`): PASS
-- `npm run test:email-subscription`: PASS
-- `npm run test:unsubscribe-repeat`: PASS
-- `npm run test:auth-flows`: PASS
-- `npm run test:site-validation`: PASS
-- `npm run test:auth-rate-limit`: PASS
+### Frontend Runtime Smoke (local preview)
+- `GET /`: 200 PASS
+- `GET /signup`: 200 PASS
+- `GET /admin`: 200 PASS
+- `GET /confirm?status=success`: 200 PASS
+- `GET /unsubscribe?status=success`: 200 PASS
+- `GET /privacy`: 200 PASS
 
-### Runtime Smoke Checks
-- Backend:
-  - `GET http://localhost:4000/api/health`: 200 PASS
-  - `GET /api/email/confirm?token=invalid`: 303 redirect PASS
-  - `GET /api/email/unsubscribe?token=invalid`: 303 redirect PASS
-- Frontend:
-  - `GET http://localhost:5180/`: 200 PASS
-  - `GET http://localhost:5180/confirm?status=success`: 200 PASS
-  - `GET http://localhost:5180/unsubscribe?status=success`: 200 PASS
-  - `GET http://localhost:5180/admin`: 200 PASS
-  - `GET http://localhost:5180/signup`: 200 PASS
+### Backend Runtime Smoke (local production mode)
+- `GET /api/health` with production env and secret present: 200 PASS
+- `GET /api/health` with production env and no secret present: 200 PASS (ephemeral-key fallback)
+- SMTP unset/invalid does not block startup health: PASS
+- Locale/env variation does not block startup health: PASS
+
+### Live Deployment Spot-Checks
+- Frontend: `https://bahema.github.io/wokerman/` -> 200 PASS
+- Backend (active): `https://autohub-backend-production-5a29.up.railway.app/api/health` -> 200 PASS
 
 ## 3) Commit Readiness
 
-- Result: READY TO COMMIT
-- All executed build/tests/smoke checks passed.
+- Mapping coverage result: COMPLETE (frontend routes, admin sections, backend endpoints all enumerated).
+- Build/runtime status: PASS.
