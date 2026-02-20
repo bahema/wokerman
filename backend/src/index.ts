@@ -46,6 +46,8 @@ const isProduction = process.env.NODE_ENV === "production";
 const ALLOW_DEV_OTP = !isProduction && process.env.ALLOW_DEV_OTP === "true";
 const OWNER_BOOTSTRAP_EMAIL = (process.env.OWNER_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase();
 const OWNER_BOOTSTRAP_KEY = (process.env.OWNER_BOOTSTRAP_KEY ?? "").trim();
+const RESET_SECURITY_STATE_ON_BOOT = process.env.RESET_SECURITY_STATE_ON_BOOT === "true";
+const RESET_SECURITY_STATE_CONFIRM = (process.env.RESET_SECURITY_STATE_CONFIRM ?? "").trim();
 const AUTH_COOKIE_NAME = "autohub_admin_session";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 const resolveAuthCookieSigningKey = () =>
@@ -136,6 +138,39 @@ const resolveRuntimeSigningKey = async (
   return { key: generated, source: "file_created" };
 };
 
+const resetSecurityStateIfRequested = async (baseDir: string) => {
+  if (!RESET_SECURITY_STATE_ON_BOOT) return;
+  if (RESET_SECURITY_STATE_CONFIRM !== "RESET") {
+    throw new Error(
+      "RESET_SECURITY_STATE_ON_BOOT is true but RESET_SECURITY_STATE_CONFIRM is not 'RESET'. Refusing destructive reset."
+    );
+  }
+
+  const resetMarkerPath = path.join(baseDir, "security", ".reset-security-state-complete");
+  try {
+    await fs.access(resetMarkerPath);
+    return;
+  } catch {
+    // marker missing, continue
+  }
+
+  const targets = [
+    path.join(baseDir, "auth"),
+    path.join(baseDir, "security"),
+    path.join(baseDir, "cookies")
+  ];
+  await Promise.all(
+    targets.map(async (targetPath) => {
+      await fs.rm(targetPath, { recursive: true, force: true });
+    })
+  );
+
+  await fs.mkdir(path.dirname(resetMarkerPath), { recursive: true });
+  await fs.writeFile(resetMarkerPath, new Date().toISOString(), "utf-8");
+  // eslint-disable-next-line no-console
+  console.warn("[security] Reset auth/security/cookies state from storage due to RESET_SECURITY_STATE_ON_BOOT=true.");
+};
+
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
 const CLIENT_PUBLIC_BASE_URL =
   normalizePublicBaseUrl(process.env.CLIENT_PUBLIC_BASE_URL ?? "") ||
@@ -193,6 +228,7 @@ const bootstrap = async () => {
   if (isProduction && process.env.ALLOW_DEV_OTP === "true") {
     throw new Error("Invalid production configuration: ALLOW_DEV_OTP must be false.");
   }
+  await resetSecurityStateIfRequested(MEDIA_DIR);
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
