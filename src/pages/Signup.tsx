@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAuthStatus, hasAdminAccess, startLogin, startSignup } from "../utils/authTrust";
+import { getAuthStatus, startLogin, startSignup } from "../utils/authTrust";
 import { withBasePath } from "../utils/basePath";
 
 type SignupProps = {
@@ -63,12 +63,6 @@ const Signup = ({ postLoginPath }: SignupProps) => {
         await startLogin(email.trim().toLowerCase(), password);
       } else {
         await startSignup(email.trim().toLowerCase(), password);
-      }
-      const sessionValid = await hasAdminAccess();
-      if (!sessionValid) {
-        throw new Error(
-          "Login succeeded, but no session cookie was stored. Enable third-party cookies for this site or deploy frontend/backend on the same domain."
-        );
       }
       setInfo(hasOwner ? "Login successful." : "Owner account created and authenticated.");
       setStep("done");
