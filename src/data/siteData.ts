@@ -1,9 +1,27 @@
 import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
 export type { Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
 
+type ProductWithOptionalPrice = Product & {
+  price?: number;
+  priceLabel?: string;
+};
+
+type HomeUiWithOptionalAdPrices = NonNullable<SiteContent["homeUi"]> & {
+  adsectionMan: {
+    gadgets: NonNullable<SiteContent["homeUi"]>["adsectionMan"]["gadgets"] & {
+      price?: number;
+      priceBadge?: string;
+    };
+    ai: NonNullable<SiteContent["homeUi"]>["adsectionMan"]["ai"] & {
+      price?: number;
+      priceBadge?: string;
+    };
+  };
+};
+
 const makeLink = (slug: string) => `https://example.com/checkout/${slug}`;
 
-const forexProducts: Product[] = [
+const forexProducts: ProductWithOptionalPrice[] = [
   {
     id: "fx-1",
     title: "PipPulse Scanner",
@@ -84,7 +102,7 @@ const forexProducts: Product[] = [
   }
 ];
 
-const bettingProducts: Product[] = [
+const bettingProducts: ProductWithOptionalPrice[] = [
   {
     id: "bet-1",
     title: "OddsEdge Studio",
@@ -165,7 +183,7 @@ const bettingProducts: Product[] = [
   }
 ];
 
-const softwareProducts: Product[] = [
+const softwareProducts: ProductWithOptionalPrice[] = [
   {
     id: "sw-1",
     title: "LaunchPilot CRM",
@@ -246,7 +264,7 @@ const softwareProducts: Product[] = [
   }
 ];
 
-const socialProducts: Product[] = [
+const socialProducts: ProductWithOptionalPrice[] = [
   {
     id: "soc-1",
     title: "PostPilot Social",
@@ -346,7 +364,7 @@ export const defaultProductSections: ProductSections = {
   }
 };
 
-export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
+export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
   heroEyebrow: "Smart automation for modern operators",
   heroQuickGrabsLabel: "Quick Grabs",
   performanceSnapshotTitle: "Performance Snapshot",
