@@ -272,6 +272,15 @@ const Home = (_props: HomeProps) => {
   };
 
   const resolveImage = (input: string) => (input.startsWith("http") ? input : withBasePath(input));
+  const formatHeroAdPrice = (entry: { price?: number; priceBadge?: string }, fallbackPrice: number) => {
+    if (typeof entry.price === "number" && Number.isFinite(entry.price) && entry.price >= 0) {
+      return `$${entry.price.toFixed(0)}`;
+    }
+    if (typeof entry.priceBadge === "string" && entry.priceBadge.trim()) {
+      return entry.priceBadge.trim();
+    }
+    return `$${Math.max(0, Math.round(fallbackPrice))}`;
+  };
 
   const industriesForTrack =
     content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
@@ -422,7 +431,18 @@ const Home = (_props: HomeProps) => {
                     eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                   }`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
+                    <span
+                      className={`inline-flex shrink-0 rounded-lg border px-3 py-1 text-sm font-black tracking-wide ${
+                        eventThemeActive
+                          ? "event-ad-badge"
+                          : "border-amber-300 bg-amber-500 text-white shadow-[0_10px_20px_-10px_rgba(245,158,11,0.9)]"
+                      }`}
+                    >
+                      {formatHeroAdPrice(homeUi.adsectionMan.gadgets, defaultHomeUi.adsectionMan.gadgets.price)}
+                    </span>
+                  </div>
                   <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
                     <div
                       className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
@@ -468,7 +488,18 @@ const Home = (_props: HomeProps) => {
                     eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                   }`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
+                    <span
+                      className={`inline-flex shrink-0 rounded-lg border px-3 py-1 text-sm font-black tracking-wide ${
+                        eventThemeActive
+                          ? "event-ad-badge"
+                          : "border-cyan-300 bg-cyan-600 text-white shadow-[0_10px_20px_-10px_rgba(8,145,178,0.9)]"
+                      }`}
+                    >
+                      {formatHeroAdPrice(homeUi.adsectionMan.ai, defaultHomeUi.adsectionMan.ai.price)}
+                    </span>
+                  </div>
                   <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
                     <div
                       className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
