@@ -899,10 +899,12 @@ const Home = (_props: HomeProps) => {
               {content.footer.copyright || `© ${footerYear} ${content.branding.logoText}. All rights reserved.`}
             </p>
             <div className="mt-4 flex justify-end">
-              <a
-                href={withBasePath("/boss/login")}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, "", withBasePath("/boss/login"));
+                  window.dispatchEvent(new PopStateEvent("popstate"));
+                }}
                 aria-label="Go to login page"
                 className="inline-flex h-4 w-4 rounded-full border border-slate-400/80 bg-transparent transition hover:scale-105 dark:border-slate-500/70"
               />
