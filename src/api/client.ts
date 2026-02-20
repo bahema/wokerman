@@ -1,27 +1,25 @@
 const normalizeBase = (value: string) => value.trim().replace(/\/+$/, "");
+const DEFAULT_FALLBACK_API_URL = "https://autohub-backend-production-5a29.up.railway.app";
 
 const resolveApiBaseUrls = () => {
   const configured = import.meta.env.VITE_API_BASE_URL?.trim();
-  if (configured) return [normalizeBase(configured)];
+  if (configured) {
+    return configured
+      .split(",")
+      .map((entry: string) => normalizeBase(entry))
+      .filter(Boolean);
+  }
   if (typeof window === "undefined") return [""];
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") {
     return [`${window.location.protocol}//${host}:4000`];
   }
-  return [window.location.origin];
+  return [window.location.origin, DEFAULT_FALLBACK_API_URL];
 };
 
 const API_BASE_URLS = resolveApiBaseUrls();
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
-const AUTH_TOKEN_KEY = "admin:auth:token";
-
-const getAuthHeaders = (): Record<string, string> => {
-  if (typeof window === "undefined") return {};
-  const token = window.localStorage.getItem(AUTH_TOKEN_KEY)?.trim() ?? "";
-  if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
-};
 
 const getCookieValue = (name: string) => {
   if (typeof document === "undefined") return "";
@@ -57,7 +55,7 @@ const parseError = async (response: Response) => {
 };
 
 export const apiGet = async <T>(path: string): Promise<T> => {
-  const response = await fetchWithFallback(path, { credentials: "include", headers: { ...getAuthHeaders() } });
+  const response = await fetchWithFallback(path, { credentials: "include" });
   if (!response.ok) throw new Error(await parseError(response));
   return (await response.json()) as T;
 };
@@ -65,7 +63,7 @@ export const apiGet = async <T>(path: string): Promise<T> => {
 export const apiJson = async <T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> => {
   const response = await fetchWithFallback(path, {
     method,
-    headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...getCsrfHeaders() },
+    headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
     credentials: "include",
     body: body === undefined ? undefined : JSON.stringify(body)
   });
@@ -77,7 +75,7 @@ export const apiForm = async <T>(path: string, formData: FormData): Promise<T> =
   const response = await fetchWithFallback(path, {
     method: "POST",
     credentials: "include",
-    headers: { ...getAuthHeaders(), ...getCsrfHeaders() },
+    headers: { ...getCsrfHeaders() },
     body: formData
   });
   if (!response.ok) throw new Error(await parseError(response));
@@ -89,6 +87,7 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
   const tried = new Set<string>();
   const orderedBases = [activeApiBaseUrl, ...API_BASE_URLS].filter(Boolean);
   let lastError: unknown = null;
+  let lastResponse: Response | null = null;
 
   for (const base of orderedBases) {
     if (tried.has(base)) continue;
@@ -96,6 +95,17 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     const url = `${base}${normalizedPath}`;
     try {
       const response = await fetch(url, init);
+      if (response.ok) {
+        activeApiBaseUrl = base;
+        return response;
+      }
+
+      // If frontend origin is wrong for API (common on static hosts), try next base.
+      if (normalizedPath.startsWith("/api/") && (response.status === 404 || response.status === 405 || response.status === 501)) {
+        lastResponse = response;
+        continue;
+      }
+
       activeApiBaseUrl = base;
       return response;
     } catch (error) {
@@ -103,6 +113,7 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     }
   }
 
+  if (lastResponse) return lastResponse;
   if (lastError instanceof Error) {
     throw new Error(`Failed to reach API server. ${lastError.message}`);
   }
