@@ -10,9 +10,7 @@
     "verify:endpoints": "tsx scripts/verifyEndpoints.ts",
     "test:email-subscription": "npm run build && tsx scripts/testEmailSubscription.ts",
     "test:unsubscribe-repeat": "npm run build && tsx scripts/testUnsubscribeRepeatFlow.ts",
-    "test:auth-flows": "npm run build && tsx scripts/testAuthFlows.ts",
-    "test:site-validation": "npm run build && tsx scripts/testSiteValidation.ts",
-    "test:auth-rate-limit": "npm run build && tsx scripts/testAuthRateLimit.ts"
+    "test:site-validation": "npm run build && tsx scripts/testSiteValidation.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

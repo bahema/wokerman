@@ -43,14 +43,17 @@ export const validateContentForSave = (content: SiteContent) => {
     }
 
     const adSections = content.homeUi.adsectionMan;
-    const adEntries: Array<{ label: string; fields: Record<string, string> }> = [
+    const adEntries = [
       { label: "gadgets", fields: adSections.gadgets },
       { label: "ai", fields: adSections.ai }
     ];
     for (const entry of adEntries) {
       for (const [field, value] of Object.entries(entry.fields)) {
-        if (!value?.trim()) {
+        if (typeof value === "string" && !value.trim()) {
           return `Home UI validation failed: adsection ${entry.label}.${field} is required.`;
+        }
+        if (field === "price" && (!Number.isFinite(Number(value)) || Number(value) <= 0)) {
+          return `Home UI validation failed: adsection ${entry.label}.price must be greater than 0.`;
         }
       }
     }

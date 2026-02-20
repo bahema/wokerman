@@ -63,7 +63,17 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
 
   const validateBox = (box: BoxKey) => {
     const entry = draft[box];
-    const requiredFields: Array<keyof BoxValue> = [
+    const requiredFields: Array<
+      | "sectionTitle"
+      | "imageUrl"
+      | "badgePrimary"
+      | "badgeSecondary"
+      | "overlayTitle"
+      | "overlayText"
+      | "buttonLabel"
+      | "buttonTarget"
+      | "scrollHint"
+    > = [
       "sectionTitle",
       "imageUrl",
       "badgePrimary",

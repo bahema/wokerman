@@ -14,12 +14,6 @@ export type AccountSettingsPayload = {
   timezone: string;
 };
 
-type StartLoginResponse = {
-  ok: true;
-  requiresOtp: boolean;
-  devOtp?: string;
-};
-
 export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
 };
@@ -29,7 +23,7 @@ export const startSignup = async (email: string, password: string) => {
 };
 
 export const startLogin = async (email: string, password: string) => {
-  return apiJson<StartLoginResponse>("/api/auth/login/start", "POST", { email, password });
+  return apiJson<{ ok: true }>("/api/auth/login/start", "POST", { email, password });
 };
 
 // Backward-compatible exports for older callers.
