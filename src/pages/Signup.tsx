@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAuthStatus, startLoginOtp, startSignupOtp, verifyLoginOtp, verifySignupOtp } from "../utils/authTrust";
+import { getAuthStatus, hasAdminAccess, startLoginOtp, startSignupOtp, verifyLoginOtp, verifySignupOtp } from "../utils/authTrust";
 import { resolveLoginStart, resolveSignupStart } from "./signupFlow";
 import { withBasePath } from "../utils/basePath";
 
@@ -87,6 +87,12 @@ const Signup = ({ postLoginPath }: SignupProps) => {
         await verifyLoginOtp(email.trim().toLowerCase(), otp.trim());
       } else {
         await verifySignupOtp(email.trim().toLowerCase(), otp.trim());
+      }
+      const sessionValid = await hasAdminAccess();
+      if (!sessionValid) {
+        throw new Error(
+          "Login verification succeeded, but no session cookie was stored. Enable third-party cookies for this site or deploy frontend/backend on the same domain."
+        );
       }
       setStep("done");
       setInfo(hasOwner ? "Login successful." : "Owner account created and authenticated.");
