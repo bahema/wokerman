@@ -38,7 +38,9 @@ const OWNER_BOOTSTRAP_EMAIL = (process.env.OWNER_BOOTSTRAP_EMAIL ?? "").trim().t
 const OWNER_BOOTSTRAP_KEY = (process.env.OWNER_BOOTSTRAP_KEY ?? "").trim();
 const AUTH_COOKIE_NAME = "autohub_admin_session";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
-const AUTH_COOKIE_SIGNING_KEY = (process.env.AUTH_COOKIE_SIGNING_KEY ?? "").trim();
+const resolveAuthCookieSigningKey = () =>
+  (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
+const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
@@ -117,7 +119,9 @@ const assertProductionSecurityConfig = () => {
     "autohub"
   ]);
   if (insecureCookieSigningKeys.has(AUTH_COOKIE_SIGNING_KEY.toLowerCase()) || AUTH_COOKIE_SIGNING_KEY.length < 32) {
-    throw new Error("Invalid production configuration: AUTH_COOKIE_SIGNING_KEY must be at least 32 chars and non-default.");
+    throw new Error(
+      "Invalid production configuration: set AUTH_COOKIE_SIGNING_KEY (or AUTH_COOKIE_SECRET / SESSION_SECRET) to a non-default value with at least 32 chars."
+    );
   }
 
   if (CORS_ORIGINS.includes("*")) {
@@ -135,7 +139,9 @@ const bootstrap = async () => {
     throw new Error("Invalid production configuration: ALLOW_DEV_OTP must be false.");
   }
   if (isProduction && !AUTH_COOKIE_SIGNING_KEY) {
-    throw new Error("Invalid production configuration: AUTH_COOKIE_SIGNING_KEY is required.");
+    throw new Error(
+      "Invalid production configuration: AUTH_COOKIE_SIGNING_KEY (or AUTH_COOKIE_SECRET / SESSION_SECRET) is required."
+    );
   }
 
   const mediaStore = await createMediaStore(MEDIA_DIR);

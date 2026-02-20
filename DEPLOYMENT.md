@@ -42,6 +42,7 @@ SMTP_FROM=...
 Notes:
 - On managed platforms (Render/Railway), do not hardcode `PORT`; use platform-provided `PORT`.
 - `AUTH_COOKIE_SIGNING_KEY` is mandatory in production and must be non-default and >=32 chars.
+- Backward-compatible fallback names are supported: `AUTH_COOKIE_SECRET` or `SESSION_SECRET`.
 
 ## 3. Persistent Storage
 
