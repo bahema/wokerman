@@ -1,5 +1,4 @@
 const normalizeBase = (value: string) => value.trim().replace(/\/+$/, "");
-const DEFAULT_FALLBACK_API_URL = "https://autohub-backend-production-5a29.up.railway.app";
 
 const resolveApiBaseUrls = () => {
   const configured = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -14,7 +13,7 @@ const resolveApiBaseUrls = () => {
   if (host === "localhost" || host === "127.0.0.1") {
     return [`${window.location.protocol}//${host}:4000`];
   }
-  return [window.location.origin, DEFAULT_FALLBACK_API_URL];
+  return [window.location.origin];
 };
 
 const API_BASE_URLS = resolveApiBaseUrls();
