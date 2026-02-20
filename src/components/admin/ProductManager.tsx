@@ -40,6 +40,20 @@ const normalizePosition = (value: unknown, fallback: number) => {
 const getNextPosition = (items: Product[]) =>
   items.reduce((max, item) => Math.max(max, normalizePosition(item.position, 0)), 0) + 1;
 
+const normalizePrice = (value: unknown) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return NaN;
+  return numeric;
+};
+
+const normalizePriceLabel = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^[\d]/.test(trimmed) && !/^[\$€£¥]/.test(trimmed)) return `$${trimmed}`;
+  return trimmed;
+};
+
 const ProductManager = ({
   title,
   category,
@@ -132,9 +146,25 @@ const ProductManager = ({
     if (!Number.isFinite(item.rating) || item.rating < 1 || item.rating > 5) return "Rating must be between 1 and 5.";
     if (!isValidUrl(item.checkoutLink)) return "Checkout URL must be a valid http(s) URL.";
     if (!Number.isFinite(item.position) || Number(item.position) < 1) return "Position must be a number greater than or equal to 1.";
+    const normalizedPrice = normalizePrice(item.price);
+    if (Number.isNaN(normalizedPrice)) return "Price must be a valid number.";
+    if (normalizedPrice !== undefined && normalizedPrice < 0) return "Price must be a non-negative number.";
+    if (normalizedPrice !== undefined && !Number.isInteger(normalizedPrice)) return "Price must be a whole number.";
+    if (item.priceLabel !== undefined && item.priceLabel.trim().length > 32) return "Price label must be 32 characters or fewer.";
     const cleanedFeatures = item.features.map((feature) => feature.trim()).filter(Boolean);
     if (cleanedFeatures.length === 0) return "At least one feature is required.";
     return "";
+  };
+
+  const normalizeDraftItemForPersist = (item: Product, positionFallback: number): Product => {
+    const normalizedPrice = normalizePrice(item.price);
+    const normalizedPriceLabel = normalizePriceLabel(item.priceLabel);
+    return {
+      ...item,
+      position: normalizePosition(item.position, positionFallback),
+      price: normalizedPrice === undefined ? undefined : Math.round(normalizedPrice),
+      priceLabel: normalizedPriceLabel
+    };
   };
 
   const saveItem = () => {
@@ -143,10 +173,7 @@ const ProductManager = ({
       setFormError(validationError);
       return;
     }
-    const normalizedDraft = {
-      ...draftItem,
-      position: normalizePosition(draftItem.position, isEditing && editingIndex !== null ? editingIndex + 1 : getNextPosition(items))
-    };
+    const normalizedDraft = normalizeDraftItemForPersist(draftItem, isEditing && editingIndex !== null ? editingIndex + 1 : getNextPosition(items));
     const nextItems =
       isEditing && editingIndex !== null
         ? items.map((item, index) =>
@@ -186,10 +213,7 @@ const ProductManager = ({
       setFormError(validationError);
       return;
     }
-    const normalizedDraft = {
-      ...draftItem,
-      position: normalizePosition(draftItem.position, isEditing && editingIndex !== null ? editingIndex + 1 : getNextPosition(items))
-    };
+    const normalizedDraft = normalizeDraftItemForPersist(draftItem, isEditing && editingIndex !== null ? editingIndex + 1 : getNextPosition(items));
     const nextItems =
       isEditing && editingIndex !== null
         ? items.map((item, index) =>
@@ -336,6 +360,16 @@ const ProductManager = ({
                 <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium dark:bg-slate-800">rating {item.rating.toFixed(1)}</span>
                 {item.isNew ? <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">NEW</span> : null}
                 <span className="rounded-full bg-slate-200 px-2 py-0.5 dark:bg-slate-800">{item.category}</span>
+                {typeof item.price === "number" && Number.isFinite(item.price) ? (
+                  <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                    Price: ${item.price.toFixed(0)}
+                  </span>
+                ) : null}
+                {item.priceLabel?.trim() ? (
+                  <span className="rounded-full border border-indigo-300 bg-indigo-100 px-2 py-0.5 font-semibold text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                    Price Badge: {normalizePriceLabel(item.priceLabel)}
+                  </span>
+                ) : null}
               </div>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{item.features.length} feature points</p>
             </div>
@@ -478,6 +512,35 @@ const ProductManager = ({
                 onChange={(event) => setDraftItem((prev) => ({ ...prev, rating: Number(event.target.value) }))}
                 className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span>Price (USD)</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={typeof draftItem.price === "number" && Number.isFinite(draftItem.price) ? draftItem.price : ""}
+                onChange={(event) =>
+                  setDraftItem((prev) => ({
+                    ...prev,
+                    price: event.target.value === "" ? undefined : Number(event.target.value)
+                  }))
+                }
+                placeholder="79"
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span>Price Badge (optional override)</span>
+              <input
+                value={draftItem.priceLabel ?? ""}
+                onChange={(event) => setDraftItem((prev) => ({ ...prev, priceLabel: event.target.value }))}
+                placeholder="79 / Limited Offer"
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Leave blank to use numeric Price or category default badge. If the label starts with a number, "$" is added automatically.
+              </p>
             </label>
             <label className="flex items-center gap-2 pt-6 text-sm">
               <input

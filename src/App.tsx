@@ -3,6 +3,7 @@ import CookieConsent from "./components/CookieConsent";
 import Home from "./pages/Home";
 import { hasAdminAccess } from "./utils/authTrust";
 import { setSeo } from "./utils/seo";
+import { useI18n } from "./i18n/provider";
 
 const Admin = lazy(() => import("./pages/Admin"));
 const ConfirmResultPage = lazy(() => import("./pages/ConfirmResultPage"));
@@ -88,6 +89,7 @@ const categorySectionByPath: Record<PublicCategoryPath, "forex" | "betting" | "s
 };
 
 function App() {
+  const { t, ogLocale } = useI18n();
   const [path, setPath] = useState(toAppPath(window.location.pathname));
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -135,8 +137,6 @@ function App() {
 
   useEffect(() => {
     if (normalizedPath !== "/admin" || checkingAuth || isAuthed) return;
-    const currentAppPath = toAppPath(window.location.pathname);
-    if (!currentAppPath.startsWith("/boss/")) return;
     const next = encodeURIComponent(getAppPathWithQueryAndHash());
     const loginPath = toBrowserPath(`/boss/login?next=${next}`);
     window.history.replaceState({}, "", loginPath);
@@ -151,8 +151,8 @@ function App() {
       const ok = await hasAdminAccess();
       if (cancelled) return;
       setIsAuthed(ok);
-      if (ok) {
-        const nextRaw = new URLSearchParams(window.location.search).get("next") ?? "/admin";
+      const nextRaw = new URLSearchParams(window.location.search).get("next");
+      if (ok && nextRaw) {
         const nextPath = sanitizePostLoginPath(nextRaw);
         window.history.replaceState({}, "", toBrowserPath(nextPath));
         setPath(toAppPath(window.location.pathname));
@@ -244,20 +244,20 @@ function App() {
     };
 
     const seo = seoByPath[normalizedPath] ?? seoByPath["/"];
-    setSeo(seo);
-  }, [normalizedPath]);
+    setSeo({ ...seo, locale: ogLocale });
+  }, [normalizedPath, ogLocale]);
 
   if (normalizedPath === "/signup") {
     if (checkingAuth) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          Checking secure session...
+          {t("app.checkingSession")}
         </div>
       );
     }
     const nextRaw = new URLSearchParams(window.location.search).get("next") ?? undefined;
     return (
-      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">Loading...</div>}>
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loading")}</div>}>
         <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />
       </Suspense>
     );
@@ -272,13 +272,19 @@ function App() {
     if (checkingAuth) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          Checking secure session...
+          {t("app.checkingSession")}
         </div>
       );
     }
-    if (!isAuthed) return <Signup postLoginPath={sanitizePostLoginPath(getAppPathWithQueryAndHash())} />;
+    if (!isAuthed) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          {t("app.redirectingLogin")}
+        </div>
+      );
+    }
     return (
-      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">Loading admin...</div>}>
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
         <Admin />
       </Suspense>
     );
@@ -288,9 +294,11 @@ function App() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">404</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight">Page Not Found</h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">{t("app.notFoundTitle")}</h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            No page exists at <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800">{path}</code>.
+            {t("app.notFoundPrefix")}{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800">{path}</code>
+            {t("app.notFoundSuffix")}
           </p>
           <button
             type="button"
@@ -300,7 +308,7 @@ function App() {
             }}
             className="mt-5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
           >
-            Go to Homepage
+            {t("app.goHome")}
           </button>
         </div>
       </div>
@@ -311,9 +319,9 @@ function App() {
 }
 
 export default App;
-  const withCookieConsent = (page: JSX.Element) => (
-    <>
-      {page}
-      <CookieConsent />
-    </>
-  );
+const withCookieConsent = (page: JSX.Element) => (
+  <>
+    {page}
+    <CookieConsent />
+  </>
+);

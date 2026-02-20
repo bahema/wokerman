@@ -22,10 +22,48 @@ const gradientByCategory: Record<Product["category"], string> = {
   Social: "from-orange-500 via-rose-600 to-red-700"
 };
 
+const priceBadgeClassByCategory: Record<Product["category"], string> = {
+  Forex:
+    "border-cyan-500/20 bg-cyan-600 text-white dark:border-cyan-400/40 dark:bg-cyan-500 dark:text-white",
+  Betting:
+    "border-emerald-500/20 bg-emerald-600 text-white dark:border-emerald-400/40 dark:bg-emerald-500 dark:text-white",
+  Software:
+    "border-violet-500/20 bg-violet-600 text-white dark:border-violet-400/40 dark:bg-violet-500 dark:text-white",
+  Social:
+    "border-rose-500/20 bg-rose-600 text-white dark:border-rose-400/40 dark:bg-rose-500 dark:text-white"
+};
+
+const priceBadgeShadowByCategory: Record<Product["category"], string> = {
+  Forex: "shadow-[0_10px_20px_-10px_rgba(8,145,178,0.9)]",
+  Betting: "shadow-[0_10px_20px_-10px_rgba(5,150,105,0.9)]",
+  Software: "shadow-[0_10px_20px_-10px_rgba(124,58,237,0.9)]",
+  Social: "shadow-[0_10px_20px_-10px_rgba(225,29,72,0.9)]"
+};
+
+const fallbackPriceBadgeByCategory: Record<Product["category"], string> = {
+  Forex: "$79",
+  Betting: "$69",
+  Software: "$99",
+  Social: "$59"
+};
+
+const normalizePriceLabel = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^[\d]/.test(trimmed) && !/^[\$€£¥]/.test(trimmed)) return `$${trimmed}`;
+  return trimmed;
+};
+
 const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardProps) => {
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
   const trustLabel = product.isNew ? (labels?.newReleaseLabel ?? "New release") : `${product.features.length} ${labels?.keyFeaturesSuffix ?? "key features"}`;
+  const priceBadgeText =
+    (typeof product.price === "number" && Number.isFinite(product.price) && product.price >= 0
+      ? `$${product.price.toFixed(0)}`
+      : typeof product.priceLabel === "string" && product.priceLabel.trim()
+        ? normalizePriceLabel(product.priceLabel)
+        : fallbackPriceBadgeByCategory[product.category]);
 
   useEffect(() => {
     setImageFailed(false);
@@ -57,7 +95,15 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
         </div>
       </div>
       <div className="flex flex-1 flex-col p-4">
-        <h3 className="min-w-0 break-words text-lg font-bold text-slate-900 dark:text-slate-50">{product.title}</h3>
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <h3 className="min-w-0 flex-1 break-words text-lg font-bold text-slate-900 dark:text-slate-50">{product.title}</h3>
+          <span
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-black leading-none tracking-wide ${priceBadgeClassByCategory[product.category]} ${priceBadgeShadowByCategory[product.category]}`}
+            aria-label={`Price ${priceBadgeText}`}
+          >
+            {priceBadgeText}
+          </span>
+        </div>
         <p className="mt-2 line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{product.shortDescription}</p>
         <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
           <div className="flex shrink-0 items-center gap-1 text-amber-500" aria-label={`Rated ${product.rating} out of 5`}>

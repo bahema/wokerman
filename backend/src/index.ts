@@ -309,10 +309,6 @@ const bootstrap = async () => {
   };
 
   const getAuthContext = (req: express.Request) => {
-    const header = req.header("authorization") ?? "";
-    if (header.toLowerCase().startsWith("bearer ")) {
-      return { token: header.slice(7).trim(), source: "header" as const };
-    }
     const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
     if (cookieToken) return { token: cookieToken, source: "cookie" as const };
     return { token: "", source: "none" as const };
@@ -340,17 +336,17 @@ const bootstrap = async () => {
       return;
     }
     res.locals.authSource = source;
-    (req as express.Request & { authSource?: "header" | "cookie" | "none" }).authSource = source;
+    (req as express.Request & { authSource?: "cookie" | "none" }).authSource = source;
     next();
   };
 
   const requireCsrfForCookieAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const source = ((req as express.Request & { authSource?: "header" | "cookie" }).authSource ?? res.locals.authSource) as
-      | "header"
+    const source = ((req as express.Request & { authSource?: "cookie" | "none" }).authSource ?? res.locals.authSource) as
       | "cookie"
+      | "none"
       | undefined;
     if (source !== "cookie") {
-      next();
+      res.status(401).json({ error: "Unauthorized. Login required." });
       return;
     }
     if (!validateCsrfPair(req)) {
@@ -423,7 +419,7 @@ const bootstrap = async () => {
           path: req.originalUrl,
           statusCode: res.statusCode,
           durationMs: Date.now() - started,
-          authSource: (req as express.Request & { authSource?: "header" | "cookie" | "none" }).authSource ?? "unknown",
+          authSource: (req as express.Request & { authSource?: "cookie" | "none" }).authSource ?? "unknown",
           ip: resolveRequestIp(req),
           userAgent: req.header("user-agent") ?? "unknown",
           at: new Date().toISOString()
@@ -528,7 +524,9 @@ const bootstrap = async () => {
       smtpPort: senderProfile.smtpPort,
       smtpUser: senderProfile.smtpUser,
       smtpPass: senderProfile.smtpPass,
-      smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
+      smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure),
+      includeUnsubscribeFooter: senderProfile.includeUnsubscribeFooter,
+      checks: senderProfile.checks
     });
     // eslint-disable-next-line no-console
     console.log(
@@ -658,7 +656,7 @@ const bootstrap = async () => {
     try {
       const session = await authStore.verifySignup(email, otp);
       setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true, session });
+      res.status(200).json({ ok: true });
     } catch (error) {
       sendAuthError(res, error, "Failed to verify signup OTP.");
     }
@@ -679,7 +677,7 @@ const bootstrap = async () => {
         return;
       }
       setAuthCookie(res, result.session.token, result.session.expiresAt);
-      res.status(200).json({ ok: true, requiresOtp: false, session: result.session });
+      res.status(200).json({ ok: true, requiresOtp: false });
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
     }
@@ -691,7 +689,7 @@ const bootstrap = async () => {
     try {
       const session = await authStore.verifyLogin(email, otp);
       setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true, session });
+      res.status(200).json({ ok: true });
     } catch (error) {
       sendAuthError(res, error, "Failed to verify login OTP.");
     }
@@ -749,7 +747,7 @@ const bootstrap = async () => {
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
       const session = await authStore.changePassword(currentPassword, newPassword, token);
       setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true, session });
+      res.status(200).json({ ok: true });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update password." });
     }
@@ -1545,7 +1543,9 @@ const bootstrap = async () => {
         smtpUser: senderProfile.smtpUser,
         smtpPass: senderProfile.smtpPass,
         smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure),
-        apiPublicBaseUrl: API_PUBLIC_BASE_URL
+        apiPublicBaseUrl: API_PUBLIC_BASE_URL,
+        includeUnsubscribeFooter: senderProfile.includeUnsubscribeFooter,
+        checks: senderProfile.checks
       });
 
       const campaign = await emailStore.saveCampaign({

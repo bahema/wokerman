@@ -17,6 +17,12 @@ type CampaignSendInput = {
   smtpPass: string;
   smtpSecure: boolean;
   apiPublicBaseUrl: string;
+  includeUnsubscribeFooter: boolean;
+  checks: {
+    subjectSafe: boolean;
+    addressIncluded: boolean;
+    unsubscribeLink: boolean;
+  };
 };
 
 export class CampaignDeliveryError extends Error {
@@ -43,6 +49,7 @@ const toHtmlFromRich = (value: string) => {
 
 const asFrom = (name: string, email: string) => `${name} <${email}>`;
 const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
+const mailingAddress = (process.env.MAILING_ADDRESS ?? "").trim();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const extractEmail = (value: string) => {
   const trimmed = value.trim();
@@ -57,6 +64,29 @@ const resolveEffectiveFromEmail = (fromEmail: string, smtpUser: string) => {
   if (!auth) return preferred || fromEmail;
   if (!preferred || preferred !== auth) return auth;
   return preferred;
+};
+const stripHtml = (value: string) => value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+const buildComplianceFooter = (unsubscribeUrl: string) => {
+  const addressLine = mailingAddress ? `Mailing address: ${mailingAddress}` : "";
+  const textFooter = [addressLine, `Unsubscribe: ${unsubscribeUrl}`].filter(Boolean).join("\n");
+  const htmlFooter = `<hr style="margin:24px 0;border:none;border-top:1px solid #e2e8f0;" /><p style="font-size:12px;color:#64748b;line-height:1.5;">${
+    mailingAddress ? `Mailing address: ${mailingAddress}<br/>` : ""
+  }Unsubscribe: <a href="${unsubscribeUrl}">${unsubscribeUrl}</a></p>`;
+  return { textFooter, htmlFooter };
+};
+const appendFooter = (textContent: string, htmlContent: string, unsubscribeUrl: string) => {
+  const footer = buildComplianceFooter(unsubscribeUrl);
+  return {
+    text: `${textContent}\n\n${footer.textFooter}`.trim(),
+    html: `${htmlContent}${footer.htmlFooter}`
+  };
+};
+const hasUnsubscribeLink = (textContent: string, htmlContent: string, unsubscribeUrl: string) => {
+  return textContent.includes(unsubscribeUrl) || htmlContent.includes(unsubscribeUrl);
+};
+const validateSubject = (subject: string) => {
+  if (subject.includes("\r") || subject.includes("\n")) return false;
+  return subject.trim().length > 0;
 };
 
 const renderTemplate = (value: string, recipient: EmailCampaignRecipient, apiPublicBaseUrl: string) => {
@@ -73,6 +103,9 @@ export const sendCampaignEmails = async (input: CampaignSendInput) => {
   }
   if (!smtpReady(input)) {
     throw new CampaignDeliveryError("SMTP_NOT_CONFIGURED", "SMTP is not configured for campaign email sending.");
+  }
+  if (input.checks.addressIncluded && !mailingAddress) {
+    throw new CampaignDeliveryError("SMTP_SEND_FAILED", "MAILING_ADDRESS is required by compliance checks.");
   }
 
   const rejectUnauthorized = process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false";
@@ -101,9 +134,22 @@ export const sendCampaignEmails = async (input: CampaignSendInput) => {
     const renderedPreview = renderTemplate(input.previewText, recipient, input.apiPublicBaseUrl);
     const renderedRich = renderTemplate(input.bodyRich, recipient, input.apiPublicBaseUrl);
     const renderedHtml = renderTemplate(input.bodyHtml, recipient, input.apiPublicBaseUrl);
-    const htmlContent =
+    if (input.checks.subjectSafe && !validateSubject(renderedSubject)) {
+      failures.push({ email: recipient.email, error: "Invalid campaign subject." });
+      continue;
+    }
+    const unsubscribeUrl = `${input.apiPublicBaseUrl}/api/email/unsubscribe?token=${encodeURIComponent(recipient.unsubscribeToken)}`;
+    const htmlContentBase =
       input.bodyMode === "html" ? renderedHtml : `<div style="font-family:Arial,sans-serif;line-height:1.6">${toHtmlFromRich(renderedRich)}</div>`;
-    const textContent = input.bodyMode === "html" ? renderedHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : renderedRich;
+    const textContentBase = input.bodyMode === "html" ? stripHtml(renderedHtml) : renderedRich;
+    const composed =
+      input.includeUnsubscribeFooter ? appendFooter(textContentBase, htmlContentBase, unsubscribeUrl) : { text: textContentBase, html: htmlContentBase };
+    const textContent = composed.text;
+    const htmlContent = composed.html;
+    if (input.checks.unsubscribeLink && !hasUnsubscribeLink(textContent, htmlContent, unsubscribeUrl)) {
+      failures.push({ email: recipient.email, error: "Unsubscribe link is required in campaign email." });
+      continue;
+    }
 
     try {
       await transport.sendMail({
@@ -114,7 +160,11 @@ export const sendCampaignEmails = async (input: CampaignSendInput) => {
         text: renderedPreview ? `${renderedPreview}\n\n${textContent}` : textContent,
         html: renderedPreview
           ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${renderedPreview}</div>${htmlContent}`
-          : htmlContent
+          : htmlContent,
+        headers: {
+          "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:${input.replyTo || effectiveFromEmail}?subject=unsubscribe>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
       });
       delivered += 1;
     } catch (error) {

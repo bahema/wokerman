@@ -665,7 +665,7 @@ const Home = (_props: HomeProps) => {
           ) : (
             <div
               ref={industriesScrollRef}
-              className="overflow-hidden py-4"
+              className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
               onMouseEnter={() => setIndustriesScrollPaused(true)}
               onMouseLeave={() => setIndustriesScrollPaused(false)}
               onPointerDown={() => setIndustriesScrollPaused(true)}
@@ -674,7 +674,7 @@ const Home = (_props: HomeProps) => {
               onFocusCapture={() => setIndustriesScrollPaused(true)}
               onBlurCapture={() => setIndustriesScrollPaused(false)}
             >
-              <div className="flex min-w-max touch-pan-y flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
+              <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
                 {industriesForTrack.map((industry, index) => {
                   const isClone = index >= content.industries.length;
                   return (

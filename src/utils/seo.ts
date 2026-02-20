@@ -6,6 +6,7 @@ type SeoOptions = {
   canonicalPath?: string;
   robots?: string;
   image?: string;
+  locale?: string;
 };
 
 const ensureMeta = (selector: string, attributes: Record<string, string>) => {
@@ -54,7 +55,7 @@ export const removeStructuredData = (id: string) => {
   if (node) node.remove();
 };
 
-export const setSeo = ({ title, description, canonicalPath = "/", robots = "index,follow", image = "/social-preview.svg" }: SeoOptions) => {
+export const setSeo = ({ title, description, canonicalPath = "/", robots = "index,follow", image = "/social-preview.svg", locale = "en_US" }: SeoOptions) => {
   const origin = window.location.origin;
   const canonicalUrl = new URL(withBasePath(canonicalPath), `${origin}/`).toString();
   const imageUrl = new URL(withBasePath(image), `${origin}/`).toString();
@@ -66,7 +67,7 @@ export const setSeo = ({ title, description, canonicalPath = "/", robots = "inde
 
   setMetaProperty("og:type", "website");
   setMetaProperty("og:site_name", "AutoHub");
-  setMetaProperty("og:locale", "en_US");
+  setMetaProperty("og:locale", locale);
   setMetaProperty("og:title", title);
   setMetaProperty("og:description", description);
   setMetaProperty("og:url", canonicalUrl);

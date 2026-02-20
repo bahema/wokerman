@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 import { initTheme } from "./utils/theme";
 import AppErrorBoundary from "./components/AppErrorBoundary";
+import { I18nProvider } from "./i18n/provider";
 
 document.documentElement.classList.add("js");
 try {
@@ -14,8 +15,10 @@ try {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
+    <I18nProvider>
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
+    </I18nProvider>
   </React.StrictMode>
 );
