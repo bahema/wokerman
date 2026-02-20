@@ -429,6 +429,24 @@ export const createEmailStore = async (baseDir: string) => {
     return record.subscribers.find((item) => item.email === normalizedEmail) ?? null;
   };
 
+  const getSubscriberByUnsubscribeToken = async (token: string) => {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) return null;
+    const record = await read();
+    return record.subscribers.find((item) => item.unsubscribeToken === normalizedToken) ?? null;
+  };
+
+  const listEventsBySubscriberId = async (subscriberId: string, limit = 100) => {
+    const normalizedId = subscriberId.trim();
+    if (!normalizedId) return [];
+    const boundedLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+    const record = await read();
+    return record.events
+      .filter((item) => item.subscriberId === normalizedId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, boundedLimit);
+  };
+
   const deleteSubscriberById = async (id: string) => {
     return runExclusive(async () => {
       const targetId = id.trim();
@@ -684,10 +702,12 @@ export const createEmailStore = async (baseDir: string) => {
     upsertPendingSubscriber,
     getSubscriberById,
     getSubscriberByEmail,
+    getSubscriberByUnsubscribeToken,
     deleteSubscriberById,
     confirmSubscriberByToken,
     unsubscribeSubscriberByToken,
     addEvent,
+    listEventsBySubscriberId,
     listSubscribers,
     listCampaignRecipients,
     saveCampaign,

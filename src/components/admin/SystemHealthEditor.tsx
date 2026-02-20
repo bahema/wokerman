@@ -22,7 +22,7 @@ const resolveApiBaseUrl = () => {
   if (configured) return normalizeBase(configured);
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000";
+    if (host === "localhost" || host === "127.0.0.1") return `${window.location.protocol}//${host}:4000`;
   }
   return "https://autohub-backend-production-5a29.up.railway.app";
 };

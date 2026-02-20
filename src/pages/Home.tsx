@@ -199,6 +199,7 @@ const Home = (_props: HomeProps) => {
 
   useEffect(() => {
     const origin = window.location.origin;
+    const affiliateDisclosureUrl = new URL(withBasePath("/affiliate-disclosure"), `${origin}/`).toString();
     const productLists = [
       { id: "forex", name: "Forex", items: content.products.forex },
       { id: "betting", name: "Betting", items: content.products.betting },
@@ -214,14 +215,21 @@ const Home = (_props: HomeProps) => {
           "@id": `${origin}/#organization`,
           name: content.branding.logoText || "AutoHub",
           url: `${origin}/`,
-          sameAs: [content.socials.facebookUrl, content.socials.whatsappUrl, ...(content.socials.other ?? []).map((social) => social.url)].filter(Boolean)
+          sameAs: [content.socials.facebookUrl, content.socials.whatsappUrl, ...(content.socials.other ?? []).map((social) => social.url)].filter(Boolean),
+          subjectOf: {
+            "@type": "WebPage",
+            "@id": `${affiliateDisclosureUrl}#page`,
+            url: affiliateDisclosureUrl,
+            name: "Affiliate Disclosure"
+          }
         },
         {
           "@type": "WebSite",
           "@id": `${origin}/#website`,
           name: content.branding.logoText || "AutoHub",
           url: `${origin}/`,
-          inLanguage: "en"
+          inLanguage: "en",
+          publishingPrinciples: affiliateDisclosureUrl
         },
         ...productLists.map((list) => ({
           "@type": "CollectionPage",
@@ -237,7 +245,7 @@ const Home = (_props: HomeProps) => {
             image: item.imageUrl || undefined,
             offers: {
               "@type": "Offer",
-              url: item.checkoutLink,
+              url: new URL(`${withBasePath(`/${list.id}`)}?product=${encodeURIComponent(item.id)}`, `${origin}/`).toString(),
               priceCurrency: "USD",
               availability: "https://schema.org/InStock"
             },
@@ -817,8 +825,10 @@ const Home = (_props: HomeProps) => {
             <div className="mt-4 flex justify-end">
               <a
                 href={withBasePath("/boss/login")}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="Go to login page"
-                className="inline-flex h-4 w-4 rounded-full bg-red-600 shadow-[0_0_0_4px_rgba(220,38,38,0.2)] transition hover:scale-110 hover:bg-red-500"
+                className="inline-flex h-4 w-4 rounded-full border border-slate-400/80 bg-transparent transition hover:scale-105 dark:border-slate-500/70"
               />
             </div>
           </div>

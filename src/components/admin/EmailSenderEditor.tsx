@@ -123,6 +123,7 @@ type SenderProfileResponse = {
     smtpPort: number;
     smtpUser: string;
     smtpPass: string;
+    hasSmtpPass?: boolean;
     smtpSecure: boolean;
     includeUnsubscribeFooter: boolean;
     checks: {
@@ -159,6 +160,7 @@ const EmailSenderEditor = () => {
   const [smtpPort, setSmtpPort] = useState("587");
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
+  const [hasStoredSmtpPass, setHasStoredSmtpPass] = useState(false);
   const [smtpSecure, setSmtpSecure] = useState(false);
   const [includeUnsub, setIncludeUnsub] = useState(true);
   const [checks, setChecks] = useState({
@@ -236,13 +238,13 @@ const EmailSenderEditor = () => {
       fieldErrors.smtpPort = "SMTP port must be between 1 and 65535.";
     }
     if (!smtpUserTrimmed) fieldErrors.smtpUser = "SMTP username is required.";
-    if (!smtpPassTrimmed) fieldErrors.smtpPass = "SMTP password/app password is required.";
+    if (!smtpPassTrimmed && !hasStoredSmtpPass) fieldErrors.smtpPass = "SMTP password/app password is required.";
 
     return {
       fieldErrors,
       hasErrors: Object.keys(fieldErrors).length > 0
     };
-  }, [fromEmail, fromName, replyTo, smtpHost, smtpPass, smtpPort, smtpUser]);
+  }, [fromEmail, fromName, hasStoredSmtpPass, replyTo, smtpHost, smtpPass, smtpPort, smtpUser]);
 
   const estimatedRecipients = useMemo(() => {
     if (!confirmedSubscribers.length) return 0;
@@ -440,7 +442,8 @@ const EmailSenderEditor = () => {
         setSmtpHost(senderProfile.smtpHost);
         setSmtpPort(String(senderProfile.smtpPort));
         setSmtpUser(senderProfile.smtpUser);
-        setSmtpPass(senderProfile.smtpPass);
+        setHasStoredSmtpPass(Boolean(senderProfile.hasSmtpPass ?? senderProfile.smtpPass.trim()));
+        setSmtpPass("");
         setSmtpSecure(senderProfile.smtpSecure);
         setIncludeUnsub(senderProfile.includeUnsubscribeFooter);
         setChecks({
@@ -471,7 +474,7 @@ const EmailSenderEditor = () => {
       setActionMessage("");
       setComplianceMessage("");
       try {
-        await apiJson<SenderProfileResponse>("/api/email/settings/sender-profile", "PUT", {
+        const response = await apiJson<SenderProfileResponse>("/api/email/settings/sender-profile", "PUT", {
           fromName,
           fromEmail,
           replyTo,
@@ -483,6 +486,8 @@ const EmailSenderEditor = () => {
           includeUnsubscribeFooter: true,
           checks
         });
+        setHasStoredSmtpPass(Boolean(response.profile.hasSmtpPass ?? response.profile.smtpPass.trim()));
+        setSmtpPass("");
         setComplianceMessage("Compliance checklist saved.");
         window.setTimeout(() => setComplianceMessage(""), 2000);
       } catch (error) {

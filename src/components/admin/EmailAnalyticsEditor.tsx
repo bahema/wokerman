@@ -84,11 +84,22 @@ const defaultStart = toIsoDate(new Date(today.getTime() - 29 * 24 * 60 * 60 * 10
 
 const eventLabel = (event: EmailSummaryResponse["timeline"][number]) => {
   const subject = typeof event.meta?.subject === "string" ? event.meta.subject : "";
+  const repeatAfterResend = event.meta?.repeatAfterResend === true;
+  const deleteReason = typeof event.meta?.reason === "string" ? event.meta.reason : "";
+  const eventEmail = typeof event.meta?.email === "string" ? event.meta.email : "";
   if (event.eventType === "lead_subscribed") return "New subscriber from Quick Grabs";
   if (event.eventType === "lead_confirmed") return "Subscriber confirmed";
-  if (event.eventType === "lead_unsubscribed") return "Subscriber unsubscribed";
+  if (event.eventType === "lead_unsubscribed") {
+    if (repeatAfterResend) return "Subscriber unsubscribed again after resend";
+    return "Subscriber unsubscribed";
+  }
   if (event.eventType === "lead_confirmation_resent") return "Confirmation email resent";
-  if (event.eventType === "lead_deleted") return "Subscriber deleted";
+  if (event.eventType === "lead_deleted") {
+    if (deleteReason === "repeat_unsubscribe_after_resend") {
+      return `Subscriber auto-deleted after repeated unsubscribe${eventEmail ? `: ${eventEmail}` : ""}`;
+    }
+    return "Subscriber deleted";
+  }
   if (event.eventType === "campaign_saved") return `Campaign saved${subject ? `: ${subject}` : ""}`;
   if (event.eventType === "campaign_test_sent") return `Test email sent${subject ? `: ${subject}` : ""}`;
   if (event.eventType === "campaign_scheduled") return `Campaign scheduled${subject ? `: ${subject}` : ""}`;
@@ -239,6 +250,14 @@ const EmailAnalyticsEditor = () => {
     () => timeline.filter((event) => inRange(event.createdAt, startDate, endDate)),
     [endDate, startDate, timeline]
   );
+
+  const unsubscribeNotification = useMemo(() => {
+    return filteredTimeline.find((event) => {
+      if (event.eventType === "lead_unsubscribed" && event.meta?.repeatAfterResend === true) return true;
+      if (event.eventType !== "lead_deleted") return false;
+      return typeof event.meta?.reason === "string" && event.meta.reason === "repeat_unsubscribe_after_resend";
+    });
+  }, [filteredTimeline]);
 
   const eventBreakdown = useMemo(() => {
     const counts = new Map<string, number>();
@@ -392,6 +411,16 @@ const EmailAnalyticsEditor = () => {
             </article>
           ))}
         </div>
+      ) : null}
+
+      {unsubscribeNotification ? (
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/20">
+          <h3 className="text-sm font-bold text-rose-800 dark:text-rose-200">Unsubscribe Notification</h3>
+          <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{eventLabel(unsubscribeNotification)}</p>
+          <p className="mt-1 text-xs text-rose-700/90 dark:text-rose-300/90">
+            {new Date(unsubscribeNotification.createdAt).toLocaleString()}
+          </p>
+        </section>
       ) : null}
 
       <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
@@ -556,7 +585,7 @@ const EmailAnalyticsEditor = () => {
                     </p>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {lead.status === "pending" ? (
+                    {lead.status === "pending" || lead.status === "unsubscribed" ? (
                       <button
                         type="button"
                         disabled={subscriberActionBusyId === lead.id}

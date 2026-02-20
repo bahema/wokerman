@@ -57,7 +57,7 @@ type AuthStoreRecord = {
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const SIGNUP_TTL_MS = 10 * 60 * 1000;
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const SESSION_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const ATTEMPT_BLOCK_MS = 15 * 60 * 1000;
 const MAX_START_ATTEMPTS = 5;
