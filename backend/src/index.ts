@@ -41,6 +41,7 @@ const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 const resolveAuthCookieSigningKey = () =>
   (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
 const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
+const EPHEMERAL_AUTH_COOKIE_SIGNING_KEY = createHash("sha256").update(`${randomUUID()}-${Date.now()}`).digest("hex");
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
@@ -118,7 +119,7 @@ const assertProductionSecurityConfig = () => {
     "secret",
     "autohub"
   ]);
-  if (insecureCookieSigningKeys.has(AUTH_COOKIE_SIGNING_KEY.toLowerCase()) || AUTH_COOKIE_SIGNING_KEY.length < 32) {
+  if (AUTH_COOKIE_SIGNING_KEY && (insecureCookieSigningKeys.has(AUTH_COOKIE_SIGNING_KEY.toLowerCase()) || AUTH_COOKIE_SIGNING_KEY.length < 32)) {
     throw new Error(
       "Invalid production configuration: set AUTH_COOKIE_SIGNING_KEY (or AUTH_COOKIE_SECRET / SESSION_SECRET) to a non-default value with at least 32 chars."
     );
@@ -138,12 +139,6 @@ const bootstrap = async () => {
   if (isProduction && process.env.ALLOW_DEV_OTP === "true") {
     throw new Error("Invalid production configuration: ALLOW_DEV_OTP must be false.");
   }
-  if (isProduction && !AUTH_COOKIE_SIGNING_KEY) {
-    throw new Error(
-      "Invalid production configuration: AUTH_COOKIE_SIGNING_KEY (or AUTH_COOKIE_SECRET / SESSION_SECRET) is required."
-    );
-  }
-
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
@@ -155,7 +150,13 @@ const bootstrap = async () => {
     smtpPass: "",
     hasSmtpPass: Boolean(profile.smtpPass.trim())
   });
-  const effectiveCookieSigningKey = AUTH_COOKIE_SIGNING_KEY || "dev-cookie-signing-key";
+  const effectiveCookieSigningKey = AUTH_COOKIE_SIGNING_KEY || EPHEMERAL_AUTH_COOKIE_SIGNING_KEY;
+  if (isProduction && !AUTH_COOKIE_SIGNING_KEY) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[security] Missing AUTH_COOKIE_SIGNING_KEY/AUTH_COOKIE_SECRET/SESSION_SECRET. Using ephemeral signing key; sessions will reset on restart."
+    );
+  }
 
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, mediaStore.uploadsDir),
