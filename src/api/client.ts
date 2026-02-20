@@ -10,6 +10,7 @@ const resolveApiBaseUrls = () => {
     }
   }
   return [
+    "https://autohub-backend-production-9663.up.railway.app",
     "https://autohub-backend-production-5a29.up.railway.app",
     "https://autohub-backend-production.up.railway.app"
   ];
