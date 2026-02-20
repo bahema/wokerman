@@ -26,7 +26,7 @@ type StartLoginResponse = {
 };
 
 const setSession = (session: SessionPayload) => {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.setItem(AUTH_TOKEN_KEY, session.token);
   localStorage.setItem(AUTH_EMAIL_KEY, session.ownerEmail);
   localStorage.setItem(AUTH_EXPIRES_KEY, String(session.expiresAt));
 };

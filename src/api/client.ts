@@ -14,8 +14,14 @@ const resolveApiBaseUrls = () => {
 const API_BASE_URLS = resolveApiBaseUrls();
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
+const AUTH_TOKEN_KEY = "admin:auth:token";
 
-const getAuthHeaders = (): Record<string, string> => ({});
+const getAuthHeaders = (): Record<string, string> => {
+  if (typeof window === "undefined") return {};
+  const token = window.localStorage.getItem(AUTH_TOKEN_KEY)?.trim() ?? "";
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+};
 
 const getCookieValue = (name: string) => {
   if (typeof document === "undefined") return "";
