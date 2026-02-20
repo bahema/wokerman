@@ -28,7 +28,16 @@ const app = express();
 app.disable("x-powered-by");
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CORS_ORIGIN_RAW = process.env.CORS_ORIGIN ?? "http://localhost:5180";
+const CORS_ORIGIN_RAW =
+  process.env.CORS_ORIGIN ??
+  [
+    "http://localhost:5180",
+    "http://127.0.0.1:5180",
+    "http://localhost:5181",
+    "http://127.0.0.1:5181",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+  ].join(",");
 const DB_URL = process.env.DB_URL ?? "";
 const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");

@@ -93,6 +93,7 @@ function App() {
   const [path, setPath] = useState(toAppPath(window.location.pathname));
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
+  const [adminAuthResolved, setAdminAuthResolved] = useState(false);
   const normalizedPath = normalizePath(path);
 
   useEffect(() => {
@@ -122,12 +123,14 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     if (normalizedPath !== "/admin") return;
+    setAdminAuthResolved(false);
     setCheckingAuth(true);
     void (async () => {
       const ok = await hasAdminAccess();
       if (!cancelled) {
         setIsAuthed(ok);
         setCheckingAuth(false);
+        setAdminAuthResolved(true);
       }
     })();
     return () => {
@@ -136,12 +139,12 @@ function App() {
   }, [normalizedPath]);
 
   useEffect(() => {
-    if (normalizedPath !== "/admin" || checkingAuth || isAuthed) return;
+    if (normalizedPath !== "/admin" || checkingAuth || isAuthed || !adminAuthResolved) return;
     const next = encodeURIComponent(getAppPathWithQueryAndHash());
     const loginPath = toBrowserPath(`/boss/login?next=${next}`);
     window.history.replaceState({}, "", loginPath);
     setPath(toAppPath(window.location.pathname));
-  }, [checkingAuth, isAuthed, normalizedPath]);
+  }, [adminAuthResolved, checkingAuth, isAuthed, normalizedPath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,7 +272,7 @@ function App() {
   if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
   if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
   if (normalizedPath === "/admin") {
-    if (checkingAuth) {
+    if (checkingAuth || !adminAuthResolved) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
           {t("app.checkingSession")}

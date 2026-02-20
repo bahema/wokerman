@@ -58,12 +58,11 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
   const trustLabel = product.isNew ? (labels?.newReleaseLabel ?? "New release") : `${product.features.length} ${labels?.keyFeaturesSuffix ?? "key features"}`;
+  const normalizedPriceLabel = typeof product.priceLabel === "string" ? normalizePriceLabel(product.priceLabel) : "";
   const priceBadgeText =
     (typeof product.price === "number" && Number.isFinite(product.price) && product.price >= 0
       ? `$${product.price.toFixed(0)}`
-      : typeof product.priceLabel === "string" && product.priceLabel.trim()
-        ? normalizePriceLabel(product.priceLabel)
-        : fallbackPriceBadgeByCategory[product.category]);
+      : normalizedPriceLabel || fallbackPriceBadgeByCategory[product.category] || "$49");
 
   useEffect(() => {
     setImageFailed(false);

@@ -12,6 +12,7 @@ const forexProducts: Product[] = [
       "PipPulse Scanner continuously maps market momentum across major pairs and surfaces trade-ready setups backed by volatility and trend alignment scoring.",
     features: ["Real-time pair heatmap", "Entry confidence meter", "Session overlap alerts"],
     rating: 4.8,
+    price: 79,
     isNew: true,
     category: "Forex",
     checkoutLink: makeLink("pippulse-scanner")
@@ -24,6 +25,7 @@ const forexProducts: Product[] = [
       "MacroFlow Terminal helps traders front-run high-impact events by combining a curated economic calendar with pair sensitivity modeling and sentiment snapshots.",
     features: ["Smart event ranking", "Pair impact forecast", "Historical event replay"],
     rating: 4.7,
+    price: 79,
     isNew: true,
     category: "Forex",
     checkoutLink: makeLink("macroflow-terminal")
@@ -36,6 +38,7 @@ const forexProducts: Product[] = [
       "Liquidity Ladder identifies probable sweep areas and marks premium/discount regions so you can align entries with structure and execution precision.",
     features: ["Liquidity sweep detector", "Structure tagging", "Execution checklist"],
     rating: 4.6,
+    price: 79,
     isNew: false,
     category: "Forex",
     checkoutLink: makeLink("liquidity-ladder")
@@ -48,6 +51,7 @@ const forexProducts: Product[] = [
       "RiskGuard FX enforces predefined risk rules for every trade and suggests position sizes based on account equity, volatility, and stop distance.",
     features: ["Dynamic lot sizing", "Max drawdown guardrails", "Trade journal export"],
     rating: 4.9,
+    price: 79,
     isNew: false,
     category: "Forex",
     checkoutLink: makeLink("riskguard-fx")
@@ -60,6 +64,7 @@ const forexProducts: Product[] = [
       "London Breakout Pro automates range definition and gives probability-weighted break scenarios to help you execute with better timing and tighter risk.",
     features: ["Opening range auto-draw", "Break probability model", "Target projection"],
     rating: 4.5,
+    price: 79,
     isNew: false,
     category: "Forex",
     checkoutLink: makeLink("london-breakout-pro")
@@ -72,6 +77,7 @@ const forexProducts: Product[] = [
       "TrendMatrix AI consolidates directional signals across timeframes and warns when trend fatigue appears, allowing cleaner trend-following decisions.",
     features: ["Multi-timeframe score", "Reversal probability alerts", "Bias dashboard"],
     rating: 4.8,
+    price: 79,
     isNew: true,
     category: "Forex",
     checkoutLink: makeLink("trendmatrix-ai")
@@ -87,6 +93,7 @@ const bettingProducts: Product[] = [
       "OddsEdge Studio scans live odds movement and flags mispriced markets so you can react faster with consistent betting logic.",
     features: ["Cross-book odds sync", "Value signal engine", "Stake planner"],
     rating: 4.7,
+    price: 69,
     isNew: true,
     category: "Betting",
     checkoutLink: makeLink("oddsedge-studio")
@@ -99,6 +106,7 @@ const bettingProducts: Product[] = [
       "MatchIntel Pro gives you form trend summaries, head-to-head context, and tactical matchup projections for smarter pre-match decisions.",
     features: ["Form trend cards", "Head-to-head model", "Injury impact notes"],
     rating: 4.6,
+    price: 69,
     isNew: false,
     category: "Betting",
     checkoutLink: makeLink("matchintel-pro")
@@ -111,6 +119,7 @@ const bettingProducts: Product[] = [
       "ArbSprint Finder detects cross-book discrepancies and alerts you to short-lived windows with margin and execution confidence data.",
     features: ["Arbitrage scanner", "Margin calculator", "Execution speed alerts"],
     rating: 4.9,
+    price: 69,
     isNew: true,
     category: "Betting",
     checkoutLink: makeLink("arbsprint-finder")
@@ -123,6 +132,7 @@ const bettingProducts: Product[] = [
       "Bankroll Beacon introduces dynamic staking profiles and anti-tilt boundaries designed to preserve capital over long betting cycles.",
     features: ["Adaptive staking plans", "Loss streak controls", "ROI performance view"],
     rating: 4.5,
+    price: 69,
     isNew: false,
     category: "Betting",
     checkoutLink: makeLink("bankroll-beacon")
@@ -135,6 +145,7 @@ const bettingProducts: Product[] = [
       "LiveBet Commander tracks tempo shifts and market reactions during matches, highlighting possible live-bet entries with risk context.",
     features: ["In-play momentum meter", "Market reaction timeline", "One-click watchlist"],
     rating: 4.7,
+    price: 69,
     isNew: false,
     category: "Betting",
     checkoutLink: makeLink("livebet-commander")
@@ -147,6 +158,7 @@ const bettingProducts: Product[] = [
       "SharpSignal Radar aggregates line movement patterns and reverse-line movement indicators to surface potentially informed positions.",
     features: ["Line shift tracker", "Reverse movement alerts", "Sharp action panel"],
     rating: 4.8,
+    price: 69,
     isNew: true,
     category: "Betting",
     checkoutLink: makeLink("sharpsignal-radar")
@@ -162,6 +174,7 @@ const softwareProducts: Product[] = [
       "LaunchPilot CRM streamlines lead tracking, sales workflows, and follow-up automation for faster launch cycles and cleaner revenue ops.",
     features: ["Workflow automation", "Lead scoring", "Revenue forecast board"],
     rating: 4.8,
+    price: 99,
     isNew: true,
     category: "Software",
     checkoutLink: makeLink("launchpilot-crm")
@@ -174,6 +187,7 @@ const softwareProducts: Product[] = [
       "CloudSync Vault offers encrypted syncing, role-based collaboration, and activity trails to keep distributed teams aligned and secure.",
     features: ["Encrypted storage", "Role-based permissions", "Audit activity feed"],
     rating: 4.6,
+    price: 99,
     isNew: false,
     category: "Software",
     checkoutLink: makeLink("cloudsync-vault")
@@ -186,6 +200,7 @@ const softwareProducts: Product[] = [
       "InsightBoard 2.0 connects multiple data sources and visualizes critical metrics in a single view to support fast, data-backed decisions.",
     features: ["Multi-source connectors", "Live KPI board", "Custom report exports"],
     rating: 4.9,
+    price: 99,
     isNew: true,
     category: "Software",
     checkoutLink: makeLink("insightboard-2")
@@ -198,6 +213,7 @@ const softwareProducts: Product[] = [
       "SupportFlow AI triages inbound support tickets and drafts context-aware responses to reduce handling time while improving consistency.",
     features: ["Smart ticket routing", "AI draft responses", "SLA monitoring"],
     rating: 4.7,
+    price: 99,
     isNew: false,
     category: "Software",
     checkoutLink: makeLink("supportflow-ai")
@@ -210,6 +226,7 @@ const softwareProducts: Product[] = [
       "DeployBeam coordinates staged rollouts, health monitoring, and instant rollback procedures for stable deployment pipelines.",
     features: ["Staged rollouts", "Release health checks", "One-click rollback"],
     rating: 4.5,
+    price: 99,
     isNew: false,
     category: "Software",
     checkoutLink: makeLink("deploybeam")
@@ -222,6 +239,7 @@ const softwareProducts: Product[] = [
       "CreatorSuite X centralizes briefs, production calendars, and approval workflows so content teams can ship more without bottlenecks.",
     features: ["Editorial planning board", "Approval workflows", "Asset management"],
     rating: 4.8,
+    price: 99,
     isNew: true,
     category: "Software",
     checkoutLink: makeLink("creatorsuite-x")
@@ -237,6 +255,7 @@ const socialProducts: Product[] = [
       "PostPilot Social predicts audience activity windows and auto-schedules content to maximize reach across your core channels.",
     features: ["Best-time posting engine", "Multi-channel scheduler", "Performance snapshots"],
     rating: 4.8,
+    price: 59,
     isNew: true,
     category: "Social",
     checkoutLink: makeLink("postpilot-social")
@@ -249,6 +268,7 @@ const socialProducts: Product[] = [
       "CommentFlow AI monitors comments, flags harmful interactions, and drafts tailored replies so teams can keep community health strong.",
     features: ["Toxicity filtering", "Reply suggestions", "Priority inbox"],
     rating: 4.6,
+    price: 59,
     isNew: false,
     category: "Social",
     checkoutLink: makeLink("commentflow-ai")
@@ -261,6 +281,7 @@ const socialProducts: Product[] = [
       "ReelBoost Engine assists with hook selection, clip pacing, and hashtag recommendations to improve short-form content performance.",
     features: ["Hook generator", "Trend monitor", "Hashtag suggestions"],
     rating: 4.7,
+    price: 59,
     isNew: true,
     category: "Social",
     checkoutLink: makeLink("reelboost-engine")
@@ -273,6 +294,7 @@ const socialProducts: Product[] = [
       "DM Router Pro classifies incoming direct messages by intent and routes them to sales, support, or community teams for rapid handling.",
     features: ["Intent classification", "Team routing rules", "Response SLA alerts"],
     rating: 4.5,
+    price: 59,
     isNew: false,
     category: "Social",
     checkoutLink: makeLink("dm-router-pro")
@@ -285,6 +307,7 @@ const socialProducts: Product[] = [
       "Influence Atlas maps creator performance by niche and helps manage outreach, negotiation, and campaign execution from one workspace.",
     features: ["Creator scoring", "Outreach tracker", "Campaign timeline"],
     rating: 4.9,
+    price: 59,
     isNew: true,
     category: "Social",
     checkoutLink: makeLink("influence-atlas")
@@ -297,6 +320,7 @@ const socialProducts: Product[] = [
       "CampaignPulse Social links content activity to conversions with clear attribution dashboards to guide budget and strategy decisions.",
     features: ["Attribution dashboard", "Funnel breakdowns", "Weekly performance digest"],
     rating: 4.7,
+    price: 59,
     isNew: false,
     category: "Social",
     checkoutLink: makeLink("campaignpulse-social")
@@ -330,6 +354,7 @@ export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
   adsectionMan: {
     gadgets: {
       sectionTitle: "Newer Gadgets",
+      price: 79,
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",
@@ -341,6 +366,7 @@ export const defaultHomeUi: NonNullable<SiteContent["homeUi"]> = {
     },
     ai: {
       sectionTitle: "New AI Tools",
+      price: 99,
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",
@@ -426,3 +452,5 @@ export const defaultSiteContent: SiteContent = {
     copyright: `© ${new Date().getFullYear()} AutoHub. All rights reserved.`
   }
 };
+
+
