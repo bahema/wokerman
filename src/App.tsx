@@ -65,8 +65,6 @@ const normalizePath = (rawPath: string) => {
   return "/404";
 };
 
-const getAppPathWithQueryAndHash = () => `${toAppPath(window.location.pathname)}${window.location.search}${window.location.hash}`;
-
 const sanitizePostLoginPath = (raw?: string) => {
   if (!raw) return "/admin";
   try {
@@ -92,8 +90,6 @@ function App() {
   const { t, ogLocale } = useI18n();
   const [path, setPath] = useState(toAppPath(window.location.pathname));
   const [checkingAuth, setCheckingAuth] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [adminAuthResolved, setAdminAuthResolved] = useState(false);
   const normalizedPath = normalizePath(path);
 
   useEffect(() => {
@@ -122,38 +118,11 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (normalizedPath !== "/admin") return;
-    setAdminAuthResolved(false);
-    setCheckingAuth(true);
-    void (async () => {
-      const ok = await hasAdminAccess();
-      if (!cancelled) {
-        setIsAuthed(ok);
-        setCheckingAuth(false);
-        setAdminAuthResolved(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizedPath]);
-
-  useEffect(() => {
-    if (normalizedPath !== "/admin" || checkingAuth || isAuthed || !adminAuthResolved) return;
-    const next = encodeURIComponent(getAppPathWithQueryAndHash());
-    const loginPath = toBrowserPath(`/boss/login?next=${next}`);
-    window.history.replaceState({}, "", loginPath);
-    setPath(toAppPath(window.location.pathname));
-  }, [adminAuthResolved, checkingAuth, isAuthed, normalizedPath]);
-
-  useEffect(() => {
-    let cancelled = false;
     if (normalizedPath !== "/signup") return;
     setCheckingAuth(true);
     void (async () => {
       const ok = await hasAdminAccess();
       if (cancelled) return;
-      setIsAuthed(ok);
       const nextRaw = new URLSearchParams(window.location.search).get("next");
       if (ok && nextRaw) {
         const nextPath = sanitizePostLoginPath(nextRaw);
@@ -272,20 +241,6 @@ function App() {
   if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
   if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
   if (normalizedPath === "/admin") {
-    if (checkingAuth || !adminAuthResolved) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          {t("app.checkingSession")}
-        </div>
-      );
-    }
-    if (!isAuthed) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          {t("app.redirectingLogin")}
-        </div>
-      );
-    }
     return (
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
         <Admin />
