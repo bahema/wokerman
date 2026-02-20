@@ -26,6 +26,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   const [statusReady, setStatusReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [bootstrapKey, setBootstrapKey] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"credentials" | "otp" | "done">("credentials");
   const [error, setError] = useState("");
@@ -63,7 +64,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     try {
       const next = hasOwner
         ? resolveLoginStart(await startLoginOtp(email.trim().toLowerCase(), password))
-        : resolveSignupStart((await startSignupOtp(email.trim().toLowerCase(), password)).devOtp);
+        : resolveSignupStart((await startSignupOtp(email.trim().toLowerCase(), password, bootstrapKey)).devOtp);
       setInfo(next.info);
       setStep(next.step);
     } catch (err) {
@@ -175,6 +176,18 @@ const Signup = ({ postLoginPath }: SignupProps) => {
                   className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
                 />
               </label>
+              {!hasOwner ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium">Owner Bootstrap Key</span>
+                  <input
+                    type="password"
+                    value={bootstrapKey}
+                    onChange={(event) => setBootstrapKey(event.target.value)}
+                    placeholder="Owner bootstrap key"
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
+                  />
+                </label>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void startAuth()}
