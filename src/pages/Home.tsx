@@ -6,12 +6,11 @@ import ProductCard from "../components/ProductCard";
 import ProductModal from "../components/ProductModal";
 import QuickGrabsModal from "../components/QuickGrabsModal";
 import SectionHeader from "../components/SectionHeader";
-import type { Product } from "../data/siteData";
+import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
 import { smoothScrollToId } from "../utils/smoothScroll";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useProductFilters } from "../utils/useProductFilters";
 import { useSectionObserver } from "../utils/useSectionObserver";
-import { defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
@@ -23,9 +22,84 @@ type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
 };
 
+const fallbackProductSections: ProductSections = {
+  forex: { title: "Forex New Items", description: "Freshly released forex tools with strong ratings and practical execution workflows." },
+  betting: { title: "Betting System Products", description: "High-performing betting tools and systems." },
+  software: { title: "New Released Software", description: "Browse newly released software products." },
+  social: { title: "Social Media Automation", description: "Automation-focused social products for scheduling, response workflows, and campaign optimization." }
+};
+
+const fallbackHomeUi: NonNullable<SiteContent["homeUi"]> = {
+  heroEyebrow: "Smart automation for modern operators",
+  heroQuickGrabsLabel: "Quick Grabs",
+  performanceSnapshotTitle: "Performance Snapshot",
+  performanceSnapshotSubtext: "Products tuned for speed, confidence, and measurable outcomes.",
+  adsectionMan: {
+    gadgets: {
+      sectionTitle: "Newer Gadgets",
+      price: 79,
+      imageUrl: "/logo.png",
+      badgePrimary: "New",
+      badgeSecondary: "Coming Soon",
+      overlayTitle: "Gadget Drop",
+      overlayText: "Tap in early for fresh utility tools.",
+      buttonLabel: "Check Fresh Drop",
+      buttonTarget: "forex",
+      scrollHint: "Scroll"
+    },
+    ai: {
+      sectionTitle: "New AI Tools",
+      price: 99,
+      imageUrl: "/logo.png",
+      badgePrimary: "New",
+      badgeSecondary: "Coming Soon",
+      overlayTitle: "AI Update",
+      overlayText: "Discover the next wave of smart tools.",
+      buttonLabel: "Check Fresh AI",
+      buttonTarget: "software",
+      scrollHint: "Scroll"
+    }
+  },
+  industriesHeading: "Industries We Work With",
+  industriesEmptyMessage: "No industries published yet. Add industries from Admin to show them here.",
+  productCardNewBadgeLabel: "NEW",
+  productCardNewReleaseLabel: "New release",
+  productCardKeyFeaturesSuffix: "key features",
+  productCardCheckoutLabel: "Proceed to Checkout",
+  productCardMoreInfoLabel: "Get More Info",
+  productCardAffiliateDisclosure: "Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you."
+};
+
+const fallbackSiteContent: SiteContent = {
+  branding: { logoText: "AutoHub", defaultTheme: "system", eventTheme: "none" },
+  socials: { facebookUrl: "https://facebook.com", whatsappUrl: "https://wa.me/", other: [] },
+  hero: {
+    headline: "Discover next-gen tools for Forex, Betting, and Social growth.",
+    subtext: "Curated products with fast onboarding, premium UX, and trusted workflows to help you execute faster and scale smarter.",
+    ctaPrimary: { label: "Explore Forex Tools", target: "forex" },
+    ctaSecondary: { label: "See New Releases", target: "betting" },
+    stats: [
+      { label: "Active users", value: "12.4k" },
+      { label: "Avg. rating", value: "4.8" },
+      { label: "Live tools", value: "24" }
+    ]
+  },
+  homeUi: fallbackHomeUi,
+  testimonials: [],
+  products: { forex: [], betting: [], software: [], social: [] },
+  productSections: fallbackProductSections,
+  industries: [],
+  footer: { note: "Premium product discovery for automation-first digital operators.", copyright: `© ${new Date().getFullYear()} AutoHub. All rights reserved.` }
+};
+
+const loadDefaultSiteContent = async () => {
+  const { defaultSiteContent } = await import("../data/siteData");
+  return defaultSiteContent;
+};
+
 const Home = (_props: HomeProps) => {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
-  const [content, setContent] = useState(defaultSiteContent);
+  const [content, setContent] = useState<SiteContent>(fallbackSiteContent);
   const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
   const activeSection = useSectionObserver(["forex", "betting", "software", "social"]);
@@ -45,19 +119,19 @@ const Home = (_props: HomeProps) => {
   const [checkoutTrigger, setCheckoutTrigger] = useState<HTMLElement | null>(null);
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
-  const productSections = content.productSections ?? defaultProductSections;
+  const productSections = content.productSections ?? fallbackProductSections;
   const homeUi = {
-    ...defaultHomeUi,
+    ...fallbackHomeUi,
     ...(content.homeUi ?? {}),
     adsectionMan: {
-      ...defaultHomeUi.adsectionMan,
+      ...fallbackHomeUi.adsectionMan,
       ...(content.homeUi?.adsectionMan ?? {}),
       gadgets: {
-        ...defaultHomeUi.adsectionMan.gadgets,
+        ...fallbackHomeUi.adsectionMan.gadgets,
         ...(content.homeUi?.adsectionMan?.gadgets ?? {})
       },
       ai: {
-        ...defaultHomeUi.adsectionMan.ai,
+        ...fallbackHomeUi.adsectionMan.ai,
         ...(content.homeUi?.adsectionMan?.ai ?? {})
       }
     }
@@ -73,14 +147,14 @@ const Home = (_props: HomeProps) => {
       try {
         const metaPromise = getSiteMetaAsync();
         const params = new URLSearchParams(window.location.search);
-        let nextContent = defaultSiteContent;
+        let nextContent: SiteContent | null = null;
         if (params.get("preview") === "draft") {
           const draft = await getDraftContentAsync();
           if (!cancelled && draft) {
             nextContent = draft;
           }
         }
-        if (nextContent === defaultSiteContent) {
+        if (!nextContent) {
           const published = await getPublishedContentAsync();
           nextContent = published;
         }
@@ -91,7 +165,7 @@ const Home = (_props: HomeProps) => {
         }
       } catch {
         if (!cancelled) {
-          setContent(defaultSiteContent);
+          setContent(await loadDefaultSiteContent());
           setSiteUpdatedAt(null);
         }
       } finally {
@@ -112,7 +186,9 @@ const Home = (_props: HomeProps) => {
           const meta = await getSiteMetaAsync();
           if (!meta?.updatedAt || cancelled || meta.updatedAt === siteUpdatedAt) return;
           const params = new URLSearchParams(window.location.search);
-          const nextContent = params.get("preview") === "draft" ? (await getDraftContentAsync()) ?? defaultSiteContent : await getPublishedContentAsync();
+          const isDraftPreview = params.get("preview") === "draft";
+          const draft = isDraftPreview ? await getDraftContentAsync() : null;
+          const nextContent = draft ?? (await getPublishedContentAsync());
           if (!cancelled) {
             setContent(nextContent);
             setSiteUpdatedAt(meta.updatedAt);

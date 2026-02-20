@@ -1,10 +1,13 @@
-import { defaultSiteContent, type SiteContent } from "../data/siteData";
+import type { SiteContent } from "../data/siteData";
 import { apiGet, apiJson } from "../api/client";
 
 export const PUBLISHED_KEY = "site:published";
 export const DRAFT_KEY = "site:draft";
 
-const cloneDefault = (): SiteContent => JSON.parse(JSON.stringify(defaultSiteContent)) as SiteContent;
+const cloneDefaultAsync = async (): Promise<SiteContent> => {
+  const { defaultSiteContent } = await import("../data/siteData");
+  return JSON.parse(JSON.stringify(defaultSiteContent)) as SiteContent;
+};
 
 export type SiteMeta = {
   updatedAt: string;
@@ -18,9 +21,9 @@ export const getPublishedContent = (): SiteContent => {
 export const getPublishedContentAsync = async (): Promise<SiteContent> => {
   try {
     const response = await apiGet<{ content: SiteContent }>("/api/site/published");
-    return response.content ?? cloneDefault();
+    return response.content ?? (await cloneDefaultAsync());
   } catch {
-    return cloneDefault();
+    return cloneDefaultAsync();
   }
 };
 
@@ -67,5 +70,5 @@ export const publishContent = async (content?: SiteContent) => {
 
 export const resetContentToDefaults = async () => {
   const response = await apiJson<{ published: SiteContent }>("/api/site/reset", "POST");
-  return response.published ?? cloneDefault();
+  return response.published ?? (await cloneDefaultAsync());
 };
