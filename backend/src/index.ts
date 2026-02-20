@@ -83,6 +83,19 @@ const normalizePublicBaseUrl = (value: string) => {
   if (!trimmed) return "";
   return trimmed.replace(/\/+$/, "");
 };
+const parseOrigin = (value: string) => {
+  try {
+    return new URL(value).origin.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+type AuthCookieSameSite = "strict" | "lax" | "none";
+const parseAuthCookieSameSite = (value: string): AuthCookieSameSite | null => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "strict" || normalized === "lax" || normalized === "none") return normalized;
+  return null;
+};
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const hashEmailForAudit = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
@@ -118,6 +131,12 @@ const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Bool
 const CLIENT_PUBLIC_BASE_URL =
   normalizePublicBaseUrl(process.env.CLIENT_PUBLIC_BASE_URL ?? "") ||
   (CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5180");
+const configuredAuthCookieSameSite = parseAuthCookieSameSite(process.env.AUTH_COOKIE_SAME_SITE ?? "");
+const frontendPublicOrigin = parseOrigin(CLIENT_PUBLIC_BASE_URL);
+const apiPublicOrigin = parseOrigin(normalizePublicBaseUrl(API_PUBLIC_BASE_URL));
+const requiresCrossSiteCookie = isProduction && Boolean(frontendPublicOrigin && apiPublicOrigin && frontendPublicOrigin !== apiPublicOrigin);
+const authCookieSameSite: AuthCookieSameSite = configuredAuthCookieSameSite ?? (requiresCrossSiteCookie ? "none" : "strict");
+const authCookieSecure = isProduction || authCookieSameSite === "none";
 const isLocalLoopbackOrigin = (origin: string) => {
   try {
     const parsed = new URL(origin);
@@ -279,15 +298,15 @@ const bootstrap = async () => {
     const csrfToken = randomUUID();
     res.cookie(AUTH_COOKIE_NAME, signAuthToken(token), {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: "strict",
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
       path: "/",
       maxAge: Math.max(0, expiresAt - Date.now())
     });
     res.cookie(CSRF_COOKIE_NAME, csrfToken, {
       httpOnly: false,
-      secure: isProduction,
-      sameSite: "strict",
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
       path: "/",
       maxAge: Math.max(0, expiresAt - Date.now())
     });
@@ -296,14 +315,14 @@ const bootstrap = async () => {
   const clearAuthCookie = (res: express.Response) => {
     res.clearCookie(AUTH_COOKIE_NAME, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: "strict",
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
       path: "/"
     });
     res.clearCookie(CSRF_COOKIE_NAME, {
       httpOnly: false,
-      secure: isProduction,
-      sameSite: "strict",
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
       path: "/"
     });
   };
@@ -1749,7 +1768,7 @@ const bootstrap = async () => {
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())
-      )} tlsRejectUnauthorized=${String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false")} fromEmail=${
+      )} tlsRejectUnauthorized=${String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false")} authCookieSameSite=${authCookieSameSite} authCookieSecure=${String(authCookieSecure)} fromEmail=${
         startupSenderProfile.fromEmail || "(empty)"
       } missing=${startupMissingFields.length ? startupMissingFields.join(",") : "none"}`
     );
