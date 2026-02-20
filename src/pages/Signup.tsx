@@ -93,85 +93,63 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-50 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-cyan-300/40 blur-3xl dark:bg-cyan-900/20" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-blue-300/40 blur-3xl dark:bg-blue-900/20" />
+    <div className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <section className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h1 className="text-xl font-semibold">{title}</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{subtitle}</p>
 
-      <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200/70 bg-white/85 p-3 shadow-soft backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-        <aside className="rounded-2xl bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-6 text-white shadow-xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">AutoHub Security</p>
-          <h1 className="mt-2 text-3xl font-bold leading-tight">Secure Boss Access</h1>
-          <p className="mt-3 text-sm text-slate-200">Use your owner email and password to access admin.</p>
-        </aside>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{subtitle}</p>
+        {step === "credentials" ? (
+          <div className="mt-4 space-y-3">
+            <label className="block space-y-1 text-sm">
+              <span>Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@company.com"
+                className="h-10 w-full rounded border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password"
+                className="h-10 w-full rounded border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void startAuth()}
+              disabled={busy}
+              className="h-10 w-full rounded bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? "Processing..." : hasOwner ? "Login" : "Create Owner"}
+            </button>
           </div>
+        ) : null}
 
-          {step === "credentials" ? (
-            <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800/80 dark:bg-slate-950/30">
-              {hasOwner ? (
-                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                  Signup is disabled after first account creation. Login with the owner account.
-                </p>
-              ) : (
-                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                  Owner account is not provisioned. Client subscriptions remain available on the public site.
-                </p>
-              )}
-              <label className="block space-y-1 text-sm">
-                <span className="font-medium">Email</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@company.com"
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
-                />
-              </label>
-              <label className="block space-y-1 text-sm">
-                <span className="font-medium">Password</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Your boss account password"
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => void startAuth()}
-                disabled={busy}
-                className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy ? "Processing..." : "Continue"}
-              </button>
-            </div>
-          ) : null}
+        {step === "done" ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">Authenticated successfully.</p>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+              className="h-10 w-full rounded bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"
+            >
+              Go to Admin
+            </button>
+          </div>
+        ) : null}
 
-          {step === "done" ? (
-            <div className="space-y-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/60 p-4 dark:border-emerald-900/70 dark:bg-emerald-950/20">
-              <p className="text-sm text-emerald-700 dark:text-emerald-300">Authenticated successfully.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
-                  window.dispatchEvent(new PopStateEvent("popstate"));
-                }}
-                className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"
-              >
-                Go to Admin
-              </button>
-            </div>
-          ) : null}
-
-          {info ? <p className="mt-3 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">{info}</p> : null}
-          {error ? <p className="mt-3 rounded-lg bg-rose-50 px-2 py-1 text-xs text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">{error}</p> : null}
-        </section>
-      </div>
+        {info ? <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">{info}</p> : null}
+        {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
+      </section>
     </div>
   );
 };
