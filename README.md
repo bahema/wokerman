@@ -44,6 +44,11 @@ The workflow automatically:
 - Checkout affiliate links use:
   - `rel="sponsored nofollow noopener noreferrer"`
 
+## Security Operations
+
+- Security + backup/restore + incident response runbook:
+  - `SECURITY_RUNBOOK.md`
+
 ## Backend Deployment (Render)
 
 This repo includes `render.yaml` for backend deployment.

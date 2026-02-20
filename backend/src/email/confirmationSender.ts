@@ -285,3 +285,76 @@ export const sendSmtpTestEmail = async (input: {
     throw new EmailDeliveryError("SMTP_SEND_FAILED", smtpError.message, smtpError.code);
   }
 };
+
+export const sendAdminAlertEmail = async (input: {
+  toEmail: string;
+  subject: string;
+  text: string;
+  html?: string;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpSecure: boolean;
+}): Promise<ConfirmationDeliveryResult> => {
+  if (process.env.NODE_ENV === "test") {
+    return {
+      ok: true,
+      delivered: true,
+      provider: "console",
+      messageId: "test-message-id",
+      accepted: [input.toEmail],
+      rejected: []
+    };
+  }
+
+  if (!input.smtpHost || !input.smtpPort || !input.smtpUser || !input.smtpPass) {
+    throw new EmailDeliveryError("SMTP_NOT_CONFIGURED", "SMTP is not configured for admin alert email sending.");
+  }
+
+  try {
+    const effectiveFromEmail = resolveEffectiveFromEmail(input.fromEmail, input.smtpUser);
+    const transport = createSmtpTransport({
+      smtpHost: input.smtpHost,
+      smtpPort: input.smtpPort,
+      smtpSecure: input.smtpSecure,
+      smtpUser: input.smtpUser,
+      smtpPass: input.smtpPass
+    });
+    const info = await transport.sendMail({
+      from: asFrom(input.fromName || "AutoHub", effectiveFromEmail),
+      to: input.toEmail,
+      replyTo: input.replyTo || effectiveFromEmail,
+      subject: input.subject,
+      text: input.text,
+      html: input.html
+    });
+    const summary = summarizeInfo(info);
+    // eslint-disable-next-line no-console
+    console.log(
+      `ADMIN_ALERT_SENT messageId=${summary.messageId} to=${input.toEmail} accepted=${summary.accepted.join(";") || "(none)"} rejected=${
+        summary.rejected.join(";") || "(none)"
+      }`
+    );
+    return {
+      ok: true,
+      delivered: true,
+      provider: "smtp",
+      messageId: summary.messageId,
+      accepted: summary.accepted,
+      rejected: summary.rejected
+    };
+  } catch (error) {
+    const smtpError = toSmtpErrorLog(error);
+    // eslint-disable-next-line no-console
+    console.error(
+      `EMAIL_FAILED name=${smtpError.name} code=${smtpError.code} message=${smtpError.message} command=${
+        smtpError.command || "(none)"
+      } response=${smtpError.response || "(none)"}`
+    );
+    throw new EmailDeliveryError("SMTP_SEND_FAILED", smtpError.message, smtpError.code);
+  }
+};

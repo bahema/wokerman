@@ -26,7 +26,7 @@ type StartLoginResponse = {
 };
 
 const setSession = (session: SessionPayload) => {
-  localStorage.setItem(AUTH_TOKEN_KEY, session.token);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.setItem(AUTH_EMAIL_KEY, session.ownerEmail);
   localStorage.setItem(AUTH_EXPIRES_KEY, String(session.expiresAt));
 };
@@ -36,8 +36,6 @@ const clearLocalSession = () => {
   localStorage.removeItem(AUTH_EMAIL_KEY);
   localStorage.removeItem(AUTH_EXPIRES_KEY);
 };
-
-export const getAuthToken = () => localStorage.getItem(AUTH_TOKEN_KEY) ?? "";
 
 export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
@@ -66,8 +64,6 @@ export const verifyLoginOtp = async (email: string, otp: string) => {
 };
 
 export const hasAdminAccess = async () => {
-  const token = getAuthToken();
-  if (!token) return false;
   const expiresAt = Number(localStorage.getItem(AUTH_EXPIRES_KEY) ?? "0");
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     clearLocalSession();

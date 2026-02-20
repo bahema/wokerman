@@ -6,7 +6,7 @@ const resolveApiBaseUrls = () => {
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
-      return ["http://localhost:4000"];
+      return [`${window.location.protocol}//${host}:4000`];
     }
   }
   return [
@@ -16,18 +16,33 @@ const resolveApiBaseUrls = () => {
 };
 
 const API_BASE_URLS = resolveApiBaseUrls();
-const AUTH_TOKEN_KEY = "admin:auth:token";
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
+const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 
-const getAuthHeaders = (): Record<string, string> => {
-  let token = "";
-  try {
-    token = localStorage.getItem(AUTH_TOKEN_KEY) ?? "";
-  } catch {
-    token = "";
+const getAuthHeaders = (): Record<string, string> => ({});
+
+const getCookieValue = (name: string) => {
+  if (typeof document === "undefined") return "";
+  const raw = document.cookie;
+  if (!raw) return "";
+  for (const part of raw.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key !== name) continue;
+    const value = rest.join("=");
+    if (!value) return "";
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
   }
+  return "";
+};
+
+const getCsrfHeaders = (): Record<string, string> => {
+  const token = getCookieValue(CSRF_COOKIE_NAME);
   if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
+  return { "x-csrf-token": token };
 };
 
 const parseError = async (response: Response) => {
@@ -48,7 +63,7 @@ export const apiGet = async <T>(path: string): Promise<T> => {
 export const apiJson = async <T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> => {
   const response = await fetchWithFallback(path, {
     method,
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...getCsrfHeaders() },
     credentials: "include",
     body: body === undefined ? undefined : JSON.stringify(body)
   });
@@ -60,7 +75,7 @@ export const apiForm = async <T>(path: string, formData: FormData): Promise<T> =
   const response = await fetchWithFallback(path, {
     method: "POST",
     credentials: "include",
-    headers: { ...getAuthHeaders() },
+    headers: { ...getAuthHeaders(), ...getCsrfHeaders() },
     body: formData
   });
   if (!response.ok) throw new Error(await parseError(response));

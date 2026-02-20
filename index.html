@@ -25,6 +25,10 @@
       content="Discover high-performance Forex, Betting, Software, and Social automation products built for modern digital operators."
     />
     <meta name="twitter:image" content="/social-preview.svg" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src 'self' https://autohub-backend-production-5a29.up.railway.app https://autohub-backend-production.up.railway.app http://localhost:4000 http://127.0.0.1:4000 http://localhost:5173 http://127.0.0.1:5173 http://localhost:5180 http://127.0.0.1:5180 http://localhost:5181 http://127.0.0.1:5181 ws: wss:;"
+    />
     <link rel="canonical" href="/" />
   </head>
   <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -38,28 +42,7 @@
         Loading app...
       </div>
     </div>
-    <script>
-      (function () {
-        var params = new URLSearchParams(window.location.search);
-        var redirectedPath = params.get("p");
-        if (!redirectedPath) return;
-        var nextPath = redirectedPath.charAt(0) === "/" ? redirectedPath : "/" + redirectedPath;
-        var nextQuery = params.get("q") || "";
-        var nextHash = params.get("h") || "";
-        var finalUrl = nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
-        window.history.replaceState({}, "", finalUrl);
-      })();
-    </script>
-    <script>
-      window.setTimeout(function () {
-        var root = document.getElementById("root");
-        if (!root) return;
-        if (root.children.length === 1 && root.textContent && root.textContent.indexOf("Loading app...") !== -1) {
-          root.innerHTML =
-            '<div style="padding:16px;font-family:Segoe UI, Arial, sans-serif;color:#991b1b;background:#fff1f2;">App failed to initialize in browser. Open DevTools console and share the first red error line.</div>';
-        }
-      }, 4000);
-    </script>
+    <script src="/bootstrap.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ import express from "express";
 import type { SiteContent } from "../../shared/siteTypes";
 import multer from "multer";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
@@ -12,7 +12,7 @@ import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
 import { createCookieConsentStore } from "./cookies/store.js";
-import { EmailDeliveryError, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
+import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
@@ -27,13 +27,23 @@ const app = express();
 app.disable("x-powered-by");
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CORS_ORIGIN_RAW = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+const CORS_ORIGIN_RAW = process.env.CORS_ORIGIN ?? "http://localhost:5180";
 const DB_URL = process.env.DB_URL ?? "";
 const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
-const ALLOW_DEV_OTP = process.env.ALLOW_DEV_OTP === "true";
 const EMAIL_SUBSCRIPTIONS_ENABLED = process.env.EMAIL_SUBSCRIPTIONS_ENABLED !== "false";
 const isProduction = process.env.NODE_ENV === "production";
+const ALLOW_DEV_OTP = !isProduction && process.env.ALLOW_DEV_OTP === "true";
+const OWNER_BOOTSTRAP_EMAIL = (process.env.OWNER_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase();
+const OWNER_BOOTSTRAP_KEY = (process.env.OWNER_BOOTSTRAP_KEY ?? "").trim();
+const AUTH_COOKIE_NAME = "autohub_admin_session";
+const CSRF_COOKIE_NAME = "autohub_admin_csrf";
+const AUTH_COOKIE_SIGNING_KEY = (process.env.AUTH_COOKIE_SIGNING_KEY ?? "").trim();
+const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
+const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
+const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
+const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const resolveConfirmationMode = () => {
   const raw = (process.env.EMAIL_CONFIRM_MODE ?? process.env.EMAIL_CONFIRMATION_SEND_MODE ?? "").trim().toLowerCase();
   if (raw === "sync" || raw === "async") return raw;
@@ -59,6 +69,7 @@ const normalizePublicBaseUrl = (value: string) => {
   return trimmed.replace(/\/+$/, "");
 };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const hashEmailForAudit = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
   if (smtpPort === 465) return true;
   if (smtpPort === 587) return false;
@@ -68,7 +79,7 @@ const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
 const CLIENT_PUBLIC_BASE_URL =
   normalizePublicBaseUrl(process.env.CLIENT_PUBLIC_BASE_URL ?? "") ||
-  (CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5173");
+  (CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5180");
 const isLocalLoopbackOrigin = (origin: string) => {
   try {
     const parsed = new URL(origin);
@@ -82,13 +93,51 @@ const allowDevLoopbackOrigins = process.env.NODE_ENV !== "production" && CORS_OR
 const isOriginAllowed = (origin: string) =>
   CORS_ORIGINS.includes("*") || CORS_ORIGINS.includes(origin) || (allowDevLoopbackOrigins && isLocalLoopbackOrigin(origin));
 
+const assertProductionSecurityConfig = () => {
+  if (!isProduction) return;
+
+  const insecureCookieSigningKeys = new Set([
+    "",
+    "dev-cookie-signing-key",
+    "change-me",
+    "changeme",
+    "secret",
+    "autohub"
+  ]);
+  if (insecureCookieSigningKeys.has(AUTH_COOKIE_SIGNING_KEY.toLowerCase()) || AUTH_COOKIE_SIGNING_KEY.length < 32) {
+    throw new Error("Invalid production configuration: AUTH_COOKIE_SIGNING_KEY must be at least 32 chars and non-default.");
+  }
+
+  if (CORS_ORIGINS.includes("*")) {
+    throw new Error("Invalid production configuration: CORS_ORIGIN must not contain '*'.");
+  }
+
+  if (OWNER_BOOTSTRAP_KEY && OWNER_BOOTSTRAP_KEY.length < 24) {
+    throw new Error("Invalid production configuration: OWNER_BOOTSTRAP_KEY must be at least 24 chars.");
+  }
+};
+
 const bootstrap = async () => {
+  assertProductionSecurityConfig();
+  if (isProduction && process.env.ALLOW_DEV_OTP === "true") {
+    throw new Error("Invalid production configuration: ALLOW_DEV_OTP must be false.");
+  }
+  if (isProduction && !AUTH_COOKIE_SIGNING_KEY) {
+    throw new Error("Invalid production configuration: AUTH_COOKIE_SIGNING_KEY is required.");
+  }
+
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
+  const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
+    ...profile,
+    smtpPass: "",
+    hasSmtpPass: Boolean(profile.smtpPass.trim())
+  });
+  const effectiveCookieSigningKey = AUTH_COOKIE_SIGNING_KEY || "dev-cookie-signing-key";
 
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, mediaStore.uploadsDir),
@@ -146,20 +195,184 @@ const bootstrap = async () => {
     })
   );
 
-  const getAuthToken = (req: express.Request) => {
+  const getCookieValue = (req: express.Request, name: string) => {
+    const raw = req.headers.cookie ?? "";
+    if (!raw) return "";
+    for (const part of raw.split(";")) {
+      const [key, ...rest] = part.trim().split("=");
+      if (key !== name) continue;
+      const value = rest.join("=");
+      if (!value) return "";
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
+    return "";
+  };
+
+  const signAuthToken = (token: string) => {
+    const signature = createHmac("sha256", effectiveCookieSigningKey).update(token).digest("hex");
+    return `${token}.${signature}`;
+  };
+
+  const readSignedAuthToken = (signedValue: string) => {
+    const dotIndex = signedValue.lastIndexOf(".");
+    if (dotIndex <= 0 || dotIndex === signedValue.length - 1) return "";
+    const token = signedValue.slice(0, dotIndex);
+    const providedSignature = signedValue.slice(dotIndex + 1);
+    const expectedSignature = createHmac("sha256", effectiveCookieSigningKey).update(token).digest("hex");
+    const provided = Buffer.from(providedSignature);
+    const expected = Buffer.from(expectedSignature);
+    if (provided.length !== expected.length) return "";
+    if (!timingSafeEqual(provided, expected)) return "";
+    return token;
+  };
+
+  const setAuthCookie = (res: express.Response, token: string, expiresAt: number) => {
+    const csrfToken = randomUUID();
+    res.cookie(AUTH_COOKIE_NAME, signAuthToken(token), {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+      maxAge: Math.max(0, expiresAt - Date.now())
+    });
+    res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+      maxAge: Math.max(0, expiresAt - Date.now())
+    });
+  };
+
+  const clearAuthCookie = (res: express.Response) => {
+    res.clearCookie(AUTH_COOKIE_NAME, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/"
+    });
+    res.clearCookie(CSRF_COOKIE_NAME, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/"
+    });
+  };
+
+  const getAuthContext = (req: express.Request) => {
     const header = req.header("authorization") ?? "";
-    if (!header.toLowerCase().startsWith("bearer ")) return "";
-    return header.slice(7).trim();
+    if (header.toLowerCase().startsWith("bearer ")) {
+      return { token: header.slice(7).trim(), source: "header" as const };
+    }
+    const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
+    if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+    return { token: "", source: "none" as const };
+  };
+
+  const getAuthToken = (req: express.Request) => {
+    return getAuthContext(req).token;
+  };
+
+  const validateCsrfPair = (req: express.Request) => {
+    const cookieToken = getCookieValue(req, CSRF_COOKIE_NAME);
+    const headerToken = (req.header("x-csrf-token") ?? "").trim();
+    if (!cookieToken || !headerToken) return false;
+    const cookieBuffer = Buffer.from(cookieToken);
+    const headerBuffer = Buffer.from(headerToken);
+    if (cookieBuffer.length !== headerBuffer.length) return false;
+    return timingSafeEqual(cookieBuffer, headerBuffer);
   };
 
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const token = getAuthToken(req);
+    const { token, source } = getAuthContext(req);
     const valid = await authStore.verifySession(token);
     if (!valid) {
       res.status(401).json({ error: "Unauthorized. Login required." });
       return;
     }
+    res.locals.authSource = source;
+    (req as express.Request & { authSource?: "header" | "cookie" | "none" }).authSource = source;
     next();
+  };
+
+  const requireCsrfForCookieAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const source = ((req as express.Request & { authSource?: "header" | "cookie" }).authSource ?? res.locals.authSource) as
+      | "header"
+      | "cookie"
+      | undefined;
+    if (source !== "cookie") {
+      next();
+      return;
+    }
+    if (!validateCsrfPair(req)) {
+      res.status(403).json({ error: "CSRF validation failed." });
+      return;
+    }
+    next();
+  };
+
+  const resolveRequestIp = (req: express.Request) => {
+    const forwarded = req.header("x-forwarded-for");
+    if (forwarded) {
+      const first = forwarded.split(",")[0]?.trim();
+      if (first) return first;
+    }
+    return req.ip || req.socket.remoteAddress || "unknown";
+  };
+
+  const createIpRateLimiter = (keyPrefix: string, options: { windowMs: number; max: number }) => {
+    const buckets = new Map<string, { count: number; resetAt: number }>();
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const nowMs = Date.now();
+      const ip = resolveRequestIp(req);
+      const key = `${keyPrefix}:${ip}`;
+      const existing = buckets.get(key);
+      const bucket = !existing || existing.resetAt <= nowMs ? { count: 0, resetAt: nowMs + options.windowMs } : existing;
+      bucket.count += 1;
+      buckets.set(key, bucket);
+
+      if (bucket.count > options.max) {
+        const retryAfterSec = Math.max(1, Math.ceil((bucket.resetAt - nowMs) / 1000));
+        res.setHeader("Retry-After", String(retryAfterSec));
+        res.status(429).json({ error: "Too many requests. Try again later.", retryAfterSec });
+        return;
+      }
+
+      next();
+    };
+  };
+  const authIpLimiter = createIpRateLimiter("auth", {
+    windowMs: Number.isFinite(AUTH_IP_RATE_WINDOW_MS) && AUTH_IP_RATE_WINDOW_MS > 0 ? AUTH_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(AUTH_IP_RATE_MAX) && AUTH_IP_RATE_MAX > 0 ? AUTH_IP_RATE_MAX : 30
+  });
+  const subscribeIpLimiter = createIpRateLimiter("subscribe", {
+    windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+
+  const auditAdminAction = (action: string) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const started = Date.now();
+      res.on("finish", () => {
+        if (res.statusCode === 404) return;
+        void analyticsStore.add("admin_action", {
+          action,
+          method: req.method,
+          path: req.originalUrl,
+          statusCode: res.statusCode,
+          durationMs: Date.now() - started,
+          authSource: (req as express.Request & { authSource?: "header" | "cookie" | "none" }).authSource ?? "unknown",
+          ip: resolveRequestIp(req),
+          userAgent: req.header("user-agent") ?? "unknown",
+          at: new Date().toISOString()
+        });
+      });
+      next();
+    };
   };
 
   const sendAuthError = (res: express.Response, error: unknown, fallbackMessage: string) => {
@@ -350,10 +563,34 @@ const bootstrap = async () => {
     res.status(200).json(status);
   });
 
-  app.post("/api/auth/signup/start", async (req, res) => {
+  app.post("/api/auth/signup/start", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     try {
+      const status = await authStore.getStatus();
+      if (!status.hasOwner && isProduction) {
+        const bootstrapKeyHeader = req.header("x-owner-bootstrap-key") ?? "";
+        const bootstrapKeyBody = typeof req.body?.bootstrapKey === "string" ? req.body.bootstrapKey : "";
+        const bootstrapKey = (bootstrapKeyHeader || bootstrapKeyBody).trim();
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (!OWNER_BOOTSTRAP_EMAIL || !OWNER_BOOTSTRAP_KEY) {
+          res.status(503).json({
+            error: "OWNER_BOOTSTRAP_LOCKED",
+            message: "Owner bootstrap is locked. Configure OWNER_BOOTSTRAP_EMAIL and OWNER_BOOTSTRAP_KEY."
+          });
+          return;
+        }
+        if (normalizedEmail !== OWNER_BOOTSTRAP_EMAIL) {
+          res.status(403).json({ error: "OWNER_EMAIL_NOT_ALLOWED", message: "This email is not allowed for owner bootstrap." });
+          return;
+        }
+        if (bootstrapKey !== OWNER_BOOTSTRAP_KEY) {
+          res.status(403).json({ error: "OWNER_BOOTSTRAP_KEY_INVALID", message: "Invalid bootstrap key." });
+          return;
+        }
+      }
+
       const otp = await authStore.startSignup(email, password);
       await sendOtp({ email, code: otp, purpose: "signup" });
       res.status(200).json({ ok: true, devOtp: ALLOW_DEV_OTP ? otp : undefined });
@@ -362,18 +599,19 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/auth/signup/verify", async (req, res) => {
+  app.post("/api/auth/signup/verify", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const otp = typeof req.body?.otp === "string" ? req.body.otp : "";
     try {
       const session = await authStore.verifySignup(email, otp);
+      setAuthCookie(res, session.token, session.expiresAt);
       res.status(200).json({ ok: true, session });
     } catch (error) {
       sendAuthError(res, error, "Failed to verify signup OTP.");
     }
   });
 
-  app.post("/api/auth/login/start", async (req, res) => {
+  app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     try {
@@ -387,17 +625,19 @@ const bootstrap = async () => {
         });
         return;
       }
+      setAuthCookie(res, result.session.token, result.session.expiresAt);
       res.status(200).json({ ok: true, requiresOtp: false, session: result.session });
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
     }
   });
 
-  app.post("/api/auth/login/verify", async (req, res) => {
+  app.post("/api/auth/login/verify", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const otp = typeof req.body?.otp === "string" ? req.body.otp : "";
     try {
       const session = await authStore.verifyLogin(email, otp);
+      setAuthCookie(res, session.token, session.expiresAt);
       res.status(200).json({ ok: true, session });
     } catch (error) {
       sendAuthError(res, error, "Failed to verify login OTP.");
@@ -407,6 +647,7 @@ const bootstrap = async () => {
   app.get("/api/auth/session", async (req, res) => {
     const token = getAuthToken(req);
     const valid = await authStore.verifySession(token);
+    if (!valid) clearAuthCookie(res);
     res.status(200).json({ valid });
   });
 
@@ -415,13 +656,15 @@ const bootstrap = async () => {
     if (token) {
       await authStore.logout(token);
     }
+    clearAuthCookie(res);
     res.status(200).json({ ok: true });
   });
 
-  app.post("/api/auth/logout-all", requireAdminAuth, async (req, res) => {
+  app.post("/api/auth/logout-all", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.logout_all"), async (req, res) => {
     const token = getAuthToken(req);
     const keepCurrent = Boolean(req.body?.keepCurrent);
     await authStore.logoutAll(keepCurrent ? token : undefined);
+    if (!keepCurrent) clearAuthCookie(res);
     res.status(200).json({ ok: true, keepCurrent });
   });
 
@@ -434,7 +677,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.put("/api/auth/account", requireAdminAuth, async (req, res) => {
+  app.put("/api/auth/account", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.update_account"), async (req, res) => {
     try {
       const fullName = typeof req.body?.fullName === "string" ? req.body.fullName : "";
       const timezone = typeof req.body?.timezone === "string" ? req.body.timezone : "UTC";
@@ -446,12 +689,13 @@ const bootstrap = async () => {
     }
   });
 
-  app.put("/api/auth/password", requireAdminAuth, async (req, res) => {
+  app.put("/api/auth/password", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.change_password"), async (req, res) => {
     try {
       const token = getAuthToken(req);
       const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
       const session = await authStore.changePassword(currentPassword, newPassword, token);
+      setAuthCookie(res, session.token, session.expiresAt);
       res.status(200).json({ ok: true, session });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update password." });
@@ -463,7 +707,7 @@ const bootstrap = async () => {
     res.status(200).json({ items });
   });
 
-  app.post("/api/media", requireAdminAuth, upload.array("files", 20), async (req, res) => {
+  app.post("/api/media", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.upload"), upload.array("files", 20), async (req, res) => {
     const files = (req.files as Express.Multer.File[]) ?? [];
     if (!files.length) {
       res.status(400).json({ error: "No files uploaded. Use form-data field 'files'." });
@@ -486,7 +730,7 @@ const bootstrap = async () => {
     res.status(201).json({ items: created });
   });
 
-  app.delete("/api/media/:id", requireAdminAuth, async (req, res) => {
+  app.delete("/api/media/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.delete"), async (req, res) => {
     const mediaId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const removed = await mediaStore.remove(mediaId);
     if (!removed) {
@@ -511,7 +755,7 @@ const bootstrap = async () => {
     res.status(200).json(meta);
   });
 
-  app.put("/api/site/draft", requireAdminAuth, async (req, res) => {
+  app.put("/api/site/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.save_draft"), async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     if (!payload || typeof payload !== "object") {
       res.status(400).json({ error: "content payload is required." });
@@ -525,7 +769,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/site/publish", requireAdminAuth, async (req, res) => {
+  app.post("/api/site/publish", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.publish"), async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     try {
       const content = await siteStore.publish(payload);
@@ -535,7 +779,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/site/reset", requireAdminAuth, async (_req, res) => {
+  app.post("/api/site/reset", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.reset"), async (_req, res) => {
     const next = await siteStore.reset();
     res.status(200).json({ published: next.published, draft: next.draft });
   });
@@ -619,7 +863,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/subscribe", async (req, res) => {
+  app.post("/api/email/subscribe", subscribeIpLimiter, async (req, res) => {
     if (!EMAIL_SUBSCRIPTIONS_ENABLED) {
       res.status(503).json({
         error: "SUBSCRIPTIONS_DISABLED",
@@ -761,7 +1005,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/subscribers/:id/resend-confirmation", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/subscribers/:id/resend-confirmation", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.resend_confirmation"), async (req, res) => {
     const subscriberId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     try {
       const subscriber = await emailStore.getSubscriberById(subscriberId);
@@ -769,8 +1013,11 @@ const bootstrap = async () => {
         res.status(404).json({ error: "Subscriber not found." });
         return;
       }
-      if (subscriber.status !== EMAIL_SUBSCRIBER_STATUS.pending) {
-        res.status(400).json({ error: "Only pending subscribers can receive confirmation resend." });
+      const canResendConfirmation =
+        subscriber.status === EMAIL_SUBSCRIBER_STATUS.pending ||
+        subscriber.status === EMAIL_SUBSCRIBER_STATUS.unsubscribed;
+      if (!canResendConfirmation) {
+        res.status(400).json({ error: "Only pending or unsubscribed subscribers can receive confirmation resend." });
         return;
       }
       if (EMAIL_CONFIRM_MODE === "sync") {
@@ -831,7 +1078,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.delete("/api/email/subscribers/:id", requireAdminAuth, async (req, res) => {
+  app.delete("/api/email/subscribers/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.delete_subscriber"), async (req, res) => {
     const subscriberId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     try {
       const deleted = await emailStore.deleteSubscriberById(subscriberId);
@@ -842,7 +1089,7 @@ const bootstrap = async () => {
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadDeleted,
         subscriberId: deleted.id,
-        meta: { source: "admin_email_analytics", email: deleted.email }
+        meta: { source: "admin_email_analytics", emailHash: hashEmailForAudit(deleted.email) }
       });
       res.status(200).json({ ok: true, deletedId: deleted.id });
     } catch (error) {
@@ -892,6 +1139,24 @@ const bootstrap = async () => {
       return;
     }
     try {
+      const subscriberBeforeUnsubscribe = await emailStore.getSubscriberByUnsubscribeToken(token);
+      if (!subscriberBeforeUnsubscribe) {
+        res.redirect(303, redirectToUnsubscribe("error", "invalid"));
+        return;
+      }
+      const subscriberEvents = await emailStore.listEventsBySubscriberId(subscriberBeforeUnsubscribe.id, 200);
+      const lastUnsubscribeEvent = subscriberEvents.find((item) => item.eventType === EMAIL_EVENT_TYPES.leadUnsubscribed);
+      const previousUnsubscribeCount = subscriberEvents.filter((item) => item.eventType === EMAIL_EVENT_TYPES.leadUnsubscribed).length;
+      const unsubscribeCount = previousUnsubscribeCount + 1;
+      const lastUnsubscribedAt = lastUnsubscribeEvent?.createdAt ?? "";
+      const hadResendAfterLastUnsubscribe = Boolean(lastUnsubscribedAt) &&
+        subscriberEvents.some(
+          (item) =>
+            item.eventType === EMAIL_EVENT_TYPES.leadConfirmationResent &&
+            item.createdAt > lastUnsubscribedAt
+        );
+      const notificationAt = new Date().toISOString();
+
       const subscriber = await emailStore.unsubscribeSubscriberByToken(token);
       if (!subscriber) {
         res.redirect(303, redirectToUnsubscribe("error", "invalid"));
@@ -900,15 +1165,88 @@ const bootstrap = async () => {
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadUnsubscribed,
         subscriberId: subscriber.id,
-        meta: { source: "quick_grabs" }
+        meta: {
+          source: "quick_grabs",
+          repeatAfterResend: hadResendAfterLastUnsubscribe,
+          unsubscribeCount,
+          at: notificationAt
+        }
       });
+
+      let deletedAfterRepeatUnsubscribe = false;
+      if (hadResendAfterLastUnsubscribe) {
+        const deleted = await emailStore.deleteSubscriberById(subscriber.id);
+        if (deleted) {
+          deletedAfterRepeatUnsubscribe = true;
+          await emailStore.addEvent({
+            eventType: EMAIL_EVENT_TYPES.leadDeleted,
+            subscriberId: deleted.id,
+            meta: {
+              source: "auto_unsubscribe_repeat",
+              reason: "repeat_unsubscribe_after_resend",
+              emailHash: hashEmailForAudit(deleted.email),
+              unsubscribeCount,
+              at: notificationAt
+            }
+          });
+        }
+      }
+
+      await analyticsStore.add("email.unsubscribe_notification", {
+        subscriberId: subscriber.id,
+        emailHash: hashEmailForAudit(subscriber.email),
+        source: "quick_grabs",
+        unsubscribeCount,
+        repeatAfterResend: hadResendAfterLastUnsubscribe,
+        deletedAfterRepeatUnsubscribe,
+        at: notificationAt
+      });
+      const senderProfile = await emailStore.getSenderProfile();
+      const adminAlertRecipient = (ADMIN_UNSUBSCRIBE_ALERT_EMAIL || senderProfile.replyTo || senderProfile.fromEmail).trim().toLowerCase();
+      if (EMAIL_PATTERN.test(adminAlertRecipient)) {
+        const subject = deletedAfterRepeatUnsubscribe
+          ? `AutoHub alert: subscriber auto-deleted after repeated unsubscribe (${subscriber.email})`
+          : `AutoHub alert: subscriber unsubscribed (${subscriber.email})`;
+        const text = [
+          `Subscriber: ${subscriber.email}`,
+          `Subscriber ID: ${subscriber.id}`,
+          `Unsubscribe count: ${String(unsubscribeCount)}`,
+          `Deleted after repeat unsubscribe: ${deletedAfterRepeatUnsubscribe ? "yes" : "no"}`,
+          `Repeat unsubscribe after resend: ${hadResendAfterLastUnsubscribe ? "yes" : "no"}`,
+          `Timestamp: ${notificationAt}`,
+          "Campaign: n/a (unsubscribe link flow)"
+        ].join("\n");
+        try {
+          await sendAdminAlertEmail({
+            toEmail: adminAlertRecipient,
+            subject,
+            text,
+            html: `<pre style="font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap">${text}</pre>`,
+            fromName: senderProfile.fromName,
+            fromEmail: senderProfile.fromEmail,
+            replyTo: senderProfile.replyTo,
+            smtpHost: senderProfile.smtpHost,
+            smtpPort: senderProfile.smtpPort,
+            smtpUser: senderProfile.smtpUser,
+            smtpPass: senderProfile.smtpPass,
+            smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
+          });
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[email] admin unsubscribe alert failed recipient=${adminAlertRecipient} message=${
+              error instanceof Error ? error.message : "Unknown admin alert error."
+            }`
+          );
+        }
+      }
       res.redirect(303, redirectToUnsubscribe("success"));
     } catch (error) {
       res.redirect(303, redirectToUnsubscribe("error", "failed"));
     }
   });
 
-  app.post("/api/email/test-smtp", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/test-smtp", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.test_smtp"), async (req, res) => {
     if (process.env.NODE_ENV === "production") {
       res.status(404).json({ error: "Not found." });
       return;
@@ -996,7 +1334,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/campaigns/draft", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/campaigns/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.save_campaign_draft"), async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -1027,7 +1365,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/campaigns/test", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/campaigns/test", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_test"), async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
     const bodyMode =
@@ -1065,7 +1403,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/campaigns/schedule", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/campaigns/schedule", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.schedule_campaign"), async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -1110,7 +1448,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/campaigns/send", requireAdminAuth, async (req, res) => {
+  app.post("/api/email/campaigns/send", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_campaign"), async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -1203,7 +1541,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.put("/api/email/templates/confirmation", requireAdminAuth, async (req, res) => {
+  app.put("/api/email/templates/confirmation", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.update_confirmation_template"), async (req, res) => {
     const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
     const mode =
       payload.mode === EMAIL_CAMPAIGN_BODY_MODE.rich || payload.mode === EMAIL_CAMPAIGN_BODY_MODE.html
@@ -1244,13 +1582,13 @@ const bootstrap = async () => {
   app.get("/api/email/settings/sender-profile", requireAdminAuth, async (_req, res) => {
     try {
       const profile = await emailStore.getSenderProfile();
-      res.status(200).json({ profile });
+      res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load sender profile." });
     }
   });
 
-  app.put("/api/email/settings/sender-profile", requireAdminAuth, async (req, res) => {
+  app.put("/api/email/settings/sender-profile", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.update_sender_profile"), async (req, res) => {
     const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
     const fromName = typeof payload.fromName === "string" ? payload.fromName.trim() : "";
     const fromEmail = typeof payload.fromEmail === "string" ? payload.fromEmail.trim().toLowerCase() : "";
@@ -1313,7 +1651,7 @@ const bootstrap = async () => {
         includeUnsubscribeFooter,
         checks
       });
-      res.status(200).json({ profile });
+      res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save sender profile." });
     }
