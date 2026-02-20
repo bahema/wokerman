@@ -37,6 +37,7 @@ const CORS_ORIGIN_RAW =
     "http://localhost:5173",
     "http://127.0.0.1:5173"
   ].join(",");
+const EXTRA_CORS_ORIGINS_RAW = process.env.EXTRA_CORS_ORIGINS ?? "https://bahema.github.io";
 const DB_URL = process.env.DB_URL ?? "";
 const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
@@ -168,6 +169,7 @@ const resetSecurityStateIfRequested = async (baseDir: string) => {
 };
 
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
+const EXTRA_CORS_ORIGINS = EXTRA_CORS_ORIGINS_RAW.split(",").map(normalizeOrigin).filter(Boolean);
 const CLIENT_PUBLIC_BASE_URL =
   normalizePublicBaseUrl(process.env.CLIENT_PUBLIC_BASE_URL ?? "") ||
   (CORS_ORIGINS.find((origin) => origin && origin !== "*") ?? "http://localhost:5180");
@@ -191,7 +193,10 @@ const isLocalLoopbackOrigin = (origin: string) => {
 };
 const allowDevLoopbackOrigins = process.env.NODE_ENV !== "production" && CORS_ORIGINS.some(isLocalLoopbackOrigin);
 const isOriginAllowed = (origin: string) =>
-  CORS_ORIGINS.includes("*") || CORS_ORIGINS.includes(origin) || (allowDevLoopbackOrigins && isLocalLoopbackOrigin(origin));
+  CORS_ORIGINS.includes("*") ||
+  CORS_ORIGINS.includes(origin) ||
+  EXTRA_CORS_ORIGINS.includes(origin) ||
+  (allowDevLoopbackOrigins && isLocalLoopbackOrigin(origin));
 
 const assertProductionSecurityConfig = () => {
   if (!isProduction) return;

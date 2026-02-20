@@ -13,6 +13,10 @@ const resolveApiBaseUrls = () => {
   if (host === "localhost" || host === "127.0.0.1") {
     return [`${window.location.protocol}//${host}:4000`];
   }
+  // GitHub Pages serves static assets only; API must fall back to Railway when env is missing.
+  if (host.endsWith(".github.io")) {
+    return [window.location.origin, "https://autohub-backend-production.up.railway.app"];
+  }
   return [window.location.origin];
 };
 
