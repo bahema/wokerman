@@ -4,6 +4,7 @@ import express from "express";
 import type { SiteContent } from "../../shared/siteTypes";
 import multer from "multer";
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
@@ -41,7 +42,6 @@ const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 const resolveAuthCookieSigningKey = () =>
   (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
 const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
-const EPHEMERAL_AUTH_COOKIE_SIGNING_KEY = createHash("sha256").update(`${randomUUID()}-${Date.now()}`).digest("hex");
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
@@ -89,6 +89,29 @@ const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
   if (smtpPort === 465) return true;
   if (smtpPort === 587) return false;
   return smtpSecure;
+};
+const resolveRuntimeSigningKey = async (
+  baseDir: string
+): Promise<{ key: string; source: "env" | "file_existing" | "file_created" }> => {
+  if (AUTH_COOKIE_SIGNING_KEY) {
+    return { key: AUTH_COOKIE_SIGNING_KEY, source: "env" };
+  }
+
+  const securityDir = path.join(baseDir, "security");
+  const keyPath = path.join(securityDir, "auth-cookie-signing.key");
+  try {
+    const existing = (await fs.readFile(keyPath, "utf-8")).trim();
+    if (existing.length >= 32) {
+      return { key: existing, source: "file_existing" };
+    }
+  } catch {
+    // key file does not exist yet
+  }
+
+  const generated = createHash("sha256").update(`${randomUUID()}-${randomUUID()}-${Date.now()}`).digest("hex");
+  await fs.mkdir(securityDir, { recursive: true });
+  await fs.writeFile(keyPath, generated, "utf-8");
+  return { key: generated, source: "file_created" };
 };
 
 const CORS_ORIGINS = CORS_ORIGIN_RAW.split(",").map(normalizeOrigin).filter(Boolean);
@@ -150,12 +173,15 @@ const bootstrap = async () => {
     smtpPass: "",
     hasSmtpPass: Boolean(profile.smtpPass.trim())
   });
-  const effectiveCookieSigningKey = AUTH_COOKIE_SIGNING_KEY || EPHEMERAL_AUTH_COOKIE_SIGNING_KEY;
-  if (isProduction && !AUTH_COOKIE_SIGNING_KEY) {
+  const runtimeSigningKey = await resolveRuntimeSigningKey(MEDIA_DIR);
+  const effectiveCookieSigningKey = runtimeSigningKey.key;
+  if (isProduction && runtimeSigningKey.source !== "env") {
+    const note =
+      runtimeSigningKey.source === "file_existing"
+        ? "Using persisted local signing key from storage."
+        : "Generated and persisted local signing key in storage.";
     // eslint-disable-next-line no-console
-    console.warn(
-      "[security] Missing AUTH_COOKIE_SIGNING_KEY/AUTH_COOKIE_SECRET/SESSION_SECRET. Using ephemeral signing key; sessions will reset on restart."
-    );
+    console.warn(`[security] Missing AUTH_COOKIE_SIGNING_KEY/AUTH_COOKIE_SECRET/SESSION_SECRET. ${note}`);
   }
 
   const storage = multer.diskStorage({

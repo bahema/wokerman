@@ -5,7 +5,7 @@
     "buildCommand": "npm --prefix backend ci --no-audit --no-fund || npm --prefix backend install --no-audit --no-fund && npm --prefix backend run build"
   },
   "deploy": {
-    "startCommand": "npm --prefix backend run start",
+    "startCommand": "node backend/dist/backend/src/index.js",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
