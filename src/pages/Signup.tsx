@@ -25,7 +25,6 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   const [statusReady, setStatusReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [bootstrapKey, setBootstrapKey] = useState("");
   const [step, setStep] = useState<"credentials" | "done">("credentials");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -63,7 +62,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
       if (hasOwner) {
         await startLogin(email.trim().toLowerCase(), password);
       } else {
-        await startSignup(email.trim().toLowerCase(), password, bootstrapKey);
+        await startSignup(email.trim().toLowerCase(), password);
       }
       const sessionValid = await hasAdminAccess();
       if (!sessionValid) {
@@ -98,22 +97,11 @@ const Signup = ({ postLoginPath }: SignupProps) => {
       <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-cyan-300/40 blur-3xl dark:bg-cyan-900/20" />
       <div className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-blue-300/40 blur-3xl dark:bg-blue-900/20" />
 
-      <div className="mx-auto grid w-full max-w-5xl gap-5 rounded-3xl border border-slate-200/70 bg-white/85 p-3 shadow-soft backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75 lg:grid-cols-[1.1fr,1fr]">
+      <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200/70 bg-white/85 p-3 shadow-soft backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
         <aside className="rounded-2xl bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-6 text-white shadow-xl">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">AutoHub Security</p>
           <h1 className="mt-2 text-3xl font-bold leading-tight">Secure Boss Access</h1>
-          <p className="mt-3 text-sm text-slate-200">Single-owner account model with email + password authentication.</p>
-
-          <div className="mt-8 space-y-3">
-            <div className="rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur">
-              <p className="text-xs uppercase tracking-wide text-slate-300">Rule</p>
-              <p className="mt-1 text-sm font-medium">Owner login only. No client account registration.</p>
-            </div>
-            <div className="rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur">
-              <p className="text-xs uppercase tracking-wide text-slate-300">Route</p>
-              <p className="mt-1 text-sm font-medium">Authenticated user enters `/admin`.</p>
-            </div>
-          </div>
+          <p className="mt-3 text-sm text-slate-200">Use your owner email and password to access admin.</p>
         </aside>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -153,18 +141,6 @@ const Signup = ({ postLoginPath }: SignupProps) => {
                   className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
                 />
               </label>
-              {!hasOwner ? (
-                <label className="block space-y-1 text-sm">
-                  <span className="font-medium">Owner Bootstrap Key</span>
-                  <input
-                    type="password"
-                    value={bootstrapKey}
-                    onChange={(event) => setBootstrapKey(event.target.value)}
-                    placeholder="Owner bootstrap key"
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
-                  />
-                </label>
-              ) : null}
               <button
                 type="button"
                 onClick={() => void startAuth()}

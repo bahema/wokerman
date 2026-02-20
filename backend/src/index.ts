@@ -42,9 +42,6 @@ const API_PUBLIC_BASE_URL = process.env.API_PUBLIC_BASE_URL ?? `http://localhost
 const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "storage");
 const EMAIL_SUBSCRIPTIONS_ENABLED = process.env.EMAIL_SUBSCRIPTIONS_ENABLED !== "false";
 const isProduction = process.env.NODE_ENV === "production";
-const ALLOW_DEV_OTP = !isProduction && process.env.ALLOW_DEV_OTP === "true";
-const OWNER_BOOTSTRAP_EMAIL = (process.env.OWNER_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase();
-const OWNER_BOOTSTRAP_KEY = (process.env.OWNER_BOOTSTRAP_KEY ?? "").trim();
 const RESET_SECURITY_STATE_ON_BOOT = process.env.RESET_SECURITY_STATE_ON_BOOT === "true";
 const RESET_SECURITY_STATE_CONFIRM = (process.env.RESET_SECURITY_STATE_CONFIRM ?? "").trim();
 const AUTH_COOKIE_NAME = "autohub_admin_session";
@@ -217,16 +214,10 @@ const assertProductionSecurityConfig = () => {
     throw new Error("Invalid production configuration: CORS_ORIGIN must not contain '*'.");
   }
 
-  if (OWNER_BOOTSTRAP_KEY && OWNER_BOOTSTRAP_KEY.length < 24) {
-    throw new Error("Invalid production configuration: OWNER_BOOTSTRAP_KEY must be at least 24 chars.");
-  }
 };
 
 const bootstrap = async () => {
   assertProductionSecurityConfig();
-  if (isProduction && process.env.ALLOW_DEV_OTP === "true") {
-    throw new Error("Invalid production configuration: ALLOW_DEV_OTP must be false.");
-  }
   await resetSecurityStateIfRequested(MEDIA_DIR);
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
@@ -684,43 +675,12 @@ const bootstrap = async () => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     try {
-      const status = await authStore.getStatus();
-      if (!status.hasOwner && isProduction) {
-        const bootstrapKeyHeader = req.header("x-owner-bootstrap-key") ?? "";
-        const bootstrapKeyBody = typeof req.body?.bootstrapKey === "string" ? req.body.bootstrapKey : "";
-        const bootstrapKey = (bootstrapKeyHeader || bootstrapKeyBody).trim();
-        const normalizedEmail = email.trim().toLowerCase();
-
-        if (!OWNER_BOOTSTRAP_EMAIL || !OWNER_BOOTSTRAP_KEY) {
-          res.status(503).json({
-            error: "OWNER_BOOTSTRAP_LOCKED",
-            message: "Owner bootstrap is locked. Configure OWNER_BOOTSTRAP_EMAIL and OWNER_BOOTSTRAP_KEY."
-          });
-          return;
-        }
-        if (normalizedEmail !== OWNER_BOOTSTRAP_EMAIL) {
-          res.status(403).json({ error: "OWNER_EMAIL_NOT_ALLOWED", message: "This email is not allowed for owner bootstrap." });
-          return;
-        }
-        if (bootstrapKey !== OWNER_BOOTSTRAP_KEY) {
-          res.status(403).json({ error: "OWNER_BOOTSTRAP_KEY_INVALID", message: "Invalid bootstrap key." });
-          return;
-        }
-      }
-
       const session = await authStore.startSignup(email, password);
       setAuthCookie(res, session.token, session.expiresAt);
       res.status(200).json({ ok: true });
     } catch (error) {
       sendAuthError(res, error, "Failed to start signup.");
     }
-  });
-
-  app.post("/api/auth/signup/verify", authIpLimiter, async (req, res) => {
-    res.status(410).json({
-      error: "OTP_FLOW_DISABLED",
-      message: "Signup OTP verification is disabled. Use /api/auth/signup/start with email and password."
-    });
   });
 
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
@@ -733,13 +693,6 @@ const bootstrap = async () => {
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
     }
-  });
-
-  app.post("/api/auth/login/verify", authIpLimiter, async (req, res) => {
-    res.status(410).json({
-      error: "OTP_FLOW_DISABLED",
-      message: "Login OTP verification is disabled. Use /api/auth/login/start with email and password."
-    });
   });
 
   app.get("/api/auth/session", async (req, res) => {
@@ -779,8 +732,7 @@ const bootstrap = async () => {
     try {
       const fullName = typeof req.body?.fullName === "string" ? req.body.fullName : "";
       const timezone = typeof req.body?.timezone === "string" ? req.body.timezone : "UTC";
-      const twoFactorEnabled = Boolean(req.body?.twoFactorEnabled);
-      const account = await authStore.updateAccountSettings({ fullName, timezone, twoFactorEnabled });
+      const account = await authStore.updateAccountSettings({ fullName, timezone });
       res.status(200).json(account);
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save account settings." });

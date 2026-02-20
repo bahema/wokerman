@@ -6,8 +6,7 @@ const defaultAccount: AccountSettingsPayload = {
   fullName: "Boss Admin",
   email: "admin@example.com",
   role: "Owner",
-  timezone: "UTC",
-  twoFactorEnabled: false
+  timezone: "UTC"
 };
 
 const AccountSettingsEditor = () => {

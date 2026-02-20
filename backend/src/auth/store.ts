@@ -1,4 +1,4 @@
-import { randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createAsyncQueue } from "../utils/asyncQueue.js";
@@ -8,24 +8,9 @@ type OwnerRecord = {
   fullName: string;
   role: string;
   timezone: string;
-  twoFactorEnabled: boolean;
   passwordHash: string;
   passwordSalt: string;
   createdAt: string;
-};
-
-type PendingSignupRecord = {
-  email: string;
-  passwordHash: string;
-  passwordSalt: string;
-  expiresAt: number;
-};
-
-type PendingOtpRecord = {
-  email: string;
-  purpose: "signup" | "login";
-  code: string;
-  expiresAt: number;
 };
 
 type SessionRecord = {
@@ -48,19 +33,15 @@ type SessionPayload = {
 
 type AuthStoreRecord = {
   owner: OwnerRecord | null;
-  pendingSignup: PendingSignupRecord | null;
-  pendingOtp: PendingOtpRecord | null;
   sessions: SessionRecord[];
   attemptState: Record<string, AttemptState>;
   updatedAt: string;
 };
 
-const SIGNUP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const ATTEMPT_BLOCK_MS = 15 * 60 * 1000;
 const MAX_START_ATTEMPTS = 5;
-const MAX_VERIFY_ATTEMPTS = 5;
 
 const ensureDir = async (dir: string) => {
   await fs.mkdir(dir, { recursive: true });
@@ -105,7 +86,7 @@ export class AuthRateLimitError extends Error {
 
 export const isAuthRateLimitError = (error: unknown): error is AuthRateLimitError => error instanceof AuthRateLimitError;
 
-const attemptKey = (scope: "signup:start" | "signup:verify" | "login:start" | "login:verify", email: string) => `${scope}:${email}`;
+const attemptKey = (scope: "signup:start" | "login:start", email: string) => `${scope}:${email}`;
 
 const registerFailedAttempt = (record: AuthStoreRecord, key: string, maxAttempts: number) => {
   const timestamp = now();
@@ -143,8 +124,7 @@ const normalizeOwner = (owner: OwnerRecord | null): OwnerRecord | null => {
     ...owner,
     fullName: owner.fullName || "Boss Admin",
     role: owner.role || "Owner",
-    timezone: owner.timezone || "UTC",
-    twoFactorEnabled: Boolean(owner.twoFactorEnabled)
+    timezone: owner.timezone || "UTC"
   };
 };
 
@@ -155,8 +135,6 @@ export const createAuthStore = async (baseDir: string) => {
 
   const initial: AuthStoreRecord = {
     owner: null,
-    pendingSignup: null,
-    pendingOtp: null,
     sessions: [],
     attemptState: {},
     updatedAt: new Date().toISOString()
@@ -224,7 +202,6 @@ export const createAuthStore = async (baseDir: string) => {
         fullName: "Boss Admin",
         role: "Owner",
         timezone: "UTC",
-        twoFactorEnabled: false,
         passwordHash,
         passwordSalt,
         createdAt: new Date().toISOString()
@@ -240,8 +217,6 @@ export const createAuthStore = async (baseDir: string) => {
           {
             ...record,
             owner,
-            pendingSignup: null,
-            pendingOtp: null,
             sessions: [session]
           },
           rateKey
@@ -253,12 +228,6 @@ export const createAuthStore = async (baseDir: string) => {
         expiresAt: session.expiresAt,
         ownerEmail: next.owner?.email ?? normalizedEmail
       };
-    });
-  };
-
-  const verifySignup = async (_email: string, _otpCode: string): Promise<SessionPayload> => {
-    return runExclusive(async () => {
-      throw new Error("OTP verification is disabled. Use email and password login.");
     });
   };
 
@@ -283,7 +252,6 @@ export const createAuthStore = async (baseDir: string) => {
         clearAttempt(
           {
             ...record,
-            pendingOtp: null,
             sessions: [...activeSessions, session]
           },
           rateKey
@@ -294,12 +262,6 @@ export const createAuthStore = async (baseDir: string) => {
         expiresAt: session.expiresAt,
         ownerEmail: normalizedEmail
       };
-    });
-  };
-
-  const verifyLogin = async (_email: string, _otpCode: string): Promise<SessionPayload> => {
-    return runExclusive(async () => {
-      throw new Error("OTP verification is disabled. Use email and password login.");
     });
   };
 
@@ -336,15 +298,13 @@ export const createAuthStore = async (baseDir: string) => {
       fullName: record.owner.fullName,
       email: record.owner.email,
       role: record.owner.role,
-      timezone: record.owner.timezone,
-      twoFactorEnabled: record.owner.twoFactorEnabled
+      timezone: record.owner.timezone
     };
   };
 
   const updateAccountSettings = async (settings: {
     fullName: string;
     timezone: string;
-    twoFactorEnabled: boolean;
   }) => {
     return runExclusive(async () => {
       const record = await read();
@@ -355,17 +315,14 @@ export const createAuthStore = async (baseDir: string) => {
         // Single-owner identity is immutable after first signup.
         email: record.owner.email,
         role: record.owner.role || "Owner",
-        timezone: settings.timezone.trim() || "UTC",
-        // OTP/2FA is disabled for this deployment mode.
-        twoFactorEnabled: false
+        timezone: settings.timezone.trim() || "UTC"
       };
       await save({ ...record, owner: nextOwner });
       return {
         fullName: nextOwner.fullName,
         email: nextOwner.email,
         role: nextOwner.role,
-        timezone: nextOwner.timezone,
-        twoFactorEnabled: nextOwner.twoFactorEnabled
+        timezone: nextOwner.timezone
       };
     });
   };
@@ -389,7 +346,6 @@ export const createAuthStore = async (baseDir: string) => {
       await save({
         ...record,
         owner: nextOwner,
-        pendingOtp: null,
         // Rotate all sessions after password change; issue exactly one fresh session.
         sessions: [rotatedSession]
       });
@@ -404,9 +360,7 @@ export const createAuthStore = async (baseDir: string) => {
   return {
     getStatus,
     startSignup,
-    verifySignup,
     startLogin,
-    verifyLogin,
     verifySession,
     logout,
     logoutAll,

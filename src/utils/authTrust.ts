@@ -12,7 +12,6 @@ export type AccountSettingsPayload = {
   email: string;
   role: string;
   timezone: string;
-  twoFactorEnabled: boolean;
 };
 
 type StartLoginResponse = {
@@ -25,13 +24,8 @@ export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
 };
 
-export const startSignup = async (email: string, password: string, bootstrapKey?: string) => {
-  const normalizedBootstrapKey = bootstrapKey?.trim();
-  return apiJson<{ ok: true }>(
-    "/api/auth/signup/start",
-    "POST",
-    normalizedBootstrapKey ? { email, password, bootstrapKey: normalizedBootstrapKey } : { email, password }
-  );
+export const startSignup = async (email: string, password: string) => {
+  return apiJson<{ ok: true }>("/api/auth/signup/start", "POST", { email, password });
 };
 
 export const startLogin = async (email: string, password: string) => {
