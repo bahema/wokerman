@@ -24,7 +24,7 @@ const resolveApiBaseUrl = () => {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") return `${window.location.protocol}//${host}:4000`;
   }
-  return "https://autohub-backend-production-5a29.up.railway.app";
+  return "https://autohub-backend-production.up.railway.app";
 };
 
 const runCheck = async (label: string, fn: () => Promise<void>): Promise<[string, CheckResult]> => {

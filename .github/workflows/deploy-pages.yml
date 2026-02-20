@@ -56,7 +56,7 @@ jobs:
       - name: Resolve API URL config
         shell: bash
         run: |
-          FALLBACK_API_URL="https://autohub-backend-production-5a29.up.railway.app"
+          FALLBACK_API_URL="https://autohub-backend-production.up.railway.app"
           if [ -z "$VITE_API_BASE_URL" ]; then
             echo "::warning::Missing repository variable VITE_API_BASE_URL. Falling back to $FALLBACK_API_URL"
             echo "VITE_API_BASE_URL=$FALLBACK_API_URL" >> "$GITHUB_ENV"
