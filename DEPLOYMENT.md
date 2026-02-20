@@ -27,9 +27,10 @@ Use `backend/.env.example` and set at minimum:
 
 ```env
 NODE_ENV=production
-PORT=4000
 CORS_ORIGIN=https://yourdomain.com
 API_PUBLIC_BASE_URL=https://api.yourdomain.com
+AUTH_COOKIE_SIGNING_KEY=at-least-32-char-random-secret
+TRUST_PROXY=1
 MEDIA_DIR=/var/lib/autohub/storage
 SMTP_HOST=...
 SMTP_PORT=...
@@ -37,6 +38,10 @@ SMTP_USER=...
 SMTP_PASS=...
 SMTP_FROM=...
 ```
+
+Notes:
+- On managed platforms (Render/Railway), do not hardcode `PORT`; use platform-provided `PORT`.
+- `AUTH_COOKIE_SIGNING_KEY` is mandatory in production and must be non-default and >=32 chars.
 
 ## 3. Persistent Storage
 
