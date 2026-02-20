@@ -14,6 +14,8 @@ export type Product = {
   id: string;
   position?: number;
   title: string;
+  price?: number;
+  priceLabel?: string;
   shortDescription: string;
   longDescription: string;
   features: string[];
@@ -51,6 +53,8 @@ export type SiteContent = {
     adsectionMan: {
       gadgets: {
         sectionTitle: string;
+        price: number;
+        priceBadge?: string;
         imageUrl: string;
         badgePrimary: string;
         badgeSecondary: string;
@@ -62,6 +66,8 @@ export type SiteContent = {
       };
       ai: {
         sectionTitle: string;
+        price: number;
+        priceBadge?: string;
         imageUrl: string;
         badgePrimary: string;
         badgeSecondary: string;
