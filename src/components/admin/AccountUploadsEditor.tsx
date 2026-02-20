@@ -24,7 +24,13 @@ const loadImage = (file: File): Promise<HTMLImageElement> =>
 const optimizeImageFile = async (file: File): Promise<File> => {
   if (!file.type.startsWith("image/") || file.size < MIN_SIZE_TO_OPTIMIZE_BYTES) return file;
 
-  const img = await loadImage(file);
+  let img: HTMLImageElement;
+  try {
+    img = await loadImage(file);
+  } catch {
+    // Some image formats/extensions may not decode in-browser; upload original file instead.
+    return file;
+  }
   const scale = Math.min(1, MAX_UPLOAD_DIMENSION / Math.max(img.width, img.height));
   const width = Math.max(1, Math.round(img.width * scale));
   const height = Math.max(1, Math.round(img.height * scale));
@@ -47,7 +53,16 @@ const optimizeImageFile = async (file: File): Promise<File> => {
   return new File([blob], `${baseName}.${ext}`, { type: targetType, lastModified: Date.now() });
 };
 
-const optimizeFiles = async (files: File[]) => Promise.all(files.map((file) => optimizeImageFile(file)));
+const optimizeFiles = async (files: File[]) =>
+  Promise.all(
+    files.map(async (file) => {
+      try {
+        return await optimizeImageFile(file);
+      } catch {
+        return file;
+      }
+    })
+  );
 
 const AccountUploadsEditor = () => {
   const [items, setItems] = useState<MediaItem[]>([]);
