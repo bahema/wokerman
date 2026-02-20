@@ -55,7 +55,6 @@ type AuthStoreRecord = {
   updatedAt: string;
 };
 
-const OTP_TTL_MS = 5 * 60 * 1000;
 const SIGNUP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
@@ -93,8 +92,6 @@ const verifyPassword = (password: string, hash: string, salt: string) => {
   if (savedHash.length !== nextHash.length) return false;
   return timingSafeEqual(savedHash, nextHash);
 };
-
-const createOtpCode = () => String(randomInt(100000, 1000000));
 
 export class AuthRateLimitError extends Error {
   retryAfterSec: number;
@@ -205,7 +202,7 @@ export const createAuthStore = async (baseDir: string) => {
     };
   };
 
-  const startSignup = async (email: string, password: string) => {
+  const startSignup = async (email: string, password: string): Promise<SessionPayload> => {
     return runExclusive(async () => {
       const normalizedEmail = email.trim().toLowerCase();
       const record = await read();
@@ -222,64 +219,14 @@ export const createAuthStore = async (baseDir: string) => {
       if (record.owner) throw new Error("Owner account already exists. Signup is disabled.");
 
       const { passwordHash, passwordSalt } = hashPassword(password);
-      const otp = createOtpCode();
-
-      await save(clearAttempt({
-        ...record,
-        pendingSignup: {
-          email: normalizedEmail,
-          passwordHash,
-          passwordSalt,
-          expiresAt: now() + SIGNUP_TTL_MS
-        },
-        pendingOtp: {
-          email: normalizedEmail,
-          purpose: "signup",
-          code: otp,
-          expiresAt: now() + OTP_TTL_MS
-        }
-      }, rateKey));
-
-      return otp;
-    });
-  };
-
-  const verifySignup = async (email: string, otpCode: string): Promise<SessionPayload> => {
-    return runExclusive(async () => {
-      const normalizedEmail = email.trim().toLowerCase();
-      const record = await read();
-      const rateKey = attemptKey("signup:verify", normalizedEmail || "unknown");
-      assertNotBlocked(record, rateKey);
-      if (record.owner) throw new Error("Owner account already exists. Signup is disabled.");
-      if (!record.pendingSignup || record.pendingSignup.expiresAt <= now()) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Signup request expired. Start again.");
-      }
-      if (!record.pendingOtp || record.pendingOtp.expiresAt <= now()) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("OTP expired. Request a new one.");
-      }
-      if (record.pendingOtp.purpose !== "signup") {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Invalid OTP purpose.");
-      }
-      if (record.pendingSignup.email !== normalizedEmail || record.pendingOtp.email !== normalizedEmail) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Email mismatch.");
-      }
-      if (record.pendingOtp.code !== otpCode.trim()) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Invalid OTP.");
-      }
-
       const owner: OwnerRecord = {
         email: normalizedEmail,
         fullName: "Boss Admin",
         role: "Owner",
         timezone: "UTC",
         twoFactorEnabled: false,
-        passwordHash: record.pendingSignup.passwordHash,
-        passwordSalt: record.pendingSignup.passwordSalt,
+        passwordHash,
+        passwordSalt,
         createdAt: new Date().toISOString()
       };
       const session: SessionRecord = {
@@ -288,13 +235,18 @@ export const createAuthStore = async (baseDir: string) => {
         expiresAt: now() + SESSION_TTL_MS
       };
 
-      const next = await save(clearAttempt({
-        ...record,
-        owner,
-        pendingSignup: null,
-        pendingOtp: null,
-        sessions: [session]
-      }, rateKey));
+      const next = await save(
+        clearAttempt(
+          {
+            ...record,
+            owner,
+            pendingSignup: null,
+            pendingOtp: null,
+            sessions: [session]
+          },
+          rateKey
+        )
+      );
 
       return {
         token: session.token,
@@ -304,10 +256,13 @@ export const createAuthStore = async (baseDir: string) => {
     });
   };
 
-  const startLogin = async (
-    email: string,
-    password: string
-  ): Promise<{ requiresOtp: true; otp: string } | { requiresOtp: false; session: SessionPayload }> => {
+  const verifySignup = async (_email: string, _otpCode: string): Promise<SessionPayload> => {
+    return runExclusive(async () => {
+      throw new Error("OTP verification is disabled. Use email and password login.");
+    });
+  };
+
+  const startLogin = async (email: string, password: string): Promise<SessionPayload> => {
     return runExclusive(async () => {
       const normalizedEmail = email.trim().toLowerCase();
       const record = await read();
@@ -318,83 +273,33 @@ export const createAuthStore = async (baseDir: string) => {
         throw new Error("Invalid credentials.");
       }
 
-      if (!record.owner.twoFactorEnabled) {
-        const session: SessionRecord = {
-          token: randomUUID(),
-          createdAt: new Date().toISOString(),
-          expiresAt: now() + SESSION_TTL_MS
-        };
-        const activeSessions = record.sessions.filter((item) => item.expiresAt > now());
-        await save(clearAttempt({
-          ...record,
-          pendingOtp: null,
-          sessions: [...activeSessions, session]
-        }, rateKey));
-        return {
-          requiresOtp: false,
-          session: {
-            token: session.token,
-            expiresAt: session.expiresAt,
-            ownerEmail: normalizedEmail
-          }
-        };
-      }
-
-      const otp = createOtpCode();
-      await save(clearAttempt({
-        ...record,
-        pendingOtp: {
-          email: normalizedEmail,
-          purpose: "login",
-          code: otp,
-          expiresAt: now() + OTP_TTL_MS
-        }
-      }, rateKey));
-      return { requiresOtp: true, otp };
-    });
-  };
-
-  const verifyLogin = async (email: string, otpCode: string): Promise<SessionPayload> => {
-    return runExclusive(async () => {
-      const normalizedEmail = email.trim().toLowerCase();
-      const record = await read();
-      const rateKey = attemptKey("login:verify", normalizedEmail || "unknown");
-      assertNotBlocked(record, rateKey);
-      if (!record.owner) throw new Error("Owner account not created yet.");
-      if (!record.owner.twoFactorEnabled) throw new Error("Two-factor login is disabled for this account.");
-      if (!record.pendingOtp || record.pendingOtp.expiresAt <= now()) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("OTP expired. Request a new one.");
-      }
-      if (record.pendingOtp.purpose !== "login") {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Invalid OTP purpose.");
-      }
-      if (record.pendingOtp.email !== normalizedEmail || record.owner.email !== normalizedEmail) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Email mismatch.");
-      }
-      if (record.pendingOtp.code !== otpCode.trim()) {
-        await save(registerFailedAttempt(record, rateKey, MAX_VERIFY_ATTEMPTS));
-        throw new Error("Invalid OTP.");
-      }
-
       const session: SessionRecord = {
         token: randomUUID(),
         createdAt: new Date().toISOString(),
         expiresAt: now() + SESSION_TTL_MS
       };
       const activeSessions = record.sessions.filter((item) => item.expiresAt > now());
-      await save(clearAttempt({
-        ...record,
-        pendingOtp: null,
-        sessions: [...activeSessions, session]
-      }, rateKey));
+      await save(
+        clearAttempt(
+          {
+            ...record,
+            pendingOtp: null,
+            sessions: [...activeSessions, session]
+          },
+          rateKey
+        )
+      );
       return {
         token: session.token,
         expiresAt: session.expiresAt,
         ownerEmail: normalizedEmail
       };
+    });
+  };
+
+  const verifyLogin = async (_email: string, _otpCode: string): Promise<SessionPayload> => {
+    return runExclusive(async () => {
+      throw new Error("OTP verification is disabled. Use email and password login.");
     });
   };
 
@@ -451,7 +356,8 @@ export const createAuthStore = async (baseDir: string) => {
         email: record.owner.email,
         role: record.owner.role || "Owner",
         timezone: settings.timezone.trim() || "UTC",
-        twoFactorEnabled: Boolean(settings.twoFactorEnabled)
+        // OTP/2FA is disabled for this deployment mode.
+        twoFactorEnabled: false
       };
       await save({ ...record, owner: nextOwner });
       return {

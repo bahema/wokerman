@@ -10,7 +10,6 @@ import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
-import { sendOtp } from "./auth/otpSender.js";
 import { createEmailStore } from "./email/store.js";
 import { createCookieConsentStore } from "./cookies/store.js";
 import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
@@ -709,41 +708,27 @@ const bootstrap = async () => {
         }
       }
 
-      const otp = await authStore.startSignup(email, password);
-      await sendOtp({ email, code: otp, purpose: "signup" });
-      res.status(200).json({ ok: true, devOtp: ALLOW_DEV_OTP ? otp : undefined });
+      const session = await authStore.startSignup(email, password);
+      setAuthCookie(res, session.token, session.expiresAt);
+      res.status(200).json({ ok: true });
     } catch (error) {
       sendAuthError(res, error, "Failed to start signup.");
     }
   });
 
   app.post("/api/auth/signup/verify", authIpLimiter, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
-    const otp = typeof req.body?.otp === "string" ? req.body.otp : "";
-    try {
-      const session = await authStore.verifySignup(email, otp);
-      setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      sendAuthError(res, error, "Failed to verify signup OTP.");
-    }
+    res.status(410).json({
+      error: "OTP_FLOW_DISABLED",
+      message: "Signup OTP verification is disabled. Use /api/auth/signup/start with email and password."
+    });
   });
 
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     try {
-      const result = await authStore.startLogin(email, password);
-      if (result.requiresOtp) {
-        await sendOtp({ email, code: result.otp, purpose: "login" });
-        res.status(200).json({
-          ok: true,
-          requiresOtp: true,
-          devOtp: ALLOW_DEV_OTP ? result.otp : undefined
-        });
-        return;
-      }
-      setAuthCookie(res, result.session.token, result.session.expiresAt);
+      const session = await authStore.startLogin(email, password);
+      setAuthCookie(res, session.token, session.expiresAt);
       res.status(200).json({ ok: true, requiresOtp: false });
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
@@ -751,15 +736,10 @@ const bootstrap = async () => {
   });
 
   app.post("/api/auth/login/verify", authIpLimiter, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
-    const otp = typeof req.body?.otp === "string" ? req.body.otp : "";
-    try {
-      const session = await authStore.verifyLogin(email, otp);
-      setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      sendAuthError(res, error, "Failed to verify login OTP.");
-    }
+    res.status(410).json({
+      error: "OTP_FLOW_DISABLED",
+      message: "Login OTP verification is disabled. Use /api/auth/login/start with email and password."
+    });
   });
 
   app.get("/api/auth/session", async (req, res) => {

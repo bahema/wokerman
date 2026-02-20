@@ -100,15 +100,6 @@ const AccountSettingsEditor = () => {
         </label>
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={form.twoFactorEnabled}
-          onChange={(event) => setForm((prev) => ({ ...prev, twoFactorEnabled: event.target.checked }))}
-        />
-        Enable two-factor authentication
-      </label>
-
       <div className="flex items-center gap-3">
         <button
           type="button"

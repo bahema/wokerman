@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAuthStatus, hasAdminAccess, startLoginOtp, startSignupOtp, verifyLoginOtp, verifySignupOtp } from "../utils/authTrust";
-import { resolveLoginStart, resolveSignupStart } from "./signupFlow";
+import { getAuthStatus, hasAdminAccess, startLogin, startSignup } from "../utils/authTrust";
 import { withBasePath } from "../utils/basePath";
 
 type SignupProps = {
@@ -27,8 +26,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [bootstrapKey, setBootstrapKey] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"credentials" | "otp" | "done">("credentials");
+  const [step, setStep] = useState<"credentials" | "done">("credentials");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,43 +60,26 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     setInfo("");
     setBusy(true);
     try {
-      const next = hasOwner
-        ? resolveLoginStart(await startLoginOtp(email.trim().toLowerCase(), password))
-        : resolveSignupStart((await startSignupOtp(email.trim().toLowerCase(), password, bootstrapKey)).devOtp);
-      setInfo(next.info);
-      setStep(next.step);
+      if (hasOwner) {
+        await startLogin(email.trim().toLowerCase(), password);
+      } else {
+        await startSignup(email.trim().toLowerCase(), password, bootstrapKey);
+      }
+      const sessionValid = await hasAdminAccess();
+      if (!sessionValid) {
+        throw new Error(
+          "Login succeeded, but no session cookie was stored. Enable third-party cookies for this site or deploy frontend/backend on the same domain."
+        );
+      }
+      setInfo(hasOwner ? "Login successful." : "Owner account created and authenticated.");
+      setStep("done");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to send OTP.";
+      const message = err instanceof Error ? err.message : "Failed to authenticate.";
       if (/invalid credentials/i.test(message) && hasOwner) {
         setError("Invalid credentials. Signup is disabled because an owner account already exists.");
       } else {
         setError(message);
       }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    setError("");
-    setInfo("");
-    setBusy(true);
-    try {
-      if (hasOwner) {
-        await verifyLoginOtp(email.trim().toLowerCase(), otp.trim());
-      } else {
-        await verifySignupOtp(email.trim().toLowerCase(), otp.trim());
-      }
-      const sessionValid = await hasAdminAccess();
-      if (!sessionValid) {
-        throw new Error(
-          "Login verification succeeded, but no session cookie was stored. Enable third-party cookies for this site or deploy frontend/backend on the same domain."
-        );
-      }
-      setStep("done");
-      setInfo(hasOwner ? "Login successful." : "Owner account created and authenticated.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify OTP.");
     } finally {
       setBusy(false);
     }
@@ -121,16 +102,12 @@ const Signup = ({ postLoginPath }: SignupProps) => {
         <aside className="rounded-2xl bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-6 text-white shadow-xl">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">AutoHub Security</p>
           <h1 className="mt-2 text-3xl font-bold leading-tight">Secure Boss Access</h1>
-          <p className="mt-3 text-sm text-slate-200">Single-owner account model with optional OTP verification based on account security settings.</p>
+          <p className="mt-3 text-sm text-slate-200">Single-owner account model with email + password authentication.</p>
 
           <div className="mt-8 space-y-3">
             <div className="rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur">
               <p className="text-xs uppercase tracking-wide text-slate-300">Rule</p>
               <p className="mt-1 text-sm font-medium">Owner login only. No client account registration.</p>
-            </div>
-            <div className="rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur">
-              <p className="text-xs uppercase tracking-wide text-slate-300">Rule</p>
-              <p className="mt-1 text-sm font-medium">OTP login is controlled from Account Settings.</p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur">
               <p className="text-xs uppercase tracking-wide text-slate-300">Route</p>
@@ -195,31 +172,6 @@ const Signup = ({ postLoginPath }: SignupProps) => {
                 className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {busy ? "Processing..." : "Continue"}
-              </button>
-            </div>
-          ) : null}
-
-          {step === "otp" ? (
-            <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800/80 dark:bg-slate-950/30">
-              <label className="block space-y-1 text-sm">
-                <span className="font-medium">OTP Code</span>
-                <input
-                  value={otp}
-                  onChange={(event) => setOtp(event.target.value)}
-                  placeholder="6-digit code"
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => void verifyOtp()}
-                disabled={busy}
-                className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy ? "Verifying..." : "Verify OTP & Login"}
-              </button>
-              <button type="button" onClick={() => setStep("credentials")} className="h-11 w-full rounded-xl border border-slate-300 text-sm dark:border-slate-700">
-                Back
               </button>
             </div>
           ) : null}

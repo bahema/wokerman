@@ -25,26 +25,22 @@ export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
 };
 
-export const startSignupOtp = async (email: string, password: string, bootstrapKey?: string) => {
+export const startSignup = async (email: string, password: string, bootstrapKey?: string) => {
   const normalizedBootstrapKey = bootstrapKey?.trim();
-  return apiJson<{ ok: true; devOtp?: string }>(
+  return apiJson<{ ok: true }>(
     "/api/auth/signup/start",
     "POST",
     normalizedBootstrapKey ? { email, password, bootstrapKey: normalizedBootstrapKey } : { email, password }
   );
 };
 
-export const verifySignupOtp = async (email: string, otp: string) => {
-  return apiJson<{ ok: true }>("/api/auth/signup/verify", "POST", { email, otp });
-};
-
-export const startLoginOtp = async (email: string, password: string) => {
+export const startLogin = async (email: string, password: string) => {
   return apiJson<StartLoginResponse>("/api/auth/login/start", "POST", { email, password });
 };
 
-export const verifyLoginOtp = async (email: string, otp: string) => {
-  return apiJson<{ ok: true }>("/api/auth/login/verify", "POST", { email, otp });
-};
+// Backward-compatible exports for older callers.
+export const startSignupOtp = startSignup;
+export const startLoginOtp = startLogin;
 
 export const hasAdminAccess = async () => {
   try {
