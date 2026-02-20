@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { clearAuth, getAuthStatus, startLoginOtp, startSignupOtp, verifyLoginOtp, verifySignupOtp } from "../utils/authTrust";
 import { resolveLoginStart, resolveSignupStart } from "./signupFlow";
+import { withBasePath } from "../utils/basePath";
 
 type Mode = "signup" | "login";
 
@@ -229,7 +230,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
               <button
                 type="button"
                 onClick={() => {
-                  window.history.pushState({}, "", nextPathAfterLogin);
+                  window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
                   window.dispatchEvent(new PopStateEvent("popstate"));
                 }}
                 className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"
