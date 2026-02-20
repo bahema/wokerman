@@ -206,7 +206,8 @@ const Signup = ({ postLoginPath }: SignupProps) => {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.assign(withBasePath(nextPathAfterLogin));
+                  window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
+                  window.dispatchEvent(new PopStateEvent("popstate"));
                 }}
                 className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500"
               >
