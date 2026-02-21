@@ -23,6 +23,9 @@ const resolveApiBaseUrls = () => {
 const API_BASE_URLS = resolveApiBaseUrls();
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
+const CSRF_STORAGE_KEY = "autohub_admin_csrf_header_token";
+let csrfTokenCache =
+  typeof window !== "undefined" ? window.sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "" : "";
 
 const getCookieValue = (name: string) => {
   if (typeof document === "undefined") return "";
@@ -43,9 +46,18 @@ const getCookieValue = (name: string) => {
 };
 
 const getCsrfHeaders = (): Record<string, string> => {
-  const token = getCookieValue(CSRF_COOKIE_NAME);
+  const token = csrfTokenCache || getCookieValue(CSRF_COOKIE_NAME);
   if (!token) return {};
   return { "x-csrf-token": token };
+};
+
+const cacheCsrfToken = (token: string) => {
+  const next = token.trim();
+  if (!next) return;
+  csrfTokenCache = next;
+  if (typeof window !== "undefined") {
+    window.sessionStorage.setItem(CSRF_STORAGE_KEY, next);
+  }
 };
 
 const parseError = async (response: Response) => {
@@ -98,6 +110,7 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     const url = `${base}${normalizedPath}`;
     try {
       const response = await fetch(url, init);
+      cacheCsrfToken(response.headers.get("x-csrf-token") ?? "");
       const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
       if (response.ok) {
         // Static hosts may return index.html (200 text/html) for unknown /api/* paths.

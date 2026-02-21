@@ -269,7 +269,8 @@ const bootstrap = async () => {
         }
         callback(new Error("CORS origin not allowed."));
       },
-      credentials: true
+      credentials: true,
+      exposedHeaders: ["x-csrf-token"]
     })
   );
   app.use((req, res, next) => {
@@ -372,6 +373,13 @@ const bootstrap = async () => {
       path: "/",
       maxAge: Math.max(0, expiresAt - Date.now())
     });
+    res.setHeader("x-csrf-token", csrfToken);
+  };
+  const attachCsrfHeaderFromRequest = (req: express.Request, res: express.Response) => {
+    const csrfToken = getCookieValue(req, CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      res.setHeader("x-csrf-token", csrfToken);
+    }
   };
   const setTrustedDeviceCookie = (res: express.Response, token: string, expiresAt: number) => {
     res.cookie(TRUSTED_DEVICE_COOKIE_NAME, signTrustedDeviceToken(token), {
@@ -442,6 +450,9 @@ const bootstrap = async () => {
     }
     if (trustedDeviceTokenHash) {
       await authStore.touchTrustedDevice(trustedDeviceTokenHash);
+    }
+    if (source === "cookie") {
+      attachCsrfHeaderFromRequest(req, res);
     }
     res.locals.authSource = source;
     (req as express.Request & { authSource?: "cookie" | "none" }).authSource = source;
@@ -755,6 +766,7 @@ const bootstrap = async () => {
     } else if (trustedDeviceTokenHash) {
       await authStore.touchTrustedDevice(trustedDeviceTokenHash);
     }
+    if (valid) attachCsrfHeaderFromRequest(req, res);
     res.status(200).json({ valid });
   });
 
