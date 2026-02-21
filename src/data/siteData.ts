@@ -373,6 +373,7 @@ export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
     gadgets: {
       sectionTitle: "Newer Gadgets",
       price: 79,
+      priceBadge: "$79",
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",
@@ -385,6 +386,7 @@ export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
     ai: {
       sectionTitle: "New AI Tools",
       price: 99,
+      priceBadge: "$99",
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",

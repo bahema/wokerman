@@ -49,6 +49,7 @@ export const validateContentForSave = (content: SiteContent) => {
     ];
     for (const entry of adEntries) {
       for (const [field, value] of Object.entries(entry.fields)) {
+        if (field === "priceBadge") continue;
         if (typeof value === "string" && !value.trim()) {
           return `Home UI validation failed: adsection ${entry.label}.${field} is required.`;
         }

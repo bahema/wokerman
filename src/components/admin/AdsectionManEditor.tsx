@@ -47,7 +47,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
     };
   }, [imagePickerOpen]);
 
-  const updateBox = (box: BoxKey, field: keyof BoxValue, nextValue: string) => {
+  const updateBoxText = (box: BoxKey, field: keyof BoxValue, nextValue: string) => {
     setDraft((prev) => ({
       ...prev,
       [box]: {
@@ -58,11 +58,24 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
     setSaveError((prev) => ({ ...prev, [box]: "" }));
     setSaveMessage((prev) => ({ ...prev, [box]: "" }));
   };
+  const updateBoxPrice = (box: BoxKey, nextValue: string) => {
+    const parsed = Number(nextValue);
+    setDraft((prev) => ({
+      ...prev,
+      [box]: {
+        ...prev[box],
+        price: Number.isFinite(parsed) ? parsed : 0
+      }
+    }));
+    setSaveError((prev) => ({ ...prev, [box]: "" }));
+    setSaveMessage((prev) => ({ ...prev, [box]: "" }));
+  };
 
   const filteredMedia = mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase()));
 
   const validateBox = (box: BoxKey) => {
     const entry = draft[box];
+    if (!Number.isFinite(entry.price) || entry.price <= 0) return "price must be greater than 0.";
     const requiredFields: Array<
       | "sectionTitle"
       | "imageUrl"
@@ -142,7 +155,27 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Section Title</span>
             <input
               value={data.sectionTitle}
-              onChange={(e) => updateBox(box, "sectionTitle", e.target.value)}
+              onChange={(e) => updateBoxText(box, "sectionTitle", e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="font-medium">Price</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={Number.isFinite(data.price) ? data.price : ""}
+              onChange={(e) => updateBoxPrice(box, e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="font-medium">Price Badge (optional)</span>
+            <input
+              value={data.priceBadge ?? ""}
+              onChange={(e) => updateBoxText(box, "priceBadge", e.target.value)}
+              placeholder="e.g. $79"
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -172,7 +205,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Badge Primary</span>
             <input
               value={data.badgePrimary}
-              onChange={(e) => updateBox(box, "badgePrimary", e.target.value)}
+              onChange={(e) => updateBoxText(box, "badgePrimary", e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -180,7 +213,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Badge Secondary</span>
             <input
               value={data.badgeSecondary}
-              onChange={(e) => updateBox(box, "badgeSecondary", e.target.value)}
+              onChange={(e) => updateBoxText(box, "badgeSecondary", e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -188,7 +221,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Overlay Title</span>
             <input
               value={data.overlayTitle}
-              onChange={(e) => updateBox(box, "overlayTitle", e.target.value)}
+              onChange={(e) => updateBoxText(box, "overlayTitle", e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -196,7 +229,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Button Label</span>
             <input
               value={data.buttonLabel}
-              onChange={(e) => updateBox(box, "buttonLabel", e.target.value)}
+              onChange={(e) => updateBoxText(box, "buttonLabel", e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -204,7 +237,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Button Link / Target</span>
             <input
               value={data.buttonTarget}
-              onChange={(e) => updateBox(box, "buttonTarget", e.target.value)}
+              onChange={(e) => updateBoxText(box, "buttonTarget", e.target.value)}
               placeholder="https://... or forex/software/social"
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
@@ -213,7 +246,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Scroll Hint Label</span>
             <input
               value={data.scrollHint}
-              onChange={(e) => updateBox(box, "scrollHint", e.target.value)}
+              onChange={(e) => updateBoxText(box, "scrollHint", e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -221,7 +254,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
             <span className="font-medium">Overlay Description</span>
             <textarea
               value={data.overlayText}
-              onChange={(e) => updateBox(box, "overlayText", e.target.value)}
+              onChange={(e) => updateBoxText(box, "overlayText", e.target.value)}
               rows={2}
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
             />
@@ -272,7 +305,7 @@ const AdsectionManEditor = ({ value, onSaveSection }: AdsectionManEditorProps) =
                       key={media.id}
                       type="button"
                       onClick={() => {
-                        updateBox(imagePickerBox, "imageUrl", media.dataUrl);
+                        updateBoxText(imagePickerBox, "imageUrl", media.dataUrl);
                         setImagePickerOpen(false);
                       }}
                       className="overflow-hidden rounded-xl border border-slate-200 text-left transition hover:border-blue-500 dark:border-slate-700"

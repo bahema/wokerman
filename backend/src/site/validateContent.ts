@@ -174,6 +174,12 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
     for (const sectionKey of ["gadgets", "ai"] as const) {
       const section = adsectionMan[sectionKey];
       if (!isObject(section)) return { ok: false, error: `homeUi.adsectionMan.${sectionKey} is required.` };
+      if (typeof section.price !== "number" || !Number.isFinite(section.price) || section.price <= 0) {
+        return { ok: false, error: `homeUi.adsectionMan.${sectionKey}.price must be greater than 0.` };
+      }
+      if (section.priceBadge !== undefined && section.priceBadge !== null && typeof section.priceBadge !== "string") {
+        return { ok: false, error: `homeUi.adsectionMan.${sectionKey}.priceBadge must be a string when provided.` };
+      }
       for (const field of requiredAdSectionFields) {
         if (!asNonEmptyString(section[field])) {
           return { ok: false, error: `homeUi.adsectionMan.${sectionKey}.${field} is required.` };

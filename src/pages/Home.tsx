@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import BackToTop from "../components/BackToTop";
-import CheckoutModal from "../components/CheckoutModal";
 import Navbar from "../components/Navbar";
 import ProductCard from "../components/ProductCard";
 import ProductModal from "../components/ProductModal";
@@ -38,6 +37,7 @@ const fallbackHomeUi: NonNullable<SiteContent["homeUi"]> = {
     gadgets: {
       sectionTitle: "Newer Gadgets",
       price: 79,
+      priceBadge: "$79",
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",
@@ -50,6 +50,7 @@ const fallbackHomeUi: NonNullable<SiteContent["homeUi"]> = {
     ai: {
       sectionTitle: "New AI Tools",
       price: 99,
+      priceBadge: "$99",
       imageUrl: "/logo.png",
       badgePrimary: "New",
       badgeSecondary: "Coming Soon",
@@ -97,6 +98,16 @@ const loadDefaultSiteContent = async () => {
   return defaultSiteContent;
 };
 
+type AdSectionBox = NonNullable<SiteContent["homeUi"]>["adsectionMan"]["gadgets"];
+const resolveAdSectionPriceBadge = (section: AdSectionBox) => {
+  const custom = (section.priceBadge ?? "").trim();
+  if (custom) return custom;
+  if (typeof section.price === "number" && Number.isFinite(section.price) && section.price > 0) {
+    return `$${Math.round(section.price)}`;
+  }
+  return "";
+};
+
 const Home = (_props: HomeProps) => {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState<SiteContent>(fallbackSiteContent);
@@ -113,10 +124,8 @@ const Home = (_props: HomeProps) => {
   const social = useProductFilters(content.products.social);
 
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
-  const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [quickGrabsOpen, setQuickGrabsOpen] = useState(false);
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
-  const [checkoutTrigger, setCheckoutTrigger] = useState<HTMLElement | null>(null);
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const lastTrackedSection = useRef<string>("");
   const productSections = content.productSections ?? fallbackProductSections;
@@ -236,14 +245,6 @@ const Home = (_props: HomeProps) => {
       category: infoProduct.category
     });
   }, [infoProduct]);
-
-  useEffect(() => {
-    if (!checkoutProduct) return;
-    trackAnalyticsEvent("checkout_modal_open", {
-      productId: checkoutProduct.id,
-      category: checkoutProduct.category
-    });
-  }, [checkoutProduct]);
 
   useEffect(() => {
     const el = industriesScrollRef.current;
@@ -388,8 +389,8 @@ const Home = (_props: HomeProps) => {
             source: "product_card",
             action: "checkout_button"
           });
-          setCheckoutProduct(item);
-          setCheckoutTrigger(trigger);
+          void trigger;
+          window.open(item.checkoutLink, "_blank", "noopener,noreferrer");
         }}
         onMoreInfo={(item, trigger) => {
           trackAnalyticsEvent("product_more_info_click", {
@@ -498,7 +499,14 @@ const Home = (_props: HomeProps) => {
                     eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                   }`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
+                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets) ? (
+                      <span className="shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets)}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
                     <div
                       className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
@@ -544,7 +552,14 @@ const Home = (_props: HomeProps) => {
                     eventThemeActive ? "event-hero-surface" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                   }`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
+                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai) ? (
+                      <span className="shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai)}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className={`relative mt-4 overflow-hidden rounded-2xl border ${eventThemeActive ? "event-ad-frame" : "border-slate-200 dark:border-slate-700"}`}>
                     <div
                       className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] shadow-lg ${
@@ -902,8 +917,7 @@ const Home = (_props: HomeProps) => {
               <button
                 type="button"
                 onClick={() => {
-                  window.history.pushState({}, "", withBasePath("/boss/login"));
-                  window.dispatchEvent(new PopStateEvent("popstate"));
+                  window.open(withBasePath("/boss/login"), "_blank", "noopener,noreferrer");
                 }}
                 aria-label="Go to login page"
                 className="inline-flex h-4 w-4 rounded-full border border-slate-400/80 bg-transparent transition hover:scale-105 dark:border-slate-500/70"
@@ -916,7 +930,6 @@ const Home = (_props: HomeProps) => {
       <BackToTop />
       <QuickGrabsModal open={quickGrabsOpen} onClose={() => setQuickGrabsOpen(false)} returnFocusTo={quickGrabsTrigger} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
-      <CheckoutModal product={checkoutProduct} onClose={() => setCheckoutProduct(null)} returnFocusTo={checkoutTrigger} />
     </div>
   );
 };
