@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n/provider";
 
-const BackToTop = () => {
+type BackToTopProps = {
+  isModalOpen?: boolean;
+};
+
+const BackToTop = ({ isModalOpen = false }: BackToTopProps) => {
   const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -32,7 +36,7 @@ const BackToTop = () => {
     return () => window.removeEventListener("scroll", onScroll);
   }, [isMobile]);
 
-  if (!visible) return null;
+  if (!visible || isModalOpen) return null;
 
   const bottomOffset = isMobile
     ? "calc(env(safe-area-inset-bottom) + 4.25rem)"

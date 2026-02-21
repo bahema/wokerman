@@ -925,7 +925,7 @@ const Home = (_props: HomeProps) => {
         </div>
       </footer>
 
-      <BackToTop />
+      <BackToTop isModalOpen={quickGrabsOpen || Boolean(infoProduct)} />
       <QuickGrabsModal open={quickGrabsOpen} onClose={() => setQuickGrabsOpen(false)} returnFocusTo={quickGrabsTrigger} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
     </div>
