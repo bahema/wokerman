@@ -1,10 +1,11 @@
-import { apiGet, apiJson } from "../api/client";
+import { apiGet, apiJson, clearAuthToken, setAuthToken } from "../api/client";
 
 const LEGACY_AUTH_KEYS = ["admin:auth:token", "admin:auth:email", "admin:auth:expiresAt"] as const;
 
 const clearLegacyLocalSession = () => {
   if (typeof window === "undefined") return;
   for (const key of LEGACY_AUTH_KEYS) localStorage.removeItem(key);
+  clearAuthToken();
 };
 
 export type AccountSettingsPayload = {
@@ -19,7 +20,13 @@ export const getAuthStatus = async () => {
 };
 
 export const startLogin = async (email: string, password: string, trustDevice = false) => {
-  return apiJson<{ ok: true; trustedDevice?: boolean }>("/api/auth/login/start", "POST", { email, password, trustDevice });
+  const response = await apiJson<{ ok: true; trustedDevice?: boolean; authToken?: string }>(
+    "/api/auth/login/start",
+    "POST",
+    { email, password, trustDevice }
+  );
+  if (response.authToken) setAuthToken(response.authToken);
+  return response;
 };
 
 // Backward-compatible exports for older callers.

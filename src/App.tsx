@@ -118,15 +118,21 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (normalizedPath !== "/login") return;
+    if (normalizedPath !== "/login" && normalizedPath !== "/admin") return;
     setCheckingAuth(true);
     void (async () => {
       const ok = await hasAdminAccess();
       if (cancelled) return;
-      const nextRaw = new URLSearchParams(window.location.search).get("next");
-      if (ok && nextRaw) {
-        const nextPath = sanitizePostLoginPath(nextRaw);
-        window.history.replaceState({}, "", toBrowserPath(nextPath));
+      if (normalizedPath === "/login") {
+        const nextRaw = new URLSearchParams(window.location.search).get("next");
+        if (ok) {
+          const nextPath = sanitizePostLoginPath(nextRaw ?? "/admin");
+          window.history.replaceState({}, "", toBrowserPath(nextPath));
+          setPath(toAppPath(window.location.pathname));
+        }
+      } else if (!ok) {
+        const nextPath = encodeURIComponent("/admin");
+        window.history.replaceState({}, "", toBrowserPath(`/login?next=${nextPath}`));
         setPath(toAppPath(window.location.pathname));
       }
       setCheckingAuth(false);
@@ -241,6 +247,13 @@ function App() {
   if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
   if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
   if (normalizedPath === "/admin") {
+    if (checkingAuth) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          {t("app.loadingAdmin")}
+        </div>
+      );
+    }
     return (
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
         <Admin />

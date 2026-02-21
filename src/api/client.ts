@@ -24,8 +24,11 @@ const API_BASE_URLS = resolveApiBaseUrls();
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 const CSRF_STORAGE_KEY = "autohub_admin_csrf_header_token";
+const AUTH_TOKEN_STORAGE_KEY = "autohub_admin_auth_token";
 let csrfTokenCache =
   typeof window !== "undefined" ? window.sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "" : "";
+let authTokenCache =
+  typeof window !== "undefined" ? window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? "" : "";
 
 const getCookieValue = (name: string) => {
   if (typeof document === "undefined") return "";
@@ -57,6 +60,25 @@ const cacheCsrfToken = (token: string) => {
   csrfTokenCache = next;
   if (typeof window !== "undefined") {
     window.sessionStorage.setItem(CSRF_STORAGE_KEY, next);
+  }
+};
+
+export const setAuthToken = (token: string) => {
+  const normalized = token.trim();
+  authTokenCache = normalized;
+  if (typeof window !== "undefined") {
+    if (normalized) {
+      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, normalized);
+    } else {
+      window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  }
+};
+
+export const clearAuthToken = () => {
+  authTokenCache = "";
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   }
 };
 
@@ -109,7 +131,11 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     tried.add(base);
     const url = `${base}${normalizedPath}`;
     try {
-      const response = await fetch(url, init);
+      const headers = new Headers(init.headers ?? {});
+      if (authTokenCache && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${authTokenCache}`);
+      }
+      const response = await fetch(url, { ...init, headers });
       cacheCsrfToken(response.headers.get("x-csrf-token") ?? "");
       const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
       if (response.ok) {
@@ -127,6 +153,10 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
       if (normalizedPath.startsWith("/api/") && (response.status === 404 || response.status === 405 || response.status === 501)) {
         lastResponse = response;
         continue;
+      }
+
+      if (response.status === 401) {
+        clearAuthToken();
       }
 
       activeApiBaseUrl = base;

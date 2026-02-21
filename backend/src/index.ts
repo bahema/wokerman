@@ -422,6 +422,12 @@ const bootstrap = async () => {
   const getAuthContext = (req: express.Request) => {
     const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
     if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+    const authorizationHeader = req.header("authorization") ?? "";
+    const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+    if (bearerMatch) {
+      const bearerToken = bearerMatch[1]?.trim() ?? "";
+      if (bearerToken) return { token: bearerToken, source: "bearer" as const };
+    }
     return { token: "", source: "none" as const };
   };
 
@@ -441,8 +447,11 @@ const bootstrap = async () => {
 
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const { token, source } = getAuthContext(req);
-    const trustedDeviceTokenHash = getTrustedDeviceTokenHash(req);
-    const valid = await authStore.verifySessionForDevice(token, trustedDeviceTokenHash);
+    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    const valid =
+      source === "cookie"
+        ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
+        : await authStore.verifySession(token);
     if (!valid) {
       clearAuthCookie(res);
       res.status(401).json({ error: "Unauthorized." });
@@ -455,12 +464,13 @@ const bootstrap = async () => {
       attachCsrfHeaderFromRequest(req, res);
     }
     res.locals.authSource = source;
-    (req as express.Request & { authSource?: "cookie" | "none" }).authSource = source;
+    (req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource = source;
     next();
   };
 
   const requireCsrfForCookieAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const source = ((req as express.Request & { authSource?: "cookie" | "none" }).authSource ?? res.locals.authSource) as "cookie" | "none" | undefined;
+    const source = ((req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource ??
+      res.locals.authSource) as "cookie" | "bearer" | "none" | undefined;
     if (source === "cookie" && !validateCsrfPair(req)) {
       res.status(403).json({ error: "Invalid CSRF token." });
       return;
@@ -531,7 +541,7 @@ const bootstrap = async () => {
           path: req.originalUrl,
           statusCode: res.statusCode,
           durationMs: Date.now() - started,
-          authSource: (req as express.Request & { authSource?: "cookie" | "none" }).authSource ?? "unknown",
+          authSource: (req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource ?? "unknown",
           ip: resolveRequestIp(req),
           userAgent: req.header("user-agent") ?? "unknown",
           at: new Date().toISOString()
@@ -751,16 +761,24 @@ const bootstrap = async () => {
       if (trustedDeviceToken) {
         setTrustedDeviceCookie(res, trustedDeviceToken, Date.now() + TRUSTED_DEVICE_TTL_MS);
       }
-      res.status(200).json({ ok: true, requiresOtp: false, trustedDevice: Boolean(trustedDeviceTokenHash) });
+      res.status(200).json({
+        ok: true,
+        requiresOtp: false,
+        trustedDevice: Boolean(trustedDeviceTokenHash),
+        authToken: session.token
+      });
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
     }
   });
 
   app.get("/api/auth/session", async (req, res) => {
-    const token = getAuthToken(req);
-    const trustedDeviceTokenHash = getTrustedDeviceTokenHash(req);
-    const valid = await authStore.verifySessionForDevice(token, trustedDeviceTokenHash);
+    const { token, source } = getAuthContext(req);
+    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    const valid =
+      source === "cookie"
+        ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
+        : await authStore.verifySession(token);
     if (!valid) {
       clearAuthCookie(res);
     } else if (trustedDeviceTokenHash) {
