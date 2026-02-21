@@ -181,7 +181,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           <div className="mb-2 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
             Menu
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
               {navLinks.map((link) => {
                 const isActive = activeSection === link.id;
                 return (
