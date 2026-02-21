@@ -193,8 +193,8 @@ const CookieConsent = () => {
   return (
     <>
       {showBanner ? (
-        <div className="fixed bottom-3 left-3 right-3 z-[1000] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto max-w-[720px] rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
+        <div className="fixed inset-x-0 bottom-0 z-[1000] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-3 sm:px-0">
+          <div className="mx-auto w-full max-w-[720px] rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
             <h3 className="text-base font-semibold text-white">{t("cookie.bannerTitle")}</h3>
             <p className="mt-2 text-sm leading-relaxed text-white/70">
               {t("cookie.bannerBody")}{" "}
@@ -231,7 +231,7 @@ const CookieConsent = () => {
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md"
+          className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4 sm:pt-[max(1rem,env(safe-area-inset-top))] sm:pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md"
           onClick={() => setModalOpen(false)}
           role="presentation"
         >
@@ -240,9 +240,9 @@ const CookieConsent = () => {
             aria-modal="true"
             aria-label={t("cookie.preferencesTitle")}
             onClick={(event) => event.stopPropagation()}
-            className="flex max-h-[calc(100vh-2rem)] w-[min(560px,92vw)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-md"
+            className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-md sm:max-h-[calc(100vh-2rem)] sm:w-[min(560px,92vw)] sm:rounded-2xl sm:border-b"
           >
-            <header className="sticky top-0 flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 sm:px-5">
               <h3 className="font-semibold text-white">{t("cookie.preferencesTitle")}</h3>
               <button
                 type="button"
@@ -254,7 +254,7 @@ const CookieConsent = () => {
               </button>
             </header>
 
-            <section className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+            <section className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5 sm:pb-4">
               {categories.map((category) => (
                 <article key={category.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -280,18 +280,18 @@ const CookieConsent = () => {
               ))}
             </section>
 
-            <footer className="flex flex-col gap-2 border-t border-white/10 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <footer className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-white/10 bg-slate-950/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:px-5 sm:pb-3">
               <button
                 type="button"
                 onClick={savePreferences}
-                className="h-11 rounded-xl bg-blue-600 px-4 font-semibold text-white transition hover:bg-blue-500"
+                className="h-11 w-full rounded-xl bg-blue-600 px-4 font-semibold text-white transition hover:bg-blue-500 sm:w-auto"
               >
                 {t("cookie.savePreferences")}
               </button>
               <button
                 type="button"
                 onClick={acceptAll}
-                className="h-11 rounded-xl bg-white/10 px-4 font-semibold text-white transition hover:bg-white/15"
+                className="h-11 w-full rounded-xl bg-white/10 px-4 font-semibold text-white transition hover:bg-white/15 sm:w-auto"
               >
                 {t("cookie.acceptAll")}
               </button>
