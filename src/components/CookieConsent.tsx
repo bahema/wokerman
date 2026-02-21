@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { withBasePath } from "../utils/basePath";
 import { apiJson } from "../api/client";
 import {
@@ -190,13 +191,13 @@ const CookieConsent = () => {
   if (!hasMounted) return null;
   if (!showAny) return null;
 
-  return (
+  return createPortal(
     <>
       {showBanner ? (
-        <div className="fixed inset-x-0 bottom-0 z-[1000] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-3 sm:px-0">
-          <div className="mx-auto w-full max-w-[720px] rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
+        <div className="fixed inset-x-0 bottom-0 z-[1000] box-border w-screen max-w-[100vw] overflow-x-hidden px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-3 sm:px-0">
+          <div className="mx-auto box-border w-full max-w-[min(720px,100vw-1.5rem)] min-w-0 rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md sm:max-w-[720px] sm:p-5">
             <h3 className="text-base font-semibold text-white">{t("cookie.bannerTitle")}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">
+            <p className="mt-2 min-w-0 break-words text-sm leading-relaxed text-white/70">
               {t("cookie.bannerBody")}{" "}
               <a href={withBasePath("/privacy")} className="underline underline-offset-4 transition hover:text-white">
                 {t("cookie.privacyPolicy")}
@@ -231,7 +232,7 @@ const CookieConsent = () => {
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4 sm:pt-[max(1rem,env(safe-area-inset-top))] sm:pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md"
+          className="fixed inset-0 z-[1100] box-border flex w-screen max-w-[100vw] items-end justify-center overflow-x-hidden bg-black/50 p-0 sm:items-center sm:p-4 sm:pt-[max(1rem,env(safe-area-inset-top))] sm:pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md"
           onClick={() => setModalOpen(false)}
           role="presentation"
         >
@@ -240,7 +241,7 @@ const CookieConsent = () => {
             aria-modal="true"
             aria-label={t("cookie.preferencesTitle")}
             onClick={(event) => event.stopPropagation()}
-            className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-md sm:max-h-[calc(100vh-2rem)] sm:w-[min(560px,92vw)] sm:rounded-2xl sm:border-b"
+            className="box-border flex max-h-[100dvh] w-full max-w-[100vw] min-w-0 flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-md sm:max-h-[calc(100vh-2rem)] sm:w-[min(560px,92vw)] sm:rounded-2xl sm:border-b"
           >
             <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 sm:px-5">
               <h3 className="font-semibold text-white">{t("cookie.preferencesTitle")}</h3>
@@ -299,7 +300,8 @@ const CookieConsent = () => {
           </div>
         </div>
       ) : null}
-    </>
+    </>,
+    document.body
   );
 };
 
