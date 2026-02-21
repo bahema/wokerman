@@ -1,4 +1,5 @@
 import type { Theme } from "../utils/theme";
+import { useI18n } from "../i18n/provider";
 
 type ThemeToggleProps = {
   theme: Theme;
@@ -6,6 +7,7 @@ type ThemeToggleProps = {
 };
 
 const ThemeToggle = ({ theme, onToggle }: ThemeToggleProps) => {
+  const { t } = useI18n();
   const isDark = theme === "dark";
 
   return (
@@ -13,8 +15,8 @@ const ThemeToggle = ({ theme, onToggle }: ThemeToggleProps) => {
       type="button"
       onClick={onToggle}
       className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:-translate-y-0.5 hover:shadow-soft dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={isDark ? t("theme.switchToLight") : t("theme.switchToDark")}
+      title={isDark ? t("theme.switchToLight") : t("theme.switchToDark")}
     >
       {isDark ? (
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">

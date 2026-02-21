@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../i18n/provider";
 
 const BackToTop = () => {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -42,7 +44,7 @@ const BackToTop = () => {
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       className="fixed right-3 z-[1050] inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-blue-600 text-white shadow-[0_12px_28px_-10px_rgba(37,99,235,0.85)] transition hover:-translate-y-0.5 hover:bg-blue-500 sm:right-6"
       style={{ bottom: bottomOffset }}
-      aria-label="Back to top"
+      aria-label={t("backToTop.aria")}
     >
       <span aria-hidden="true" className="text-base leading-none">
         ↑

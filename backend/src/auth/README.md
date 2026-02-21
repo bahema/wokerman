@@ -2,6 +2,6 @@
 
 This project uses a **single-owner auth model**:
 
-- First successful signup creates the only boss account.
-- Any further signup attempts are blocked.
-- Owner email and role are immutable after first signup.
+- Owner account is provisioned once (outside public runtime routes).
+- Public signup/account-creation routes are disabled.
+- Owner email and role are immutable after initial owner setup.

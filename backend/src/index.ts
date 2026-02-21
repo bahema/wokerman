@@ -661,18 +661,6 @@ const bootstrap = async () => {
     res.status(200).json(status);
   });
 
-  app.post("/api/auth/signup/start", authIpLimiter, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
-    const password = typeof req.body?.password === "string" ? req.body.password : "";
-    try {
-      const session = await authStore.startSignup(email, password);
-      setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      sendAuthError(res, error, "Failed to start signup.");
-    }
-  });
-
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";

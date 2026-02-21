@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { useI18n } from "../i18n/provider";
 
 type StatusMode = "success" | "error" | "loading";
 
 const ConfirmResultPage = () => {
+  const { t } = useI18n();
   const params = new URLSearchParams(window.location.search);
   const statusParam = (params.get("status") || "").toLowerCase();
   const mode: StatusMode = statusParam === "success" ? "success" : statusParam === "error" ? "error" : "loading";
@@ -11,26 +13,26 @@ const ConfirmResultPage = () => {
     if (mode === "success") {
       return {
         icon: "✅",
-        title: "Email confirmed",
-        body: "Your subscription is now confirmed. You will receive campaign emails you opted into.",
-        next: "You can unsubscribe anytime using the link in our emails."
+        title: t("confirm.successTitle"),
+        body: t("confirm.successBody"),
+        next: t("confirm.successNext")
       };
     }
     if (mode === "error") {
       return {
         icon: "⚠️",
-        title: "Confirmation link isn't valid",
-        body: "The link may be expired, invalid, or already used.",
-        next: "You can subscribe again from the website to receive a fresh confirmation email."
+        title: t("confirm.errorTitle"),
+        body: t("confirm.errorBody"),
+        next: t("confirm.errorNext")
       };
     }
     return {
       icon: "⏳",
-      title: "Checking confirmation status",
-      body: "Please wait while we process your confirmation request.",
-      next: "If this takes too long, try opening the link from your email again."
+      title: t("confirm.loadingTitle"),
+      body: t("confirm.loadingBody"),
+      next: t("confirm.loadingNext")
     };
-  }, [mode]);
+  }, [mode, t]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-10 text-slate-900">
@@ -49,4 +51,3 @@ const ConfirmResultPage = () => {
 };
 
 export default ConfirmResultPage;
-

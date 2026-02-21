@@ -74,7 +74,7 @@ const SystemHealthEditor = () => {
       }),
       runCheck("boss-routes", async () => {
         const current = toAppPath(window.location.pathname);
-        if (!current.startsWith("/boss/") && current !== "/admin" && current !== "/signup") {
+        if (!current.startsWith("/boss/") && current !== "/admin" && current !== "/login") {
           throw new Error(`Unexpected admin path: ${current}`);
         }
       })

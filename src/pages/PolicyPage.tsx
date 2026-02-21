@@ -1,4 +1,5 @@
 import { withBasePath } from "../utils/basePath";
+import { useI18n } from "../i18n/provider";
 
 type PolicyPageKind = "affiliate-disclosure" | "earnings-disclaimer" | "privacy" | "terms";
 
@@ -6,60 +7,42 @@ type PolicyPageProps = {
   kind: PolicyPageKind;
 };
 
-const contentByKind: Record<
-  PolicyPageKind,
-  {
-    eyebrow: string;
-    title: string;
-    intro: string;
-    points: string[];
-  }
-> = {
-  "affiliate-disclosure": {
-    eyebrow: "Affiliate Disclosure",
-    title: "How Affiliate Links Work",
-    intro:
-      "Some links on this website are affiliate links. If you click and make a qualifying purchase, we may earn a commission at no extra cost to you.",
-    points: [
-      "Recommendations are based on product relevance and fit, not only on commissions.",
-      "Commissions may vary by network, product category, and campaign terms.",
-      "You should always review product details, pricing, and refund terms on the vendor site before purchase."
-    ]
-  },
-  "earnings-disclaimer": {
-    eyebrow: "Earnings Disclaimer",
-    title: "No Income Guarantees",
-    intro:
-      "Results vary. We do not guarantee earnings, performance outcomes, or business growth from any promoted product.",
-    points: [
-      "Any performance examples are illustrative and not promises of future results.",
-      "Your outcome depends on many factors, including skill, effort, budget, and market conditions.",
-      "Always perform independent due diligence before buying any software, training, or service."
-    ]
-  },
-  privacy: {
-    eyebrow: "Privacy Policy",
-    title: "Privacy Overview",
-    intro: "We collect only the information needed to operate the site, improve performance, and support core functionality.",
-    points: [
-      "Usage analytics may be collected in aggregate to understand product interest and site performance.",
-      "We do not sell personal data.",
-      "If you contact us directly, we use your information only for communication and support."
-    ]
-  },
-  terms: {
-    eyebrow: "Terms of Use",
-    title: "Website Terms",
-    intro: "By using this site, you agree to use it lawfully and evaluate any purchase decisions independently.",
-    points: [
-      "Content is provided for informational and promotional purposes.",
-      "Third-party products, pricing, and availability may change without notice.",
-      "You are responsible for reviewing each vendor's terms, refunds, and support policies."
-    ]
-  }
-};
-
 const PolicyPage = ({ kind }: PolicyPageProps) => {
+  const { t } = useI18n();
+  const contentByKind: Record<
+    PolicyPageKind,
+    {
+      eyebrow: string;
+      title: string;
+      intro: string;
+      points: string[];
+    }
+  > = {
+    "affiliate-disclosure": {
+      eyebrow: t("policy.affiliate.eyebrow"),
+      title: t("policy.affiliate.title"),
+      intro: t("policy.affiliate.intro"),
+      points: [t("policy.affiliate.point1"), t("policy.affiliate.point2"), t("policy.affiliate.point3")]
+    },
+    "earnings-disclaimer": {
+      eyebrow: t("policy.earnings.eyebrow"),
+      title: t("policy.earnings.title"),
+      intro: t("policy.earnings.intro"),
+      points: [t("policy.earnings.point1"), t("policy.earnings.point2"), t("policy.earnings.point3")]
+    },
+    privacy: {
+      eyebrow: t("policy.privacy.eyebrow"),
+      title: t("policy.privacy.title"),
+      intro: t("policy.privacy.intro"),
+      points: [t("policy.privacy.point1"), t("policy.privacy.point2"), t("policy.privacy.point3")]
+    },
+    terms: {
+      eyebrow: t("policy.terms.eyebrow"),
+      title: t("policy.terms.title"),
+      intro: t("policy.terms.intro"),
+      points: [t("policy.terms.point1"), t("policy.terms.point2"), t("policy.terms.point3")]
+    }
+  };
   const content = contentByKind[kind];
 
   return (
@@ -74,7 +57,7 @@ const PolicyPage = ({ kind }: PolicyPageProps) => {
           }}
           className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
         >
-          Back to Home
+          {t("policy.backHome")}
         </a>
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">{content.eyebrow}</p>

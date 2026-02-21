@@ -7,8 +7,8 @@ import { useI18n } from "./i18n/provider";
 
 const Admin = lazy(() => import("./pages/Admin"));
 const ConfirmResultPage = lazy(() => import("./pages/ConfirmResultPage"));
+const LoginPage = lazy(() => import("./pages/Signup"));
 const PolicyPage = lazy(() => import("./pages/PolicyPage"));
-const Signup = lazy(() => import("./pages/Signup"));
 const UnsubscribeResultPage = lazy(() => import("./pages/UnsubscribeResultPage"));
 
 type PublicCategoryPath = "/forex" | "/betting" | "/software" | "/social";
@@ -43,11 +43,11 @@ const normalizeHistoryArgs = <T extends [data: any, unused: string, url?: string
 
 const normalizePath = (rawPath: string) => {
   const cleaned = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
-  if (cleaned === "/boss/login") return "/signup";
+  if (cleaned === "/boss/login" || cleaned === "/signup") return "/login";
   if (cleaned.startsWith("/boss/")) return "/admin";
   if (
     cleaned === "/admin" ||
-    cleaned === "/signup" ||
+    cleaned === "/login" ||
     cleaned === "/" ||
     cleaned === "/forex" ||
     cleaned === "/betting" ||
@@ -118,7 +118,7 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (normalizedPath !== "/signup") return;
+    if (normalizedPath !== "/login") return;
     setCheckingAuth(true);
     void (async () => {
       const ok = await hasAdminAccess();
@@ -163,10 +163,10 @@ function App() {
         description: "Find social automation products for scheduling, engagement workflows, and campaign optimization.",
         canonicalPath: "/social"
       },
-      "/signup": {
+      "/login": {
         title: "Login | AutoHub Boss Panel",
         description: "Secure owner login for the AutoHub administration panel.",
-        canonicalPath: "/signup",
+        canonicalPath: "/login",
         robots: "noindex,nofollow"
       },
       "/admin": {
@@ -219,7 +219,7 @@ function App() {
     setSeo({ ...seo, locale: ogLocale });
   }, [normalizedPath, ogLocale]);
 
-  if (normalizedPath === "/signup") {
+  if (normalizedPath === "/login") {
     if (checkingAuth) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
@@ -230,7 +230,7 @@ function App() {
     const nextRaw = new URLSearchParams(window.location.search).get("next") ?? undefined;
     return (
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loading")}</div>}>
-        <Signup postLoginPath={sanitizePostLoginPath(nextRaw)} />
+        <LoginPage postLoginPath={sanitizePostLoginPath(nextRaw)} />
       </Suspense>
     );
   }

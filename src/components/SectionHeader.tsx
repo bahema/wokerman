@@ -1,4 +1,5 @@
 import type { SortOption } from "../utils/useProductFilters";
+import { useI18n } from "../i18n/provider";
 
 type SectionHeaderProps = {
   eyebrow: string;
@@ -21,11 +22,12 @@ const SectionHeader = ({
   onSortChange,
   updatedAt
 }: SectionHeaderProps) => {
-  let updatedLabel = "Update time unavailable";
+  const { t, locale } = useI18n();
+  let updatedLabel = t("section.updatedUnavailable");
   if (updatedAt) {
     const parsed = new Date(updatedAt);
     if (!Number.isNaN(parsed.getTime())) {
-      updatedLabel = `Updated ${new Intl.DateTimeFormat(undefined, {
+      updatedLabel = `${t("section.updatedPrefix")} ${new Intl.DateTimeFormat(locale === "ar" ? "ar-SA" : undefined, {
         year: "numeric",
         month: "short",
         day: "2-digit",
@@ -47,17 +49,17 @@ const SectionHeader = ({
 
     <div className="grid gap-3 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-white via-slate-50 to-blue-50/60 p-4 shadow-[0_12px_30px_-18px_rgba(15,23,42,0.28)] dark:border-slate-600 dark:bg-none dark:bg-slate-900 dark:shadow-sm md:grid-cols-[1fr,220px,auto] md:items-center">
       <label className="sr-only" htmlFor={`${eyebrow}-search`}>
-        Search products
+        {t("section.searchProducts")}
       </label>
       <input
         id={`${eyebrow}-search`}
         value={searchValue}
         onChange={(event) => onSearchChange(event.target.value)}
-        placeholder="Search tools..."
+        placeholder={t("section.searchPlaceholder")}
         className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 dark:border-slate-500 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-300"
       />
       <label className="sr-only" htmlFor={`${eyebrow}-sort`}>
-        Sort products
+        {t("section.sortProducts")}
       </label>
       <select
         id={`${eyebrow}-sort`}
@@ -65,10 +67,10 @@ const SectionHeader = ({
         onChange={(event) => onSortChange(event.target.value as SortOption)}
         className="h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none ring-blue-500 transition focus:border-blue-400 focus:ring-2 dark:border-slate-500 dark:bg-slate-800 dark:text-white"
       >
-        <option value="position">Manual order</option>
-        <option value="rating">Highest rating</option>
-        <option value="newest">Newest first</option>
-        <option value="az">A-Z</option>
+        <option value="position">{t("section.sort.manual")}</option>
+        <option value="rating">{t("section.sort.rating")}</option>
+        <option value="newest">{t("section.sort.newest")}</option>
+        <option value="az">{t("section.sort.az")}</option>
       </select>
       <span className="flex min-w-0 items-center justify-center break-words rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
         {updatedLabel}

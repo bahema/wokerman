@@ -16,6 +16,7 @@ import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
+import { useI18n } from "../i18n/provider";
 
 type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
@@ -109,6 +110,7 @@ const resolveAdSectionPriceBadge = (section: AdSectionBox) => {
 };
 
 const Home = (_props: HomeProps) => {
+  const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState<SiteContent>(fallbackSiteContent);
   const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
@@ -646,7 +648,7 @@ const Home = (_props: HomeProps) => {
           <div className="reveal max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400" />
             <SectionHeader
-              eyebrow="Forex"
+              eyebrow={t("home.sectionForex")}
               title={productSections.forex.title}
               description={productSections.forex.description}
               searchValue={forex.search}
@@ -671,7 +673,7 @@ const Home = (_props: HomeProps) => {
           <div className="reveal max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-emerald-500 via-green-400 to-lime-400" />
             <SectionHeader
-              eyebrow="Betting System"
+              eyebrow={t("home.sectionBetting")}
               title={productSections.betting.title}
               description={productSections.betting.description}
               searchValue={betting.search}
@@ -696,7 +698,7 @@ const Home = (_props: HomeProps) => {
           <div className="reveal max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-rose-500 via-red-400 to-pink-400" />
             <SectionHeader
-              eyebrow="Software"
+              eyebrow={t("home.sectionSoftware")}
               title={productSections.software.title}
               description={productSections.software.description}
               searchValue={software.search}
@@ -721,7 +723,7 @@ const Home = (_props: HomeProps) => {
           <div className="reveal max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mb-6 h-1.5 w-40 rounded-full bg-gradient-to-r from-cyan-500 via-blue-400 to-indigo-400" />
             <SectionHeader
-              eyebrow="Social"
+              eyebrow={t("home.sectionSocial")}
               title={productSections.social.title}
               description={productSections.social.description}
               searchValue={social.search}
@@ -746,7 +748,7 @@ const Home = (_props: HomeProps) => {
       <section className="border-y border-slate-200 bg-gradient-to-b from-slate-50 via-white to-slate-50 py-12 dark:border-slate-800 dark:bg-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-5 text-center">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Industries</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">{t("home.industriesLabel")}</p>
             <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{homeUi.industriesHeading}</h3>
           </div>
           {content.industries.length === 0 ? (
@@ -820,24 +822,24 @@ const Home = (_props: HomeProps) => {
           <div className="rounded-3xl bg-gradient-to-r from-white/80 via-sky-50/80 to-blue-50/80 p-6 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.4)] backdrop-blur dark:from-slate-900/85 dark:via-slate-900/80 dark:to-blue-950/80 dark:shadow-[0_20px_45px_-18px_rgba(0,0,0,0.9),0_0_0_1px_rgba(148,163,184,0.25)]">
             <div className="grid gap-6 md:grid-cols-3">
               <div>
-                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Quick links</h4>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{t("home.quickLinks")}</h4>
                 <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
                   <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/forex")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("forex"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
-                    Forex
+                    {t("navbar.forex")}
                   </a>
                   <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/betting")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("betting"); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">
-                    Betting
+                    {t("navbar.betting")}
                   </a>
                   <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/software")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("software"); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">
-                    Software
+                    {t("navbar.software")}
                   </a>
                   <a href={withBasePath("/social")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/social")); window.dispatchEvent(new PopStateEvent("popstate")); smoothScrollToId("social"); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">
-                    Social
+                    {t("navbar.social")}
                   </a>
                 </div>
               </div>
               <div>
-                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Social links</h4>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{t("home.socialLinks")}</h4>
                 <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
                   <a href={content.socials.facebookUrl} target="_blank" rel="noopener noreferrer" className="block transition hover:text-blue-600 dark:hover:text-blue-400">
                     Facebook
@@ -865,7 +867,7 @@ const Home = (_props: HomeProps) => {
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
                   >
-                    Affiliate Disclosure
+                    {t("home.affiliateDisclosure")}
                   </a>
                   <a
                     href={withBasePath("/earnings-disclaimer")}
@@ -876,7 +878,7 @@ const Home = (_props: HomeProps) => {
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
                   >
-                    Earnings Disclaimer
+                    {t("home.earningsDisclaimer")}
                   </a>
                   <a
                     href={withBasePath("/privacy")}
@@ -887,7 +889,7 @@ const Home = (_props: HomeProps) => {
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
                   >
-                    Privacy Policy
+                    {t("home.privacyPolicy")}
                   </a>
                   <a
                     href={withBasePath("/terms")}
@@ -898,14 +900,14 @@ const Home = (_props: HomeProps) => {
                     }}
                     className="block transition hover:text-emerald-700 dark:hover:text-emerald-400"
                   >
-                    Terms of Use
+                    {t("home.termsOfUse")}
                   </a>
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new Event(OPEN_COOKIE_SETTINGS_EVENT))}
                     className="block text-left transition hover:text-emerald-700 dark:hover:text-emerald-400"
                   >
-                    Cookie settings
+                    {t("home.cookieSettings")}
                   </button>
                 </div>
               </div>
@@ -919,7 +921,7 @@ const Home = (_props: HomeProps) => {
                 onClick={() => {
                   window.open(withBasePath("/boss/login"), "_blank", "noopener,noreferrer");
                 }}
-                aria-label="Go to login page"
+                aria-label={t("home.loginAria")}
                 className="inline-flex h-4 w-4 rounded-full border border-slate-400/80 bg-transparent transition hover:scale-105 dark:border-slate-500/70"
               />
             </div>

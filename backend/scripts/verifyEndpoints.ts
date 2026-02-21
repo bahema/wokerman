@@ -22,46 +22,30 @@ const run = async () => {
   const authBody = (await authStatus.json()) as { hasOwner: boolean };
 
   if (!authBody.hasOwner) {
-    const signupStart = await fetch(`${BASE}/api/auth/signup/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD })
-    });
-    await assertOk("POST /api/auth/signup/start", signupStart);
-    const signupStartBody = (await signupStart.json()) as { devOtp?: string };
-    if (!signupStartBody.devOtp) throw new Error("Missing devOtp for signup verification.");
+    throw new Error("No owner account exists. Create owner credentials first; account signup bootstrap is disabled.");
+  }
 
-    const signupVerify = await fetch(`${BASE}/api/auth/signup/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: OWNER_EMAIL, otp: signupStartBody.devOtp })
-    });
-    await assertOk("POST /api/auth/signup/verify", signupVerify);
-    const signupVerifyBody = (await signupVerify.json()) as { session?: { token?: string } };
-    authToken = signupVerifyBody.session?.token ?? "";
-  } else {
-    const loginStart = await fetch(`${BASE}/api/auth/login/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD })
-    });
-    await assertOk("POST /api/auth/login/start", loginStart);
-    const loginStartBody = (await loginStart.json()) as { requiresOtp?: boolean; devOtp?: string; session?: { token?: string } };
-    if (loginStartBody.requiresOtp) {
-      if (!loginStartBody.devOtp) {
-        throw new Error("Missing devOtp for login verification. Set VERIFY_OWNER_EMAIL and VERIFY_OWNER_PASSWORD to real owner credentials.");
-      }
-      const loginVerify = await fetch(`${BASE}/api/auth/login/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: OWNER_EMAIL, otp: loginStartBody.devOtp })
-      });
-      await assertOk("POST /api/auth/login/verify", loginVerify);
-      const loginVerifyBody = (await loginVerify.json()) as { session?: { token?: string } };
-      authToken = loginVerifyBody.session?.token ?? "";
-    } else {
-      authToken = loginStartBody.session?.token ?? "";
+  const loginStart = await fetch(`${BASE}/api/auth/login/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD })
+  });
+  await assertOk("POST /api/auth/login/start", loginStart);
+  const loginStartBody = (await loginStart.json()) as { requiresOtp?: boolean; devOtp?: string; session?: { token?: string } };
+  if (loginStartBody.requiresOtp) {
+    if (!loginStartBody.devOtp) {
+      throw new Error("Missing devOtp for login verification. Set VERIFY_OWNER_EMAIL and VERIFY_OWNER_PASSWORD to real owner credentials.");
     }
+    const loginVerify = await fetch(`${BASE}/api/auth/login/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: OWNER_EMAIL, otp: loginStartBody.devOtp })
+    });
+    await assertOk("POST /api/auth/login/verify", loginVerify);
+    const loginVerifyBody = (await loginVerify.json()) as { session?: { token?: string } };
+    authToken = loginVerifyBody.session?.token ?? "";
+  } else {
+    authToken = loginStartBody.session?.token ?? "";
   }
 
   if (!authToken) throw new Error("Failed to obtain auth token for protected endpoints.");

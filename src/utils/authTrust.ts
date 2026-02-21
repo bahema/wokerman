@@ -18,16 +18,11 @@ export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
 };
 
-export const startSignup = async (email: string, password: string) => {
-  return apiJson<{ ok: true }>("/api/auth/signup/start", "POST", { email, password });
-};
-
 export const startLogin = async (email: string, password: string) => {
   return apiJson<{ ok: true }>("/api/auth/login/start", "POST", { email, password });
 };
 
 // Backward-compatible exports for older callers.
-export const startSignupOtp = startSignup;
 export const startLoginOtp = startLogin;
 
 export const hasAdminAccess = async () => {

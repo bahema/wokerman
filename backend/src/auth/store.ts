@@ -86,7 +86,7 @@ export class AuthRateLimitError extends Error {
 
 export const isAuthRateLimitError = (error: unknown): error is AuthRateLimitError => error instanceof AuthRateLimitError;
 
-const attemptKey = (scope: "signup:start" | "login:start", email: string) => `${scope}:${email}`;
+const attemptKey = (scope: "login:start", email: string) => `${scope}:${email}`;
 
 const registerFailedAttempt = (record: AuthStoreRecord, key: string, maxAttempts: number) => {
   const timestamp = now();
@@ -180,57 +180,6 @@ export const createAuthStore = async (baseDir: string) => {
     };
   };
 
-  const startSignup = async (email: string, password: string): Promise<SessionPayload> => {
-    return runExclusive(async () => {
-      const normalizedEmail = email.trim().toLowerCase();
-      const record = await read();
-      const rateKey = attemptKey("signup:start", normalizedEmail || "unknown");
-      assertNotBlocked(record, rateKey);
-      if (!normalizedEmail.includes("@")) {
-        await save(registerFailedAttempt(record, rateKey, MAX_START_ATTEMPTS));
-        throw new Error("Valid email is required.");
-      }
-      if (password.length < 8) {
-        await save(registerFailedAttempt(record, rateKey, MAX_START_ATTEMPTS));
-        throw new Error("Password must be at least 8 characters.");
-      }
-      if (record.owner) throw new Error("Owner account already exists. Signup is disabled.");
-
-      const { passwordHash, passwordSalt } = hashPassword(password);
-      const owner: OwnerRecord = {
-        email: normalizedEmail,
-        fullName: "Boss Admin",
-        role: "Owner",
-        timezone: "UTC",
-        passwordHash,
-        passwordSalt,
-        createdAt: new Date().toISOString()
-      };
-      const session: SessionRecord = {
-        token: randomUUID(),
-        createdAt: new Date().toISOString(),
-        expiresAt: now() + SESSION_TTL_MS
-      };
-
-      const next = await save(
-        clearAttempt(
-          {
-            ...record,
-            owner,
-            sessions: [session]
-          },
-          rateKey
-        )
-      );
-
-      return {
-        token: session.token,
-        expiresAt: session.expiresAt,
-        ownerEmail: next.owner?.email ?? normalizedEmail
-      };
-    });
-  };
-
   const startLogin = async (email: string, password: string): Promise<SessionPayload> => {
     return runExclusive(async () => {
       const normalizedEmail = email.trim().toLowerCase();
@@ -312,7 +261,7 @@ export const createAuthStore = async (baseDir: string) => {
       const nextOwner: OwnerRecord = {
         ...record.owner,
         fullName: settings.fullName.trim() || "Boss Admin",
-        // Single-owner identity is immutable after first signup.
+        // Single-owner identity is immutable after initial owner setup.
         email: record.owner.email,
         role: record.owner.role || "Owner",
         timezone: settings.timezone.trim() || "UTC"
@@ -359,7 +308,6 @@ export const createAuthStore = async (baseDir: string) => {
 
   return {
     getStatus,
-    startSignup,
     startLogin,
     verifySession,
     logout,

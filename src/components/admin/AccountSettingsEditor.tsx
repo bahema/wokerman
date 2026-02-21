@@ -77,7 +77,7 @@ const AccountSettingsEditor = () => {
             disabled
             className="h-10 w-full cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-3 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
           />
-          <span className="text-xs text-slate-500 dark:text-slate-400">Locked after first signup.</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Locked after initial owner setup.</span>
         </label>
         <label className="space-y-1 text-sm">
           <span className="font-medium">Role</span>

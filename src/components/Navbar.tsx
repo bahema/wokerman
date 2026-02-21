@@ -6,6 +6,7 @@ import FollowUsPopover from "./FollowUsPopover";
 import ThemeToggle from "./ThemeToggle";
 import { withBasePath } from "../utils/basePath";
 import { acquireBodyScrollLock } from "../utils/scrollLock";
+import { useI18n } from "../i18n/provider";
 
 type NavbarProps = {
   activeSection: string;
@@ -17,13 +18,14 @@ type NavbarProps = {
 };
 
 const navLinks = [
-  { id: "forex", label: "Forex" },
-  { id: "betting", label: "Betting" },
-  { id: "software", label: "Software" },
-  { id: "social", label: "Social" }
-];
+  { id: "forex", key: "navbar.forex" },
+  { id: "betting", key: "navbar.betting" },
+  { id: "software", key: "navbar.software" },
+  { id: "social", key: "navbar.social" }
+] as const;
 
 const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventThemeActive = false }: NavbarProps) => {
+  const { t } = useI18n();
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -95,7 +97,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
             className={`inline-flex min-w-0 max-w-[68%] items-center gap-2 rounded-xl p-1 pr-2 transition md:max-w-none ${
               eventThemeActive ? "hover:bg-white/10" : "hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
-            aria-label="AutoHub home"
+            aria-label={t("navbar.homeAria")}
           >
             <img src={logo} alt="AutoHub logo" className="h-9 w-9 rounded-lg object-cover" />
             <span className={`truncate text-base font-bold tracking-tight ${eventThemeActive ? "event-nav-text" : "text-slate-900 dark:text-slate-50"}`}>
@@ -124,7 +126,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                         : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
                   }`}
                 >
-                  {link.label}
+                  {t(link.key)}
                 </a>
               );
             })}
@@ -144,7 +146,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                 eventThemeActive ? "event-nav-active hover:brightness-110" : "bg-slate-900 hover:bg-slate-700 dark:bg-blue-600 dark:hover:bg-blue-500"
               }`}
             >
-              Follow us
+              {t("navbar.followUs")}
             </button>
             <FollowUsPopover open={openPopover} onClose={() => setOpenPopover(false)} buttonRef={buttonRef} socials={socials} />
             <div className="md:hidden">
@@ -157,7 +159,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 md:hidden"
             >
-              <span className="sr-only">Toggle menu</span>
+              <span className="sr-only">{t("navbar.toggleMenu")}</span>
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 {mobileMenuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
               </svg>
@@ -179,7 +181,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           }`}
         >
           <div className="mb-2 border-b border-white/10 pb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
-            Menu
+            {t("navbar.menu")}
           </div>
           <div className="grid grid-cols-2 gap-2">
               {navLinks.map((link) => {
@@ -202,7 +204,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                           : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
                     }`}
                   >
-                    {link.label}
+                    {t(link.key)}
                   </a>
                 );
               })}

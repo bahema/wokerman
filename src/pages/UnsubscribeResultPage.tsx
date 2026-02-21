@@ -1,11 +1,13 @@
 import { FormEvent, useMemo, useState } from "react";
 import { apiJson } from "../api/client";
+import { useI18n } from "../i18n/provider";
 
 type StatusMode = "success" | "error" | "loading";
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const UnsubscribeResultPage = () => {
+  const { t } = useI18n();
   const params = new URLSearchParams(window.location.search);
   const statusParam = (params.get("status") || "").toLowerCase();
   const mode: StatusMode = statusParam === "success" ? "success" : statusParam === "error" ? "error" : "loading";
@@ -20,33 +22,33 @@ const UnsubscribeResultPage = () => {
     if (mode === "success") {
       return {
         icon: "✅",
-        title: "You're unsubscribed",
-        body: "You won't receive any more emails from us. If this was a mistake, you can re-subscribe below.",
-        next: "Re-subscribing will send a confirmation email to protect your inbox."
+        title: t("unsubscribe.successTitle"),
+        body: t("unsubscribe.successBody"),
+        next: t("unsubscribe.successNext")
       };
     }
     if (mode === "error") {
       return {
         icon: "⚠️",
-        title: "This unsubscribe link isn't valid",
-        body: "The link may be expired or already used. You can still re-subscribe below.",
-        next: "If you keep having trouble, try subscribing again with the email you used before."
+        title: t("unsubscribe.errorTitle"),
+        body: t("unsubscribe.errorBody"),
+        next: t("unsubscribe.errorNext")
       };
     }
     return {
       icon: "⏳",
-      title: "Checking your unsubscribe status",
-      body: "Please wait while we confirm your request.",
-      next: "If this takes too long, refresh the page or try the link from your email again."
+      title: t("unsubscribe.loadingTitle"),
+      body: t("unsubscribe.loadingBody"),
+      next: t("unsubscribe.loadingNext")
     };
-  }, [mode]);
+  }, [mode, t]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting) return;
     const normalizedEmail = email.trim().toLowerCase();
     if (!isValidEmail(normalizedEmail)) {
-      setSubmitError("Please enter a valid email address.");
+      setSubmitError(t("unsubscribe.invalidEmail"));
       return;
     }
     setSubmitting(true);
@@ -62,11 +64,11 @@ const UnsubscribeResultPage = () => {
       setSubmitDone(true);
       setEmail(normalizedEmail);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to subscribe. Please try again.";
+      const message = error instanceof Error ? error.message : t("unsubscribe.failedSubscribe");
       if (/already subscribed|already_subscribed/i.test(message)) {
-        setAlreadySubscribedInfo("This email is already subscribed. Check your inbox for past emails, or use unsubscribe if you want to stop emails.");
+        setAlreadySubscribedInfo(t("unsubscribe.alreadySubscribed"));
       } else if (/confirmation_send_failed|couldn.?t send the confirmation email|smtp/i.test(message)) {
-        setSubmitError("We couldn't send the confirmation email right now. Please try again in a minute.");
+        setSubmitError(t("unsubscribe.couldNotSend"));
       } else {
         setSubmitError(message);
       }
@@ -88,32 +90,32 @@ const UnsubscribeResultPage = () => {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold">Re-subscribe</h2>
-          <p className="mt-1 text-sm text-slate-600">Enter your email and we will send a new confirmation link.</p>
+          <h2 className="text-lg font-bold">{t("unsubscribe.resubscribeTitle")}</h2>
+          <p className="mt-1 text-sm text-slate-600">{t("unsubscribe.resubscribeBody")}</p>
 
           <form className="mt-4 space-y-3" onSubmit={onSubmit}>
             <label className="block text-sm font-medium text-slate-700">
-              Email
+              {t("unsubscribe.emailLabel")}
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
+                placeholder={t("unsubscribe.emailPlaceholder")}
                 className="mt-1 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none ring-blue-500 transition focus:border-blue-400 focus:ring-2"
               />
             </label>
 
             {submitError ? <p className="text-sm text-rose-600">{submitError}</p> : null}
             {alreadySubscribedInfo ? <p className="text-sm text-blue-700">{alreadySubscribedInfo}</p> : null}
-            {submitDone ? <p className="text-sm font-medium text-emerald-700">Done — check your inbox to confirm.</p> : null}
+            {submitDone ? <p className="text-sm font-medium text-emerald-700">{t("unsubscribe.doneCheckInbox")}</p> : null}
 
             <button
               type="submit"
               disabled={submitting}
               className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Sending..." : "Send confirmation email"}
+              {submitting ? t("unsubscribe.sending") : t("unsubscribe.sendConfirmation")}
             </button>
           </form>
         </section>

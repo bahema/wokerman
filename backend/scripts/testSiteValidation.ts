@@ -160,19 +160,23 @@ const run = async () => {
     child = await startBackend(mediaDir);
     const client = new CookieSessionClient();
 
-    const signupStart = await client.request("/api/auth/signup/start", {
+    const authStatus = await client.request("/api/auth/status");
+    assertCondition(authStatus.hasOwner === true, "Expected owner account to exist before validation.");
+
+    const loginStart = await client.request("/api/auth/login/start", {
       method: "POST",
       body: { email: OWNER_EMAIL, password: OWNER_PASSWORD }
     });
-    const signupOtp = typeof signupStart.devOtp === "string" ? signupStart.devOtp : "";
-    assertCondition(signupOtp.length > 0, "Expected dev OTP for signup.");
-
-    await client.request("/api/auth/signup/verify", {
-      method: "POST",
-      body: { email: OWNER_EMAIL, otp: signupOtp }
-    });
+    if (loginStart.requiresOtp === true) {
+      const devOtp = typeof loginStart.devOtp === "string" ? loginStart.devOtp : "";
+      assertCondition(devOtp.length > 0, "Expected dev OTP for login verification.");
+      await client.request("/api/auth/login/verify", {
+        method: "POST",
+        body: { email: OWNER_EMAIL, otp: devOtp }
+      });
+    }
     const session = await client.request("/api/auth/session");
-    assertCondition(session.valid === true, "Expected cookie session after signup.");
+    assertCondition(session.valid === true, "Expected cookie session after login.");
 
     const published = await client.request("/api/site/published");
     const publishedContent = published.content as JsonRecord | undefined;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Product } from "../data/siteData";
 import { acquireBodyScrollLock } from "../utils/scrollLock";
+import { useI18n } from "../i18n/provider";
 
 type ProductModalProps = {
   product: Product | null;
@@ -10,6 +11,7 @@ type ProductModalProps = {
 };
 
 const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) => {
+  const { t } = useI18n();
   const panelRef = useRef<HTMLDivElement>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const supportsBackdropBlur =
@@ -80,7 +82,7 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10"
-            aria-label="Close details modal"
+            aria-label={t("productModal.closeAria")}
           >
             ✕
           </button>

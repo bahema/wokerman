@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAuthStatus, startLogin, startSignup } from "../utils/authTrust";
+import { getAuthStatus, startLogin } from "../utils/authTrust";
 import { withBasePath } from "../utils/basePath";
+import { useI18n } from "../i18n/provider";
 
 type SignupProps = {
   postLoginPath?: string;
@@ -21,6 +22,7 @@ const resolvePostLoginPath = (input?: string) => {
 };
 
 const Signup = ({ postLoginPath }: SignupProps) => {
+  const { t } = useI18n();
   const [hasOwner, setHasOwner] = useState(false);
   const [statusReady, setStatusReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -46,27 +48,27 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     };
   }, []);
 
-  const title = useMemo(() => "Boss Login", []);
+  const title = useMemo(() => t("signup.title"), [t]);
   const subtitle = useMemo(
-    () => "Owner-only access. Client subscriptions work through email forms and do not require account login.",
-    []
+    () => t("signup.subtitle"),
+    [t]
   );
 
   const startAuth = async () => {
     setError("");
+    if (!hasOwner) {
+      setError(t("signup.ownerMissing"));
+      return;
+    }
     setBusy(true);
     try {
-      if (hasOwner) {
-        await startLogin(email.trim().toLowerCase(), password);
-      } else {
-        await startSignup(email.trim().toLowerCase(), password);
-      }
+      await startLogin(email.trim().toLowerCase(), password);
       window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
       window.dispatchEvent(new PopStateEvent("popstate"));
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to authenticate.";
+      const message = err instanceof Error ? err.message : t("signup.errorAuthFailed");
       if (/invalid credentials/i.test(message) && hasOwner) {
-        setError("Invalid credentials. Signup is disabled because an owner account already exists.");
+        setError(t("signup.invalidCredentials"));
       } else {
         setError(message);
       }
@@ -77,8 +79,8 @@ const Signup = ({ postLoginPath }: SignupProps) => {
 
   if (!statusReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
-        Loading authentication system...
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+        {t("signup.loadingAuth")}
       </div>
     );
   }
@@ -91,22 +93,22 @@ const Signup = ({ postLoginPath }: SignupProps) => {
 
         <div className="mt-4 space-y-3">
           <label className="block space-y-1 text-sm">
-            <span>Email</span>
+            <span>{t("signup.emailLabel")}</span>
             <input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@company.com"
+              placeholder={t("signup.emailPlaceholder")}
               className="h-10 w-full rounded border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
           <label className="block space-y-1 text-sm">
-            <span>Password</span>
+            <span>{t("signup.passwordLabel")}</span>
             <input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password"
+              placeholder={t("signup.passwordPlaceholder")}
               className="h-10 w-full rounded border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
@@ -116,7 +118,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
             disabled={busy}
             className="h-10 w-full rounded bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {busy ? "Processing..." : "Continue"}
+            {busy ? t("signup.processing") : t("signup.continue")}
           </button>
         </div>
 

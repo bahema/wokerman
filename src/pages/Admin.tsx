@@ -578,7 +578,7 @@ const Admin = () => {
               setIsBusy(true);
               setActionError("");
               await clearAuth();
-              window.history.pushState({}, "", "/signup");
+              window.history.pushState({}, "", "/login");
               window.dispatchEvent(new PopStateEvent("popstate"));
             } catch (error) {
               setActionError(error instanceof Error ? error.message : "Failed to logout.");

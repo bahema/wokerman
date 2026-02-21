@@ -9,6 +9,7 @@ import {
   saveCookieConsent,
   type CookieConsent
 } from "../utils/cookieConsent";
+import { useI18n } from "../i18n/provider";
 
 type ConsentDraft = Pick<CookieConsent, "analytics" | "marketing" | "preferences">;
 const COOKIE_BANNER_APPEAR_DELAY_MS = 180000;
@@ -40,6 +41,7 @@ const Toggle = ({
 );
 
 const CookieConsent = () => {
+  const { t } = useI18n();
   const [hasMounted, setHasMounted] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -156,31 +158,31 @@ const CookieConsent = () => {
     () => [
       {
         key: "essential" as const,
-        title: "Essential",
-        desc: "Required for core site functionality and security.",
+        title: t("cookie.essential"),
+        desc: t("cookie.essentialDesc"),
         enabled: true,
         required: true
       },
       {
         key: "analytics" as const,
-        title: "Analytics",
-        desc: "Helps us understand usage and improve experience.",
+        title: t("cookie.analytics"),
+        desc: t("cookie.analyticsDesc"),
         enabled: draft.analytics
       },
       {
         key: "marketing" as const,
-        title: "Marketing",
-        desc: "Used to personalize campaigns and promotions.",
+        title: t("cookie.marketing"),
+        desc: t("cookie.marketingDesc"),
         enabled: draft.marketing
       },
       {
         key: "preferences" as const,
-        title: "Preferences",
-        desc: "Remembers selected options for a smoother experience.",
+        title: t("cookie.preferences"),
+        desc: t("cookie.preferencesDesc"),
         enabled: draft.preferences
       }
     ],
-    [draft]
+    [draft, t]
   );
 
   const showAny = showBanner || modalOpen;
@@ -193,11 +195,11 @@ const CookieConsent = () => {
       {showBanner ? (
         <div className="fixed bottom-3 left-3 right-3 z-[1000] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-[720px] rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
-            <h3 className="text-base font-semibold text-white">We use cookies</h3>
+            <h3 className="text-base font-semibold text-white">{t("cookie.bannerTitle")}</h3>
             <p className="mt-2 text-sm leading-relaxed text-white/70">
-              We use essential cookies and optional cookies to improve performance and experience.{" "}
+              {t("cookie.bannerBody")}{" "}
               <a href={withBasePath("/privacy")} className="underline underline-offset-4 transition hover:text-white">
-                Privacy Policy
+                {t("cookie.privacyPolicy")}
               </a>
             </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -206,21 +208,21 @@ const CookieConsent = () => {
                 onClick={acceptAll}
                 className="h-11 w-full rounded-xl bg-blue-600 px-4 font-semibold text-white transition hover:bg-blue-500 sm:w-auto"
               >
-                Accept all
+                {t("cookie.acceptAll")}
               </button>
               <button
                 type="button"
                 onClick={rejectNonEssential}
                 className="h-11 w-full rounded-xl bg-white/10 px-4 font-semibold text-white transition hover:bg-white/15 sm:w-auto"
               >
-                Reject non-essential
+                {t("cookie.rejectNonEssential")}
               </button>
               <button
                 type="button"
                 onClick={() => setModalOpen(true)}
                 className="h-11 w-full rounded-xl border border-white/10 bg-transparent px-4 font-semibold text-white/90 transition hover:bg-white/5 sm:w-auto"
               >
-                Customize
+                {t("cookie.customize")}
               </button>
             </div>
           </div>
@@ -236,15 +238,15 @@ const CookieConsent = () => {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Cookie preferences"
+            aria-label={t("cookie.preferencesTitle")}
             onClick={(event) => event.stopPropagation()}
             className="flex max-h-[calc(100vh-2rem)] w-[min(560px,92vw)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-md"
           >
             <header className="sticky top-0 flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
-              <h3 className="font-semibold text-white">Cookie preferences</h3>
+              <h3 className="font-semibold text-white">{t("cookie.preferencesTitle")}</h3>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label={t("cookie.close")}
                 onClick={() => setModalOpen(false)}
                 className="h-10 w-10 rounded-xl bg-white/5 text-white transition hover:bg-white/10"
               >
@@ -260,7 +262,7 @@ const CookieConsent = () => {
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-white">{category.title}</p>
                         {category.required ? (
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/80">Required</span>
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/80">{t("cookie.required")}</span>
                         ) : null}
                       </div>
                       <p className="mt-1 text-sm text-white/60">{category.desc}</p>
@@ -284,14 +286,14 @@ const CookieConsent = () => {
                 onClick={savePreferences}
                 className="h-11 rounded-xl bg-blue-600 px-4 font-semibold text-white transition hover:bg-blue-500"
               >
-                Save preferences
+                {t("cookie.savePreferences")}
               </button>
               <button
                 type="button"
                 onClick={acceptAll}
                 className="h-11 rounded-xl bg-white/10 px-4 font-semibold text-white transition hover:bg-white/15"
               >
-                Accept all
+                {t("cookie.acceptAll")}
               </button>
             </footer>
           </div>
