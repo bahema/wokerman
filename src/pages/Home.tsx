@@ -263,10 +263,10 @@ const Home = (_props: HomeProps) => {
       const delta = now - last;
       last = now;
       if (!industriesScrollPaused) {
-        const loopWidth = el.scrollWidth / 2;
-        if (loopWidth > 0) {
+        const travelWidth = el.scrollWidth - el.clientWidth;
+        if (travelWidth > 0) {
           const next = el.scrollLeft + delta * speedPxPerMs;
-          el.scrollLeft = next >= loopWidth ? next - loopWidth : next;
+          el.scrollLeft = next >= travelWidth ? 0 : next;
         }
       }
       rafId = window.requestAnimationFrame(tick);
@@ -352,8 +352,7 @@ const Home = (_props: HomeProps) => {
 
   const resolveImage = (input: string) => (input.startsWith("http") ? input : withBasePath(input));
 
-  const industriesForTrack =
-    content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
+  const industriesForTrack = content.industries;
 
   const renderProductGrid = (products: Product[], sourceCount: number) => {
     if (sourceCount === 0) {
@@ -768,12 +767,10 @@ const Home = (_props: HomeProps) => {
               onBlurCapture={() => setIndustriesScrollPaused(false)}
             >
               <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
-                {industriesForTrack.map((industry, index) => {
-                  const isClone = index >= content.industries.length;
+                {industriesForTrack.map((industry) => {
                   return (
                   <div
-                    key={`${industry.id}-${index}`}
-                    aria-hidden={isClone}
+                    key={industry.id}
                     className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3"
                   >
                     {industry.link?.trim() ? (
@@ -782,7 +779,6 @@ const Home = (_props: HomeProps) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`Open ${industry.label}`}
-                        tabIndex={isClone ? -1 : 0}
                       >
                         {industry.imageUrl ? (
                           <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] transition hover:scale-105 dark:shadow-none" />
