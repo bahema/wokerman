@@ -419,19 +419,27 @@ const bootstrap = async () => {
     return hashTrustedDeviceToken(trustedDeviceToken);
   };
 
-  const getAuthContext = (req: express.Request) => {
-    const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
-    if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+  const getBearerToken = (req: express.Request) => {
     const authorizationHeader = req.header("authorization") ?? "";
     const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
     if (bearerMatch) {
       const bearerToken = bearerMatch[1]?.trim() ?? "";
-      if (bearerToken) return { token: bearerToken, source: "bearer" as const };
+      if (bearerToken) return bearerToken;
     }
+    return "";
+  };
+
+  const getAuthContext = (req: express.Request) => {
+    const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
+    if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+    const bearerToken = getBearerToken(req);
+    if (bearerToken) return { token: bearerToken, source: "bearer" as const };
     return { token: "", source: "none" as const };
   };
 
   const getAuthToken = (req: express.Request) => {
+    const resolved = (req as express.Request & { authToken?: string }).authToken;
+    if (resolved) return resolved;
     return getAuthContext(req).token;
   };
 
@@ -446,12 +454,21 @@ const bootstrap = async () => {
   };
 
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const { token, source } = getAuthContext(req);
-    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
-    const valid =
+    let { token, source } = getAuthContext(req);
+    let trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    let valid =
       source === "cookie"
         ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
         : await authStore.verifySession(token);
+    if (!valid && source === "cookie") {
+      const bearerToken = getBearerToken(req);
+      if (bearerToken && (await authStore.verifySession(bearerToken))) {
+        token = bearerToken;
+        source = "bearer";
+        trustedDeviceTokenHash = "";
+        valid = true;
+      }
+    }
     if (!valid) {
       clearAuthCookie(res);
       res.status(401).json({ error: "Unauthorized." });
@@ -464,7 +481,8 @@ const bootstrap = async () => {
       attachCsrfHeaderFromRequest(req, res);
     }
     res.locals.authSource = source;
-    (req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource = source;
+    (req as express.Request & { authSource?: "cookie" | "bearer" | "none"; authToken?: string }).authSource = source;
+    (req as express.Request & { authSource?: "cookie" | "bearer" | "none"; authToken?: string }).authToken = token;
     next();
   };
 
@@ -773,18 +791,27 @@ const bootstrap = async () => {
   });
 
   app.get("/api/auth/session", async (req, res) => {
-    const { token, source } = getAuthContext(req);
-    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
-    const valid =
+    let { token, source } = getAuthContext(req);
+    let trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    let valid =
       source === "cookie"
         ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
         : await authStore.verifySession(token);
+    if (!valid && source === "cookie") {
+      const bearerToken = getBearerToken(req);
+      if (bearerToken && (await authStore.verifySession(bearerToken))) {
+        token = bearerToken;
+        source = "bearer";
+        trustedDeviceTokenHash = "";
+        valid = true;
+      }
+    }
     if (!valid) {
       clearAuthCookie(res);
     } else if (trustedDeviceTokenHash) {
       await authStore.touchTrustedDevice(trustedDeviceTokenHash);
     }
-    if (valid) attachCsrfHeaderFromRequest(req, res);
+    if (valid && source === "cookie") attachCsrfHeaderFromRequest(req, res);
     res.status(200).json({ valid });
   });
 
