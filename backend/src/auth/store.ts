@@ -17,6 +17,14 @@ type SessionRecord = {
   token: string;
   createdAt: string;
   expiresAt: number;
+  trustedDeviceTokenHash?: string;
+};
+
+type TrustedDeviceRecord = {
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: number;
+  lastUsedAt: string;
 };
 
 type AttemptState = {
@@ -34,6 +42,7 @@ type SessionPayload = {
 type AuthStoreRecord = {
   owner: OwnerRecord | null;
   sessions: SessionRecord[];
+  trustedDevices: TrustedDeviceRecord[];
   attemptState: Record<string, AttemptState>;
   updatedAt: string;
 };
@@ -42,6 +51,12 @@ const SESSION_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const ATTEMPT_BLOCK_MS = 15 * 60 * 1000;
 const MAX_START_ATTEMPTS = 5;
+const PASSWORD_PEPPER = (process.env.AUTH_PASSWORD_PEPPER ?? "").trim();
+const SCRYPT_N = Number(process.env.AUTH_SCRYPT_N ?? 32768);
+const SCRYPT_R = Number(process.env.AUTH_SCRYPT_R ?? 8);
+const SCRYPT_P = Number(process.env.AUTH_SCRYPT_P ?? 1);
+const SCRYPT_MAXMEM = Number(process.env.AUTH_SCRYPT_MAXMEM ?? 96 * 1024 * 1024);
+const toHashInput = (password: string) => (PASSWORD_PEPPER ? `${password}:${PASSWORD_PEPPER}` : password);
 
 const ensureDir = async (dir: string) => {
   await fs.mkdir(dir, { recursive: true });
@@ -63,12 +78,22 @@ const writeJson = async (filePath: string, data: unknown) => {
 const now = () => Date.now();
 
 const hashPassword = (password: string, salt = randomBytes(16).toString("hex")) => {
-  const passwordHash = scryptSync(password, salt, 64).toString("hex");
+  const passwordHash = scryptSync(toHashInput(password), salt, 64, {
+    N: Number.isFinite(SCRYPT_N) && SCRYPT_N > 1 ? Math.floor(SCRYPT_N) : 32768,
+    r: Number.isFinite(SCRYPT_R) && SCRYPT_R > 0 ? Math.floor(SCRYPT_R) : 8,
+    p: Number.isFinite(SCRYPT_P) && SCRYPT_P > 0 ? Math.floor(SCRYPT_P) : 1,
+    maxmem: Number.isFinite(SCRYPT_MAXMEM) && SCRYPT_MAXMEM > 0 ? Math.floor(SCRYPT_MAXMEM) : 96 * 1024 * 1024
+  }).toString("hex");
   return { passwordHash, passwordSalt: salt };
 };
 
 const verifyPassword = (password: string, hash: string, salt: string) => {
-  const nextHash = scryptSync(password, salt, 64);
+  const nextHash = scryptSync(toHashInput(password), salt, 64, {
+    N: Number.isFinite(SCRYPT_N) && SCRYPT_N > 1 ? Math.floor(SCRYPT_N) : 32768,
+    r: Number.isFinite(SCRYPT_R) && SCRYPT_R > 0 ? Math.floor(SCRYPT_R) : 8,
+    p: Number.isFinite(SCRYPT_P) && SCRYPT_P > 0 ? Math.floor(SCRYPT_P) : 1,
+    maxmem: Number.isFinite(SCRYPT_MAXMEM) && SCRYPT_MAXMEM > 0 ? Math.floor(SCRYPT_MAXMEM) : 96 * 1024 * 1024
+  });
   const savedHash = Buffer.from(hash, "hex");
   if (savedHash.length !== nextHash.length) return false;
   return timingSafeEqual(savedHash, nextHash);
@@ -136,6 +161,7 @@ export const createAuthStore = async (baseDir: string) => {
   const initial: AuthStoreRecord = {
     owner: null,
     sessions: [],
+    trustedDevices: [],
     attemptState: {},
     updatedAt: new Date().toISOString()
   };
@@ -147,16 +173,24 @@ export const createAuthStore = async (baseDir: string) => {
   const read = async () => {
     const record = await readJson<AuthStoreRecord>(dataPath, initial);
     const attemptState = record.attemptState ?? {};
+    const trustedDevices = Array.isArray(record.trustedDevices) ? record.trustedDevices : [];
     const normalizedOwner = normalizeOwner(record.owner);
     const timestamp = now();
     const activeSessions = record.sessions.filter((session) => session.expiresAt > timestamp);
+    const activeTrustedDevices = trustedDevices.filter((device) => device.expiresAt > timestamp);
     const activeAttemptState = Object.entries(attemptState).reduce<Record<string, AttemptState>>((acc, [key, value]) => {
       const blocked = value.blockedUntil > timestamp;
       const inWindow = timestamp - value.windowStart <= ATTEMPT_WINDOW_MS;
       if (blocked || inWindow) acc[key] = value;
       return acc;
     }, {});
-    return { ...record, owner: normalizedOwner, sessions: activeSessions, attemptState: activeAttemptState };
+    return {
+      ...record,
+      owner: normalizedOwner,
+      sessions: activeSessions,
+      trustedDevices: activeTrustedDevices,
+      attemptState: activeAttemptState
+    };
   };
 
   const save = async (record: AuthStoreRecord) => {
@@ -180,7 +214,11 @@ export const createAuthStore = async (baseDir: string) => {
     };
   };
 
-  const startLogin = async (email: string, password: string): Promise<SessionPayload> => {
+  const startLogin = async (
+    email: string,
+    password: string,
+    options?: { trustedDeviceTokenHash?: string }
+  ): Promise<SessionPayload> => {
     return runExclusive(async () => {
       const normalizedEmail = email.trim().toLowerCase();
       const record = await read();
@@ -194,7 +232,8 @@ export const createAuthStore = async (baseDir: string) => {
       const session: SessionRecord = {
         token: randomUUID(),
         createdAt: new Date().toISOString(),
-        expiresAt: now() + SESSION_TTL_MS
+        expiresAt: now() + SESSION_TTL_MS,
+        trustedDeviceTokenHash: options?.trustedDeviceTokenHash?.trim() || undefined
       };
       const activeSessions = record.sessions.filter((item) => item.expiresAt > now());
       await save(
@@ -218,6 +257,70 @@ export const createAuthStore = async (baseDir: string) => {
     if (!token) return false;
     const record = await read();
     return record.sessions.some((session) => session.token === token && session.expiresAt > now());
+  };
+
+  const verifySessionForDevice = async (token: string, trustedDeviceTokenHash?: string) => {
+    if (!token) return false;
+    const normalizedHash = trustedDeviceTokenHash?.trim() || "";
+    const record = await read();
+    const session = record.sessions.find((item) => item.token === token && item.expiresAt > now());
+    if (!session) return false;
+    if (!session.trustedDeviceTokenHash) return true;
+    if (!normalizedHash || normalizedHash !== session.trustedDeviceTokenHash) return false;
+    return record.trustedDevices.some((device) => device.tokenHash === normalizedHash && device.expiresAt > now());
+  };
+
+  const registerTrustedDevice = async (tokenHash: string, ttlMs: number) => {
+    const normalizedTokenHash = tokenHash.trim();
+    if (!normalizedTokenHash) throw new Error("Trusted device token hash is required.");
+    const nextTtl = Number.isFinite(ttlMs) && ttlMs > 0 ? Math.floor(ttlMs) : 30 * 24 * 60 * 60 * 1000;
+    return runExclusive(async () => {
+      const record = await read();
+      const createdAt = new Date().toISOString();
+      const expiresAt = now() + nextTtl;
+      const nextDevice: TrustedDeviceRecord = {
+        tokenHash: normalizedTokenHash,
+        createdAt,
+        expiresAt,
+        lastUsedAt: createdAt
+      };
+      const existing = record.trustedDevices.filter((item) => item.tokenHash !== normalizedTokenHash);
+      await save({
+        ...record,
+        trustedDevices: [...existing, nextDevice]
+      });
+    });
+  };
+
+  const touchTrustedDevice = async (tokenHash: string) => {
+    const normalizedTokenHash = tokenHash.trim();
+    if (!normalizedTokenHash) return;
+    await runExclusive(async () => {
+      const record = await read();
+      const nowIso = new Date().toISOString();
+      let changed = false;
+      const trustedDevices = record.trustedDevices.map((device) => {
+        if (device.tokenHash !== normalizedTokenHash) return device;
+        changed = true;
+        return { ...device, lastUsedAt: nowIso };
+      });
+      if (!changed) return;
+      await save({ ...record, trustedDevices });
+    });
+  };
+
+  const hasTrustedDevice = async (tokenHash: string) => {
+    const normalizedTokenHash = tokenHash.trim();
+    if (!normalizedTokenHash) return false;
+    const record = await read();
+    return record.trustedDevices.some((device) => device.tokenHash === normalizedTokenHash && device.expiresAt > now());
+  };
+
+  const clearTrustedDevices = async () => {
+    await runExclusive(async () => {
+      const record = await read();
+      await save({ ...record, trustedDevices: [] });
+    });
   };
 
   const logout = async (token: string) => {
@@ -295,6 +398,7 @@ export const createAuthStore = async (baseDir: string) => {
       await save({
         ...record,
         owner: nextOwner,
+        trustedDevices: [],
         // Rotate all sessions after password change; issue exactly one fresh session.
         sessions: [rotatedSession]
       });
@@ -310,6 +414,11 @@ export const createAuthStore = async (baseDir: string) => {
     getStatus,
     startLogin,
     verifySession,
+    verifySessionForDevice,
+    registerTrustedDevice,
+    touchTrustedDevice,
+    hasTrustedDevice,
+    clearTrustedDevices,
     logout,
     logoutAll,
     getAccountSettings,

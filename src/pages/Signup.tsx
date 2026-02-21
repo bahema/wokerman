@@ -27,6 +27,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   const [statusReady, setStatusReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [trustDevice, setTrustDevice] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const nextPathAfterLogin = resolvePostLoginPath(postLoginPath);
@@ -62,7 +63,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
     }
     setBusy(true);
     try {
-      await startLogin(email.trim().toLowerCase(), password);
+      await startLogin(email.trim().toLowerCase(), password, trustDevice);
       window.history.pushState({}, "", withBasePath(nextPathAfterLogin));
       window.dispatchEvent(new PopStateEvent("popstate"));
     } catch (err) {
@@ -111,6 +112,15 @@ const Signup = ({ postLoginPath }: SignupProps) => {
               placeholder={t("signup.passwordPlaceholder")}
               className="h-10 w-full rounded border border-slate-300 bg-white px-3 outline-none ring-blue-500 transition focus:ring-2 dark:border-slate-700 dark:bg-slate-950"
             />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={trustDevice}
+              onChange={(event) => setTrustDevice(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
+            />
+            <span>{t("signup.trustDevice")}</span>
           </label>
           <button
             type="button"

@@ -47,6 +47,7 @@ const RESET_SECURITY_STATE_ON_BOOT = process.env.RESET_SECURITY_STATE_ON_BOOT ==
 const RESET_SECURITY_STATE_CONFIRM = (process.env.RESET_SECURITY_STATE_CONFIRM ?? "").trim();
 const AUTH_COOKIE_NAME = "autohub_admin_session";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
+const TRUSTED_DEVICE_COOKIE_NAME = "autohub_admin_trusted_device";
 const resolveAuthCookieSigningKey = () =>
   (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
 const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
@@ -55,6 +56,7 @@ const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
 const RATE_LIMIT_BUCKET_LIMIT = Number(process.env.RATE_LIMIT_BUCKET_LIMIT ?? 10_000);
+const TRUSTED_DEVICE_TTL_MS = Number(process.env.TRUSTED_DEVICE_TTL_MS ?? 30 * 24 * 60 * 60 * 1000);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
@@ -323,6 +325,10 @@ const bootstrap = async () => {
     const signature = createHmac("sha256", effectiveCookieSigningKey).update(token).digest("hex");
     return `${token}.${signature}`;
   };
+  const signTrustedDeviceToken = (token: string) => {
+    const signature = createHmac("sha256", effectiveCookieSigningKey).update(token).digest("hex");
+    return `${token}.${signature}`;
+  };
 
   const readSignedAuthToken = (signedValue: string) => {
     const dotIndex = signedValue.lastIndexOf(".");
@@ -336,6 +342,19 @@ const bootstrap = async () => {
     if (!timingSafeEqual(provided, expected)) return "";
     return token;
   };
+  const readSignedTrustedDeviceToken = (signedValue: string) => {
+    const dotIndex = signedValue.lastIndexOf(".");
+    if (dotIndex <= 0 || dotIndex === signedValue.length - 1) return "";
+    const token = signedValue.slice(0, dotIndex);
+    const providedSignature = signedValue.slice(dotIndex + 1);
+    const expectedSignature = createHmac("sha256", effectiveCookieSigningKey).update(token).digest("hex");
+    const provided = Buffer.from(providedSignature);
+    const expected = Buffer.from(expectedSignature);
+    if (provided.length !== expected.length) return "";
+    if (!timingSafeEqual(provided, expected)) return "";
+    return token;
+  };
+  const hashTrustedDeviceToken = (token: string) => createHash("sha256").update(`${effectiveCookieSigningKey}:${token}`).digest("hex");
 
   const setAuthCookie = (res: express.Response, token: string, expiresAt: number) => {
     const csrfToken = randomUUID();
@@ -348,6 +367,15 @@ const bootstrap = async () => {
     });
     res.cookie(CSRF_COOKIE_NAME, csrfToken, {
       httpOnly: false,
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
+      path: "/",
+      maxAge: Math.max(0, expiresAt - Date.now())
+    });
+  };
+  const setTrustedDeviceCookie = (res: express.Response, token: string, expiresAt: number) => {
+    res.cookie(TRUSTED_DEVICE_COOKIE_NAME, signTrustedDeviceToken(token), {
+      httpOnly: true,
       secure: authCookieSecure,
       sameSite: authCookieSameSite,
       path: "/",
@@ -368,6 +396,19 @@ const bootstrap = async () => {
       sameSite: authCookieSameSite,
       path: "/"
     });
+  };
+  const clearTrustedDeviceCookie = (res: express.Response) => {
+    res.clearCookie(TRUSTED_DEVICE_COOKIE_NAME, {
+      httpOnly: true,
+      secure: authCookieSecure,
+      sameSite: authCookieSameSite,
+      path: "/"
+    });
+  };
+  const getTrustedDeviceTokenHash = (req: express.Request) => {
+    const trustedDeviceToken = readSignedTrustedDeviceToken(getCookieValue(req, TRUSTED_DEVICE_COOKIE_NAME));
+    if (!trustedDeviceToken) return "";
+    return hashTrustedDeviceToken(trustedDeviceToken);
   };
 
   const getAuthContext = (req: express.Request) => {
@@ -391,7 +432,17 @@ const bootstrap = async () => {
   };
 
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const { source } = getAuthContext(req);
+    const { token, source } = getAuthContext(req);
+    const trustedDeviceTokenHash = getTrustedDeviceTokenHash(req);
+    const valid = await authStore.verifySessionForDevice(token, trustedDeviceTokenHash);
+    if (!valid) {
+      clearAuthCookie(res);
+      res.status(401).json({ error: "Unauthorized." });
+      return;
+    }
+    if (trustedDeviceTokenHash) {
+      await authStore.touchTrustedDevice(trustedDeviceTokenHash);
+    }
     res.locals.authSource = source;
     (req as express.Request & { authSource?: "cookie" | "none" }).authSource = source;
     next();
@@ -399,7 +450,10 @@ const bootstrap = async () => {
 
   const requireCsrfForCookieAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const source = ((req as express.Request & { authSource?: "cookie" | "none" }).authSource ?? res.locals.authSource) as "cookie" | "none" | undefined;
-    void source;
+    if (source === "cookie" && !validateCsrfPair(req)) {
+      res.status(403).json({ error: "Invalid CSRF token." });
+      return;
+    }
     next();
   };
 
@@ -664,10 +718,29 @@ const bootstrap = async () => {
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
+    const trustDevice = req.body?.trustDevice === true;
     try {
-      const session = await authStore.startLogin(email, password);
+      let trustedDeviceToken = "";
+      let trustedDeviceTokenHash = "";
+      if (trustDevice) {
+        trustedDeviceToken = `${randomUUID()}-${randomUUID()}`;
+        trustedDeviceTokenHash = hashTrustedDeviceToken(trustedDeviceToken);
+        await authStore.registerTrustedDevice(trustedDeviceTokenHash, TRUSTED_DEVICE_TTL_MS);
+      } else {
+        const existingTrustedDeviceHash = getTrustedDeviceTokenHash(req);
+        if (existingTrustedDeviceHash && (await authStore.hasTrustedDevice(existingTrustedDeviceHash))) {
+          trustedDeviceTokenHash = existingTrustedDeviceHash;
+          await authStore.touchTrustedDevice(existingTrustedDeviceHash);
+        }
+      }
+      const session = await authStore.startLogin(email, password, {
+        trustedDeviceTokenHash: trustedDeviceTokenHash || undefined
+      });
       setAuthCookie(res, session.token, session.expiresAt);
-      res.status(200).json({ ok: true, requiresOtp: false });
+      if (trustedDeviceToken) {
+        setTrustedDeviceCookie(res, trustedDeviceToken, Date.now() + TRUSTED_DEVICE_TTL_MS);
+      }
+      res.status(200).json({ ok: true, requiresOtp: false, trustedDevice: Boolean(trustedDeviceTokenHash) });
     } catch (error) {
       sendAuthError(res, error, "Failed to start login.");
     }
@@ -675,8 +748,13 @@ const bootstrap = async () => {
 
   app.get("/api/auth/session", async (req, res) => {
     const token = getAuthToken(req);
-    const valid = await authStore.verifySession(token);
-    if (!valid) clearAuthCookie(res);
+    const trustedDeviceTokenHash = getTrustedDeviceTokenHash(req);
+    const valid = await authStore.verifySessionForDevice(token, trustedDeviceTokenHash);
+    if (!valid) {
+      clearAuthCookie(res);
+    } else if (trustedDeviceTokenHash) {
+      await authStore.touchTrustedDevice(trustedDeviceTokenHash);
+    }
     res.status(200).json({ valid });
   });
 
@@ -723,7 +801,9 @@ const bootstrap = async () => {
       const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
       const session = await authStore.changePassword(currentPassword, newPassword, token);
+      await authStore.clearTrustedDevices();
       setAuthCookie(res, session.token, session.expiresAt);
+      clearTrustedDeviceCookie(res);
       res.status(200).json({ ok: true });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update password." });

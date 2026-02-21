@@ -18,8 +18,8 @@ export const getAuthStatus = async () => {
   return apiGet<{ hasOwner: boolean }>("/api/auth/status");
 };
 
-export const startLogin = async (email: string, password: string) => {
-  return apiJson<{ ok: true }>("/api/auth/login/start", "POST", { email, password });
+export const startLogin = async (email: string, password: string, trustDevice = false) => {
+  return apiJson<{ ok: true; trustedDevice?: boolean }>("/api/auth/login/start", "POST", { email, password, trustDevice });
 };
 
 // Backward-compatible exports for older callers.
