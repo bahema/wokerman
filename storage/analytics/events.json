@@ -1,0 +1,18 @@
+[
+  {
+    "id": "706512ac-8492-4ec4-b705-5287969ad19c",
+    "eventName": "admin_action",
+    "payload": {
+      "action": "media.upload",
+      "method": "POST",
+      "path": "/api/media",
+      "statusCode": 201,
+      "durationMs": 30,
+      "authSource": "none",
+      "ip": "::1",
+      "userAgent": "curl/8.16.0",
+      "at": "2026-02-20T23:46:49.205Z"
+    },
+    "createdAt": "2026-02-20T23:46:49.205Z"
+  }
+]

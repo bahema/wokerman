@@ -1,0 +1,18 @@
+{
+  "consents": [
+    {
+      "id": "test-consent-1234567890",
+      "version": 1,
+      "essential": true,
+      "analytics": true,
+      "marketing": false,
+      "preferences": true,
+      "source": "web",
+      "ipHash": "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.5.4",
+      "createdAt": "2026-02-21T00:33:08.364Z",
+      "updatedAt": "2026-02-21T00:33:08.364Z"
+    }
+  ],
+  "updatedAt": "2026-02-21T00:33:08.367Z"
+}

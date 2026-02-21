@@ -56,7 +56,34 @@ const SCRYPT_N = Number(process.env.AUTH_SCRYPT_N ?? 32768);
 const SCRYPT_R = Number(process.env.AUTH_SCRYPT_R ?? 8);
 const SCRYPT_P = Number(process.env.AUTH_SCRYPT_P ?? 1);
 const SCRYPT_MAXMEM = Number(process.env.AUTH_SCRYPT_MAXMEM ?? 96 * 1024 * 1024);
+const LEGACY_SCRYPT_N = 16384;
+const LEGACY_SCRYPT_R = 8;
+const LEGACY_SCRYPT_P = 1;
+const LEGACY_SCRYPT_MAXMEM = 32 * 1024 * 1024;
 const toHashInput = (password: string) => (PASSWORD_PEPPER ? `${password}:${PASSWORD_PEPPER}` : password);
+const deriveHash = (
+  password: string,
+  salt: string,
+  params: { N: number; r: number; p: number; maxmem: number }
+) =>
+  scryptSync(toHashInput(password), salt, 64, {
+    N: params.N,
+    r: params.r,
+    p: params.p,
+    maxmem: params.maxmem
+  });
+const normalizeScryptParams = () => ({
+  N: Number.isFinite(SCRYPT_N) && SCRYPT_N > 1 ? Math.floor(SCRYPT_N) : 32768,
+  r: Number.isFinite(SCRYPT_R) && SCRYPT_R > 0 ? Math.floor(SCRYPT_R) : 8,
+  p: Number.isFinite(SCRYPT_P) && SCRYPT_P > 0 ? Math.floor(SCRYPT_P) : 1,
+  maxmem: Number.isFinite(SCRYPT_MAXMEM) && SCRYPT_MAXMEM > 0 ? Math.floor(SCRYPT_MAXMEM) : 96 * 1024 * 1024
+});
+const normalizeLegacyScryptParams = () => ({
+  N: LEGACY_SCRYPT_N,
+  r: LEGACY_SCRYPT_R,
+  p: LEGACY_SCRYPT_P,
+  maxmem: LEGACY_SCRYPT_MAXMEM
+});
 
 const ensureDir = async (dir: string) => {
   await fs.mkdir(dir, { recursive: true });
@@ -78,22 +105,19 @@ const writeJson = async (filePath: string, data: unknown) => {
 const now = () => Date.now();
 
 const hashPassword = (password: string, salt = randomBytes(16).toString("hex")) => {
-  const passwordHash = scryptSync(toHashInput(password), salt, 64, {
-    N: Number.isFinite(SCRYPT_N) && SCRYPT_N > 1 ? Math.floor(SCRYPT_N) : 32768,
-    r: Number.isFinite(SCRYPT_R) && SCRYPT_R > 0 ? Math.floor(SCRYPT_R) : 8,
-    p: Number.isFinite(SCRYPT_P) && SCRYPT_P > 0 ? Math.floor(SCRYPT_P) : 1,
-    maxmem: Number.isFinite(SCRYPT_MAXMEM) && SCRYPT_MAXMEM > 0 ? Math.floor(SCRYPT_MAXMEM) : 96 * 1024 * 1024
-  }).toString("hex");
+  const passwordHash = deriveHash(password, salt, normalizeScryptParams()).toString("hex");
   return { passwordHash, passwordSalt: salt };
 };
 
 const verifyPassword = (password: string, hash: string, salt: string) => {
-  const nextHash = scryptSync(toHashInput(password), salt, 64, {
-    N: Number.isFinite(SCRYPT_N) && SCRYPT_N > 1 ? Math.floor(SCRYPT_N) : 32768,
-    r: Number.isFinite(SCRYPT_R) && SCRYPT_R > 0 ? Math.floor(SCRYPT_R) : 8,
-    p: Number.isFinite(SCRYPT_P) && SCRYPT_P > 0 ? Math.floor(SCRYPT_P) : 1,
-    maxmem: Number.isFinite(SCRYPT_MAXMEM) && SCRYPT_MAXMEM > 0 ? Math.floor(SCRYPT_MAXMEM) : 96 * 1024 * 1024
-  });
+  const nextHash = deriveHash(password, salt, normalizeScryptParams());
+  const savedHash = Buffer.from(hash, "hex");
+  if (savedHash.length !== nextHash.length) return false;
+  return timingSafeEqual(savedHash, nextHash);
+};
+
+const verifyPasswordLegacy = (password: string, hash: string, salt: string) => {
+  const nextHash = deriveHash(password, salt, normalizeLegacyScryptParams());
   const savedHash = Buffer.from(hash, "hex");
   if (savedHash.length !== nextHash.length) return false;
   return timingSafeEqual(savedHash, nextHash);
@@ -224,10 +248,27 @@ export const createAuthStore = async (baseDir: string) => {
       const record = await read();
       const rateKey = attemptKey("login:start", normalizedEmail || "unknown");
       assertNotBlocked(record, rateKey);
-      if (!record.owner || record.owner.email !== normalizedEmail || !verifyPassword(password, record.owner.passwordHash, record.owner.passwordSalt)) {
+      const owner = record.owner;
+      const primaryPasswordValid =
+        owner !== null &&
+        owner.email === normalizedEmail &&
+        verifyPassword(password, owner.passwordHash, owner.passwordSalt);
+      const legacyPasswordValid =
+        !primaryPasswordValid &&
+        owner !== null &&
+        owner.email === normalizedEmail &&
+        verifyPasswordLegacy(password, owner.passwordHash, owner.passwordSalt);
+      if (!owner || owner.email !== normalizedEmail || (!primaryPasswordValid && !legacyPasswordValid)) {
         await save(registerFailedAttempt(record, rateKey, MAX_START_ATTEMPTS));
         throw new Error("Invalid credentials.");
       }
+      const rehashedOwner =
+        legacyPasswordValid && owner
+          ? (() => {
+              const { passwordHash, passwordSalt } = hashPassword(password);
+              return { ...owner, passwordHash, passwordSalt };
+            })()
+          : owner;
 
       const session: SessionRecord = {
         token: randomUUID(),
@@ -240,6 +281,7 @@ export const createAuthStore = async (baseDir: string) => {
         clearAttempt(
           {
             ...record,
+            owner: rehashedOwner,
             sessions: [...activeSessions, session]
           },
           rateKey

@@ -1,0 +1,32 @@
+{
+  "subscribers": [],
+  "campaigns": [],
+  "template": {
+    "id": "default",
+    "mode": "rich",
+    "subject": "Confirm your subscription, {{first_name}}",
+    "previewText": "Please verify your email to receive updates.",
+    "bodyRich": "Hi {{first_name}},\n\nThanks for subscribing. Please confirm your subscription by clicking the link below:\n\n{{confirm_subscription_link}}\n\nIf this was not you, you can ignore this email.\n\nUnsubscribe: {{unsubscribe_link}}",
+    "bodyHtml": "<h2>Hi {{first_name}},</h2><p>Thanks for subscribing. Please confirm your subscription by clicking the link below:</p><p><a href='{{confirm_subscription_link}}'>Confirm subscription</a></p><p>If this was not you, you can ignore this email.</p><p>Unsubscribe: <a href='{{unsubscribe_link}}'>{{unsubscribe_link}}</a></p>",
+    "updatedAt": "2026-02-20T22:09:34.384Z"
+  },
+  "senderProfile": {
+    "fromName": "AutoHub Team",
+    "fromEmail": "no-reply@example.com",
+    "replyTo": "support@example.com",
+    "smtpHost": "",
+    "smtpPort": 587,
+    "smtpUser": "",
+    "smtpPass": "",
+    "smtpSecure": false,
+    "includeUnsubscribeFooter": true,
+    "checks": {
+      "subjectSafe": true,
+      "addressIncluded": false,
+      "unsubscribeLink": true
+    },
+    "updatedAt": "2026-02-20T22:09:34.385Z"
+  },
+  "events": [],
+  "updatedAt": "2026-02-20T22:09:34.385Z"
+}

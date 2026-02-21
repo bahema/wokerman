@@ -1,0 +1,18 @@
+{
+  "owner": null,
+  "pendingSignup": {
+    "email": "owner@example.com",
+    "passwordHash": "c76b5d1aeea80a450d48ec4ff3a4d1d074839c82a46b4d937c5322b2b6bbbd96f8a8d904380019ff7b65bd2aca3afcc2dcb32200c38874f466c44594525cea99",
+    "passwordSalt": "c6c08ae23db7b6074cc9af59065a25cb",
+    "expiresAt": 1771625991034
+  },
+  "pendingOtp": {
+    "email": "owner@example.com",
+    "purpose": "signup",
+    "code": "404466",
+    "expiresAt": 1771625691034
+  },
+  "sessions": [],
+  "attemptState": {},
+  "updatedAt": "2026-02-20T22:09:51.034Z"
+}
