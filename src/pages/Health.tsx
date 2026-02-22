@@ -111,7 +111,7 @@ const Health = () => {
 
   useEffect(() => {
     if (!newProductsNotice) return;
-    const timer = window.setTimeout(() => setNewProductsNotice(""), 6500);
+    const timer = window.setTimeout(() => setNewProductsNotice(""), 60000);
     return () => window.clearTimeout(timer);
   }, [newProductsNotice]);
 
@@ -503,7 +503,7 @@ const Health = () => {
       <BackToTop isModalOpen={Boolean(infoProduct)} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
       {newProductsNotice ? (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-[1200] max-w-sm rounded-2xl border border-emerald-300 bg-emerald-50/95 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200">
+        <div className="pointer-events-none fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1200] rounded-2xl border border-emerald-300 bg-emerald-50/95 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200 sm:left-auto sm:right-4 sm:max-w-sm">
           {newProductsNotice}
         </div>
       ) : null}
