@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { Product } from "../data/siteData";
-import { withBasePath } from "../utils/basePath";
 
 type ProductCardProps = {
   product: Product;
@@ -65,14 +64,6 @@ const normalizePriceLabel = (value: string) => {
   return trimmed;
 };
 
-const resolveImageUrl = (value?: string) => {
-  const trimmed = (value ?? "").trim();
-  if (!trimmed) return "";
-  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
-  return withBasePath(trimmed);
-};
-
 const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardProps) => {
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
@@ -92,7 +83,7 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardPro
       <div className={`relative h-[190px] overflow-hidden rounded-t-2xl bg-gradient-to-br sm:h-[220px] ${gradientByCategory[product.category]}`}>
         {product.imageUrl && !imageFailed ? (
           <img
-            src={resolveImageUrl(product.imageUrl)}
+            src={product.imageUrl}
             alt={product.title}
             className="absolute inset-0 h-full w-full object-cover object-center"
             loading="lazy"
