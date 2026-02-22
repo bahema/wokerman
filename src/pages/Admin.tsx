@@ -9,6 +9,7 @@ import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
 import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
+import HealthUpcomingManager from "../components/admin/HealthUpcomingManager";
 import HeroEditor from "../components/admin/HeroEditor";
 import Hero2Editor from "../components/admin/Hero2Editor";
 import HomeUiEditor from "../components/admin/HomeUiEditor";
@@ -44,6 +45,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/hero-2": "hero-2",
   "/boss/products-supplements": "products-supplements",
   "/boss/products-gadgets": "products-gadgets",
+  "/boss/health-upcoming": "health-upcoming",
   "/boss/adsection-man": "adsection-man",
   "/boss/account-settings": "account-settings"
 };
@@ -56,6 +58,7 @@ const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "hero-2": "/boss/hero-2",
   "products-supplements": "/boss/products-supplements",
   "products-gadgets": "/boss/products-gadgets",
+  "health-upcoming": "/boss/health-upcoming",
   "adsection-man": "/boss/adsection-man",
   "account-settings": "/boss/account-settings"
 };
@@ -129,6 +132,26 @@ const Admin = () => {
     await publishContent(nextContent);
     setStatus("Published");
     setActionMessage("Health section copy updated and published.");
+  };
+
+  const saveHealthUpcomingCopy = async (nextCopy: { title: string; subtitle: string }) => {
+    const currentHealth = resolveHealthPageContent();
+    const nextContent = {
+      ...content,
+      healthPage: {
+        ...currentHealth,
+        upcoming: {
+          ...currentHealth.upcoming,
+          title: nextCopy.title,
+          subtitle: nextCopy.subtitle
+        }
+      }
+    };
+    setContent(nextContent);
+    await saveDraftContent(nextContent);
+    await publishContent(nextContent);
+    setStatus("Published");
+    setActionMessage("Health upcoming section copy updated and published.");
   };
 
   useEffect(() => {
@@ -211,6 +234,11 @@ const Admin = () => {
     products: {
       gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
       supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    },
+    upcoming: {
+      ...defaultHealthPage.upcoming,
+      ...(content.healthPage?.upcoming ?? {}),
+      items: content.healthPage?.upcoming?.items ?? defaultHealthPage.upcoming.items
     }
   });
 
@@ -668,6 +696,68 @@ const Admin = () => {
                     products: {
                       ...current.products,
                       gadgets: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
+              }}
+            />
+          </EditorShell>
+        );
+      case "health-upcoming":
+        return (
+          <EditorShell title="Health Upcoming" description="Manage upcoming teaser cards for the Health page slider.">
+            <HealthUpcomingManager
+              title="Upcoming Items"
+              sectionTitle={resolveHealthPageContent().upcoming.title}
+              sectionSubtitle={resolveHealthPageContent().upcoming.subtitle}
+              items={resolveHealthPageContent().upcoming.items}
+              onSectionCopySave={(next) => saveHealthUpcomingCopy(next)}
+              onChange={(next) => {
+                const current = resolveHealthPageContent();
+                setContent((prev) => ({
+                  ...prev,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: next
+                    }
+                  }
+                }));
+              }}
+              onSaveAndPublish={async (nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Health upcoming items saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: nextItems
                     }
                   }
                 };

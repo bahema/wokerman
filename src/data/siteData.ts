@@ -501,6 +501,34 @@ export const defaultHealthPage = {
   products: {
     gadgets: defaultHealthGadgetProducts,
     supplements: defaultHealthSupplementProducts
+  },
+  upcoming: {
+    title: "Upcoming",
+    subtitle: "Early releases you can subscribe to before launch.",
+    items: [
+      {
+        id: "up-h-1",
+        position: 1,
+        title: "Sleep Rhythm Light",
+        shortDescription: "A bedside light system tuned to support healthier sleep routines.",
+        imageUrl: "",
+        launchDate: "",
+        badge: "Soon",
+        active: true,
+        notifyLabel: "Notify me"
+      },
+      {
+        id: "up-h-2",
+        position: 2,
+        title: "Core Balance Tracker",
+        shortDescription: "A compact smart tracker for posture, movement quality, and daily recovery.",
+        imageUrl: "",
+        launchDate: "",
+        badge: "Early Access",
+        active: true,
+        notifyLabel: "Notify me"
+      }
+    ]
   }
 } satisfies NonNullable<SiteContent["healthPage"]>;
 

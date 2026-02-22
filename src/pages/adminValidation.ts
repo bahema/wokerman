@@ -105,6 +105,19 @@ export const validateContentForSave = (content: SiteContent) => {
     if (!content.healthPage.sections.gadgets.description.trim()) return "Health gadgets section: Description is required.";
     if (!content.healthPage.sections.supplements.title.trim()) return "Health supplements section: Title is required.";
     if (!content.healthPage.sections.supplements.description.trim()) return "Health supplements section: Description is required.";
+    if (!content.healthPage.upcoming.title.trim()) return "Health upcoming: Section title is required.";
+    if (!content.healthPage.upcoming.subtitle.trim()) return "Health upcoming: Section subtitle is required.";
+    for (let i = 0; i < content.healthPage.upcoming.items.length; i += 1) {
+      const item = content.healthPage.upcoming.items[i];
+      if (!item.title.trim()) return `Health upcoming #${i + 1}: Title is required.`;
+      if (!item.shortDescription.trim()) return `Health upcoming #${i + 1}: Short description is required.`;
+      if (!item.imageUrl.trim()) return `Health upcoming #${i + 1}: Image is required.`;
+      if (!isUploadMediaUrl(item.imageUrl)) return `Health upcoming #${i + 1}: Image must be from uploads.`;
+      if (item.launchDate?.trim()) {
+        const parsed = new Date(item.launchDate);
+        if (Number.isNaN(parsed.getTime())) return `Health upcoming #${i + 1}: Launch date is invalid.`;
+      }
+    }
   }
 
   if (!content.socials.facebookUrl.trim() || !isValidUrl(content.socials.facebookUrl)) {

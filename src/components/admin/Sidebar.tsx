@@ -19,7 +19,8 @@ export type AdminSection =
   | "products-software"
   | "products-social"
   | "products-supplements"
-  | "products-gadgets";
+  | "products-gadgets"
+  | "health-upcoming";
 
 type SidebarProps = {
   active: AdminSection;
@@ -62,7 +63,8 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
       { key: "products-software", label: "New Released Software" },
       { key: "products-social", label: "Social Automation" },
       { key: "products-supplements", label: "Supplements" },
-      { key: "products-gadgets", label: "Gadgets" }
+      { key: "products-gadgets", label: "Gadgets" },
+      { key: "health-upcoming", label: "Health Upcoming" }
     ]
   },
   {

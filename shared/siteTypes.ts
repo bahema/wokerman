@@ -4,6 +4,18 @@ export type SiteEventTheme = "none" | "christmas" | "new-year" | "valentine" | "
 export type ProductSectionKey = "forex" | "betting" | "software" | "social";
 export type HealthCatalogSectionKey = "gadgets" | "supplements";
 
+export type HealthUpcomingItem = {
+  id: string;
+  position?: number;
+  title: string;
+  shortDescription: string;
+  imageUrl: string;
+  launchDate?: string;
+  badge?: string;
+  active: boolean;
+  notifyLabel?: string;
+};
+
 export type ProductSectionCopy = {
   title: string;
   description: string;
@@ -59,6 +71,11 @@ export type SiteContent = {
     };
     sections: Record<HealthCatalogSectionKey, ProductSectionCopy>;
     products: Record<HealthCatalogSectionKey, Product[]>;
+    upcoming: {
+      title: string;
+      subtitle: string;
+      items: HealthUpcomingItem[];
+    };
   };
   homeUi?: {
     heroEyebrow: string;
