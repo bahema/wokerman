@@ -3,8 +3,9 @@ import Navbar from "../components/Navbar";
 import BackToTop from "../components/BackToTop";
 import ProductCard from "../components/ProductCard";
 import ProductModal from "../components/ProductModal";
+import QuickGrabsModal from "../components/QuickGrabsModal";
 import SectionHeader from "../components/SectionHeader";
-import { type Product, type SiteContent } from "../../shared/siteTypes";
+import { type HealthUpcomingItem, type Product, type SiteContent } from "../../shared/siteTypes";
 import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
@@ -25,6 +26,8 @@ const Health = () => {
   const knownHealthProductIdsRef = useRef<Set<string>>(new Set());
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
+  const [quickGrabsOpen, setQuickGrabsOpen] = useState(false);
+  const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
   const industriesScrollRef = useRef<HTMLDivElement>(null);
   const [industriesScrollPaused, setIndustriesScrollPaused] = useState(false);
   const footerYear = new Date().getFullYear();
@@ -162,8 +165,17 @@ const Health = () => {
     products: {
       gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
       supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    },
+    upcoming: {
+      ...defaultHealthPage.upcoming,
+      ...(content.healthPage?.upcoming ?? {}),
+      items: content.healthPage?.upcoming?.items ?? defaultHealthPage.upcoming.items
     }
   };
+
+  const upcomingItems: HealthUpcomingItem[] = [...healthPage.upcoming.items]
+    .filter((item) => item.active)
+    .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER));
 
   const homeUi = {
     ...defaultHomeUi,
@@ -192,6 +204,14 @@ const Health = () => {
     if (trimmed.startsWith("http")) return trimmed;
     if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
     return withBasePath(trimmed);
+  };
+
+  const formatLaunchDate = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   };
 
   const eventTheme = content.branding.eventTheme ?? "none";
@@ -357,6 +377,76 @@ const Health = () => {
           </div>
         </section>
 
+        <section className="pb-8 sm:pb-12">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-5 shadow-[0_24px_40px_-30px_rgba(2,132,199,0.45)] dark:border-emerald-900/70 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 sm:p-6">
+              <div className="mb-5">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Upcoming</p>
+                <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{healthPage.upcoming.title}</h2>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{healthPage.upcoming.subtitle}</p>
+              </div>
+              {upcomingItems.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  No upcoming health releases published yet.
+                </div>
+              ) : (
+                <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2">
+                  <div className="flex min-w-max snap-x snap-mandatory gap-4">
+                    {upcomingItems.map((item) => {
+                      const launchLabel = formatLaunchDate(item.launchDate ?? "");
+                      return (
+                        <article
+                          key={item.id}
+                          className="w-[17.25rem] max-w-[85vw] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_35px_-28px_rgba(15,23,42,0.85)] dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          {item.imageUrl.trim() ? (
+                            <img
+                              src={resolveImage(item.imageUrl)}
+                              alt={item.title}
+                              className="h-36 w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="flex h-36 items-center justify-center bg-slate-100 px-3 text-center text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                              Upload image from Admin Upcoming.
+                            </div>
+                          )}
+                          <div className="space-y-3 p-4">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <h3 className="min-w-0 text-base font-bold text-slate-900 dark:text-slate-100">{item.title}</h3>
+                              {item.badge?.trim() ? (
+                                <span className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200">
+                                  {item.badge.trim()}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="line-clamp-3 text-sm text-slate-600 dark:text-slate-300">{item.shortDescription}</p>
+                            {launchLabel ? (
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Launch: {launchLabel}</p>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                setQuickGrabsTrigger(event.currentTarget);
+                                setQuickGrabsOpen(true);
+                                trackAnalyticsEvent("health_upcoming_notify_click", { itemId: item.id, title: item.title });
+                              }}
+                              className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                            >
+                              {(item.notifyLabel ?? "").trim() || "Notify me"}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section id="healthy-gadgets" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <SectionHeader
@@ -500,7 +590,8 @@ const Health = () => {
         </div>
       </footer>
 
-      <BackToTop isModalOpen={Boolean(infoProduct)} />
+      <BackToTop isModalOpen={quickGrabsOpen || Boolean(infoProduct)} />
+      <QuickGrabsModal open={quickGrabsOpen} onClose={() => setQuickGrabsOpen(false)} returnFocusTo={quickGrabsTrigger} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
       {newProductsNotice ? (
         <div className="pointer-events-none fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1200] rounded-2xl border border-emerald-300 bg-emerald-50/95 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200 sm:left-auto sm:right-4 sm:max-w-sm">
