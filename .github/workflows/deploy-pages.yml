@@ -56,14 +56,16 @@ jobs:
       - name: Resolve API URL config
         shell: bash
         run: |
+          FALLBACK_API_URL="https://autohub-backend-production.up.railway.app"
           if [ -z "$VITE_API_BASE_URL" ]; then
-            echo "::notice::Missing repository variable VITE_API_BASE_URL. Frontend will use runtime same-origin API resolution."
+            echo "::warning::Missing repository variable VITE_API_BASE_URL. Falling back to $FALLBACK_API_URL"
+            echo "VITE_API_BASE_URL=$FALLBACK_API_URL" >> "$GITHUB_ENV"
           else
-            if [[ ! "$VITE_API_BASE_URL" =~ ^https?:// ]]; then
-              echo "::error::VITE_API_BASE_URL must start with http:// or https://."
-              exit 1
-            fi
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> "$GITHUB_ENV"
+          fi
+          if [[ ! "${VITE_API_BASE_URL:-$FALLBACK_API_URL}" =~ ^https?:// ]]; then
+            echo "::error::VITE_API_BASE_URL must start with http:// or https://."
+            exit 1
           fi
 
       - name: Build
