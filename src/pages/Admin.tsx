@@ -9,7 +9,6 @@ import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
 import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
-import HealthCatalogEditor from "../components/admin/HealthCatalogEditor";
 import HeroEditor from "../components/admin/HeroEditor";
 import Hero2Editor from "../components/admin/Hero2Editor";
 import HomeUiEditor from "../components/admin/HomeUiEditor";
@@ -108,6 +107,28 @@ const Admin = () => {
     await publishContent(nextContent);
     setStatus("Published");
     setActionMessage("Section copy updated and published.");
+  };
+
+  const saveHealthSectionCopy = async (
+    section: "gadgets" | "supplements",
+    nextCopy: { title: string; description: string }
+  ) => {
+    const currentHealth = resolveHealthPageContent();
+    const nextContent = {
+      ...content,
+      healthPage: {
+        ...currentHealth,
+        sections: {
+          ...currentHealth.sections,
+          [section]: nextCopy
+        }
+      }
+    };
+    setContent(nextContent);
+    await saveDraftContent(nextContent);
+    await publishContent(nextContent);
+    setStatus("Published");
+    setActionMessage("Health section copy updated and published.");
   };
 
   useEffect(() => {
@@ -536,41 +557,28 @@ const Admin = () => {
         );
       case "products-supplements":
         return (
-          <EditorShell title="Supplements" description="Manage health supplements section title and product cards.">
-            <HealthCatalogEditor
-              title="Supplements"
+          <EditorShell title="Supplements" description="Manage health supplements with the same flow as main product sections.">
+            <ProductManager
+              title="Supplements Products"
+              category="Supplements"
+              items={resolveHealthPageContent().products.supplements}
               sectionTitle={resolveHealthPageContent().sections.supplements.title}
               sectionDescription={resolveHealthPageContent().sections.supplements.description}
-              items={resolveHealthPageContent().products.supplements}
-              onSectionTitleChange={(value) => {
+              onSectionCopySave={(next) => saveHealthSectionCopy("supplements", next)}
+              onChange={(next) => {
                 const current = resolveHealthPageContent();
-                const nextContent = {
-                  ...content,
+                setContent((prev) => ({
+                  ...prev,
                   healthPage: {
                     ...current,
-                    sections: {
-                      ...current.sections,
-                      supplements: { ...current.sections.supplements, title: value }
+                    products: {
+                      ...current.products,
+                      supplements: next
                     }
                   }
-                };
-                queueAutoPublish(nextContent, "Supplements section title updated and published.", "Failed to publish supplements section updates.");
+                }));
               }}
-              onSectionDescriptionChange={(value) => {
-                const current = resolveHealthPageContent();
-                const nextContent = {
-                  ...content,
-                  healthPage: {
-                    ...current,
-                    sections: {
-                      ...current.sections,
-                      supplements: { ...current.sections.supplements, description: value }
-                    }
-                  }
-                };
-                queueAutoPublish(nextContent, "Supplements section description updated and published.", "Failed to publish supplements section updates.");
-              }}
-              onChange={(nextItems) => {
+              onSaveAndPublish={async (nextItems) => {
                 const current = resolveHealthPageContent();
                 const nextContent = {
                   ...content,
@@ -582,48 +590,58 @@ const Admin = () => {
                     }
                   }
                 };
-                queueAutoPublish(nextContent, "Supplements products updated and published.", "Failed to publish supplements products.");
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Supplements products saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      supplements: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
               }}
             />
           </EditorShell>
         );
       case "products-gadgets":
         return (
-          <EditorShell title="Gadgets" description="Manage healthy gadgets section title and product cards.">
-            <HealthCatalogEditor
-              title="Gadgets"
+          <EditorShell title="Gadgets" description="Manage healthy gadgets with the same flow as main product sections.">
+            <ProductManager
+              title="Gadgets Products"
+              category="Gadgets"
+              items={resolveHealthPageContent().products.gadgets}
               sectionTitle={resolveHealthPageContent().sections.gadgets.title}
               sectionDescription={resolveHealthPageContent().sections.gadgets.description}
-              items={resolveHealthPageContent().products.gadgets}
-              onSectionTitleChange={(value) => {
+              onSectionCopySave={(next) => saveHealthSectionCopy("gadgets", next)}
+              onChange={(next) => {
                 const current = resolveHealthPageContent();
-                const nextContent = {
-                  ...content,
+                setContent((prev) => ({
+                  ...prev,
                   healthPage: {
                     ...current,
-                    sections: {
-                      ...current.sections,
-                      gadgets: { ...current.sections.gadgets, title: value }
+                    products: {
+                      ...current.products,
+                      gadgets: next
                     }
                   }
-                };
-                queueAutoPublish(nextContent, "Gadgets section title updated and published.", "Failed to publish gadgets section updates.");
+                }));
               }}
-              onSectionDescriptionChange={(value) => {
-                const current = resolveHealthPageContent();
-                const nextContent = {
-                  ...content,
-                  healthPage: {
-                    ...current,
-                    sections: {
-                      ...current.sections,
-                      gadgets: { ...current.sections.gadgets, description: value }
-                    }
-                  }
-                };
-                queueAutoPublish(nextContent, "Gadgets section description updated and published.", "Failed to publish gadgets section updates.");
-              }}
-              onChange={(nextItems) => {
+              onSaveAndPublish={async (nextItems) => {
                 const current = resolveHealthPageContent();
                 const nextContent = {
                   ...content,
@@ -635,7 +653,30 @@ const Admin = () => {
                     }
                   }
                 };
-                queueAutoPublish(nextContent, "Gadgets products updated and published.", "Failed to publish gadgets products.");
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Gadgets products saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      gadgets: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
               }}
             />
           </EditorShell>

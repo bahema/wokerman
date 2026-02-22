@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Navbar from "../components/Navbar";
 import BackToTop from "../components/BackToTop";
-import { type HealthCatalogItem, type SiteContent } from "../../shared/siteTypes";
-import { defaultHealthPage, defaultSiteContent } from "../data/siteData";
-import { getPublishedContentAsync } from "../utils/adminStorage";
+import ProductCard from "../components/ProductCard";
+import ProductModal from "../components/ProductModal";
+import { type Product, type SiteContent } from "../../shared/siteTypes";
+import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
+import { getDraftContentAsync, getPublishedContentAsync } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
@@ -14,6 +16,8 @@ const Health = () => {
   const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState<SiteContent>(defaultSiteContent);
+  const [infoProduct, setInfoProduct] = useState<Product | null>(null);
+  const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
   const industriesScrollRef = useRef<HTMLDivElement>(null);
   const [industriesScrollPaused, setIndustriesScrollPaused] = useState(false);
   const footerYear = new Date().getFullYear();
@@ -26,8 +30,11 @@ const Health = () => {
     let cancelled = false;
     void (async () => {
       try {
-        const published = await getPublishedContentAsync();
-        if (!cancelled) setContent(published);
+        const params = new URLSearchParams(window.location.search);
+        const isDraftPreview = params.get("preview") === "draft";
+        const draft = isDraftPreview ? await getDraftContentAsync() : null;
+        const nextContent = draft ?? (await getPublishedContentAsync());
+        if (!cancelled) setContent(nextContent);
       } catch {
         if (!cancelled) setContent(defaultSiteContent);
       }
@@ -87,6 +94,11 @@ const Health = () => {
     }
   };
 
+  const homeUi = {
+    ...defaultHomeUi,
+    ...(content.homeUi ?? {})
+  };
+
   const runTarget = (target: string) => {
     const normalized = target.trim().toLowerCase().replace("#", "");
     if (normalized.startsWith("http")) {
@@ -103,48 +115,39 @@ const Health = () => {
     document.getElementById(nextId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const resolveImage = (input?: string) => {
-    if (!input) return "";
-    return input.startsWith("http") ? input : withBasePath(input);
-  };
-
   const eventTheme = content.branding.eventTheme ?? "none";
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
 
-  const sectionCard = (item: HealthCatalogItem) => (
-    <article
-      key={item.id}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900"
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400">{item.badge?.trim() || "Health Pick"}</p>
-        {item.priceLabel?.trim() ? (
-          <p className="inline-flex rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">{item.priceLabel}</p>
-        ) : null}
-      </div>
-      {item.imageUrl?.trim() ? (
-        <img
-          src={resolveImage(item.imageUrl)}
-          alt={item.title}
-          className="mb-3 h-36 w-full rounded-xl object-cover"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : null}
-      <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{item.title}</h3>
-      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{item.description}</p>
-      {item.link?.trim() ? (
-        <button
-          type="button"
-          onClick={() => window.open(item.link, "_blank", "noopener,noreferrer")}
-          className="mt-4 inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/80 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/50"
-        >
-          View product
-        </button>
-      ) : null}
-    </article>
-  );
+  const renderProductGrid = (products: Product[], emptyMessage: string) => {
+    if (products.length === 0) {
+      return (
+        <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          {emptyMessage}
+        </div>
+      );
+    }
+
+    return products.map((product) => (
+      <ProductCard
+        key={product.id}
+        product={product}
+        labels={{
+          newBadgeLabel: homeUi.productCardNewBadgeLabel,
+          newReleaseLabel: homeUi.productCardNewReleaseLabel,
+          keyFeaturesSuffix: homeUi.productCardKeyFeaturesSuffix,
+          checkoutLabel: homeUi.productCardCheckoutLabel,
+          moreInfoLabel: homeUi.productCardMoreInfoLabel,
+          affiliateDisclosure: homeUi.productCardAffiliateDisclosure
+        }}
+        onCheckout={(item) => window.open(item.checkoutLink, "_blank", "noopener,noreferrer")}
+        onMoreInfo={(item, trigger) => {
+          setInfoProduct(item);
+          setInfoTrigger(trigger);
+        }}
+      />
+    ));
+  };
 
   return (
     <div
@@ -195,14 +198,8 @@ const Health = () => {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Section 1</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.gadgets.title}</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.gadgets.description}</p>
-            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {healthPage.products.gadgets.length > 0 ? (
-                healthPage.products.gadgets.map(sectionCard)
-              ) : (
-                <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                  No gadgets published yet.
-                </div>
-              )}
+            <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {renderProductGrid(healthPage.products.gadgets, "No gadgets published yet.")}
             </div>
           </div>
         </section>
@@ -212,14 +209,8 @@ const Health = () => {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Section 2</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.supplements.title}</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.supplements.description}</p>
-            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {healthPage.products.supplements.length > 0 ? (
-                healthPage.products.supplements.map(sectionCard)
-              ) : (
-                <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                  No supplements published yet.
-                </div>
-              )}
+            <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {renderProductGrid(healthPage.products.supplements, "No supplements published yet.")}
             </div>
           </div>
         </section>
@@ -319,7 +310,8 @@ const Health = () => {
         </div>
       </footer>
 
-      <BackToTop />
+      <BackToTop isModalOpen={Boolean(infoProduct)} />
+      <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
     </div>
   );
 };

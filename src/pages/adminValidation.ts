@@ -69,6 +69,20 @@ export const validateContentForSave = (content: SiteContent) => {
     }
   }
 
+  if (content.healthPage) {
+    if (!content.healthPage.hero2.eyebrow.trim()) return "Health Hero 2: Eyebrow is required.";
+    if (!content.healthPage.hero2.headline.trim()) return "Health Hero 2: Headline is required.";
+    if (!content.healthPage.hero2.subtext.trim()) return "Health Hero 2: Subtext is required.";
+    if (!content.healthPage.hero2.ctaPrimary.label.trim()) return "Health Hero 2: Primary CTA label is required.";
+    if (!content.healthPage.hero2.ctaPrimary.target.trim()) return "Health Hero 2: Primary CTA target is required.";
+    if (!content.healthPage.hero2.ctaSecondary.label.trim()) return "Health Hero 2: Secondary CTA label is required.";
+    if (!content.healthPage.hero2.ctaSecondary.target.trim()) return "Health Hero 2: Secondary CTA target is required.";
+    if (!content.healthPage.sections.gadgets.title.trim()) return "Health gadgets section: Title is required.";
+    if (!content.healthPage.sections.gadgets.description.trim()) return "Health gadgets section: Description is required.";
+    if (!content.healthPage.sections.supplements.title.trim()) return "Health supplements section: Title is required.";
+    if (!content.healthPage.sections.supplements.description.trim()) return "Health supplements section: Description is required.";
+  }
+
   if (!content.socials.facebookUrl.trim() || !isValidUrl(content.socials.facebookUrl)) {
     return "Social links validation failed: Facebook URL must be a valid http(s) URL.";
   }
@@ -87,7 +101,9 @@ export const validateContentForSave = (content: SiteContent) => {
     { key: "Forex", items: content.products.forex },
     { key: "Betting", items: content.products.betting },
     { key: "Software", items: content.products.software },
-    { key: "Social", items: content.products.social }
+    { key: "Social", items: content.products.social },
+    { key: "Health gadgets", items: content.healthPage?.products.gadgets ?? [] },
+    { key: "Health supplements", items: content.healthPage?.products.supplements ?? [] }
   ];
 
   for (const group of productGroups) {

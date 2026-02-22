@@ -19,7 +19,9 @@ const gradientByCategory: Record<Product["category"], string> = {
   Forex: "from-cyan-500 via-blue-600 to-indigo-700",
   Betting: "from-emerald-500 via-green-600 to-teal-700",
   Software: "from-violet-500 via-fuchsia-600 to-pink-700",
-  Social: "from-orange-500 via-rose-600 to-red-700"
+  Social: "from-orange-500 via-rose-600 to-red-700",
+  Gadgets: "from-cyan-500 via-emerald-500 to-teal-600",
+  Supplements: "from-lime-500 via-emerald-500 to-green-700"
 };
 
 const priceBadgeClassByCategory: Record<Product["category"], string> = {
@@ -30,21 +32,29 @@ const priceBadgeClassByCategory: Record<Product["category"], string> = {
   Software:
     "border-violet-500/20 bg-violet-600 text-white dark:border-violet-400/40 dark:bg-violet-500 dark:text-white",
   Social:
-    "border-rose-500/20 bg-rose-600 text-white dark:border-rose-400/40 dark:bg-rose-500 dark:text-white"
+    "border-rose-500/20 bg-rose-600 text-white dark:border-rose-400/40 dark:bg-rose-500 dark:text-white",
+  Gadgets:
+    "border-cyan-500/20 bg-cyan-600 text-white dark:border-cyan-400/40 dark:bg-cyan-500 dark:text-white",
+  Supplements:
+    "border-emerald-500/20 bg-emerald-600 text-white dark:border-emerald-400/40 dark:bg-emerald-500 dark:text-white"
 };
 
 const priceBadgeShadowByCategory: Record<Product["category"], string> = {
   Forex: "shadow-[0_10px_20px_-10px_rgba(8,145,178,0.9)]",
   Betting: "shadow-[0_10px_20px_-10px_rgba(5,150,105,0.9)]",
   Software: "shadow-[0_10px_20px_-10px_rgba(124,58,237,0.9)]",
-  Social: "shadow-[0_10px_20px_-10px_rgba(225,29,72,0.9)]"
+  Social: "shadow-[0_10px_20px_-10px_rgba(225,29,72,0.9)]",
+  Gadgets: "shadow-[0_10px_20px_-10px_rgba(6,182,212,0.9)]",
+  Supplements: "shadow-[0_10px_20px_-10px_rgba(16,185,129,0.9)]"
 };
 
 const fallbackPriceBadgeByCategory: Record<Product["category"], string> = {
   Forex: "$79",
   Betting: "$69",
   Software: "$99",
-  Social: "$59"
+  Social: "$59",
+  Gadgets: "$79",
+  Supplements: "$39"
 };
 
 const normalizePriceLabel = (value: string) => {

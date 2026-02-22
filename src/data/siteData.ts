@@ -1,5 +1,5 @@
-import type { HealthCatalogItem, Product, ProductSections, SiteContent } from "../../shared/siteTypes";
-export type { HealthCatalogItem, Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
+import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
+export type { Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
 
 type ProductWithOptionalPrice = Product & {
   price?: number;
@@ -407,45 +407,73 @@ export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
   productCardAffiliateDisclosure: "Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you."
 };
 
-const defaultHealthGadgetProducts: HealthCatalogItem[] = [
+const defaultHealthGadgetProducts: ProductWithOptionalPrice[] = [
   {
     id: "hg-1",
     title: "Smart Posture Band",
-    description: "Tracks posture and gives gentle reminders to improve desk habits.",
+    shortDescription: "Tracks posture and gives gentle reminders to improve desk habits.",
+    longDescription:
+      "Smart Posture Band monitors spinal alignment and nudges healthier posture patterns during work sessions to reduce fatigue.",
+    features: ["Posture detection", "Gentle vibration cues", "Daily posture score"],
+    rating: 4.7,
+    isNew: true,
+    category: "Gadgets",
+    checkoutLink: makeLink("smart-posture-band"),
+    position: 1,
+    price: 79,
     priceLabel: "$79",
-    badge: "Top Pick",
-    imageUrl: "/logo.png",
-    link: "https://example.com/health/smart-posture-band"
+    imageUrl: "/logo.png"
   },
   {
     id: "hg-2",
     title: "Portable Air Quality Meter",
-    description: "Monitors air quality and helps optimize home and office breathing conditions.",
+    shortDescription: "Monitors air quality and helps optimize home and office breathing conditions.",
+    longDescription:
+      "Portable Air Quality Meter tracks PM2.5 and VOC values in real time so teams can tune workspace air conditions quickly.",
+    features: ["PM2.5 monitor", "VOC detection", "Real-time mobile sync"],
+    rating: 4.6,
+    isNew: false,
+    category: "Gadgets",
+    checkoutLink: makeLink("portable-air-quality-meter"),
+    position: 2,
+    price: 94,
     priceLabel: "$94",
-    badge: "New",
-    imageUrl: "/logo.png",
-    link: "https://example.com/health/portable-air-quality-meter"
+    imageUrl: "/logo.png"
   }
 ];
 
-const defaultHealthSupplementProducts: HealthCatalogItem[] = [
+const defaultHealthSupplementProducts: ProductWithOptionalPrice[] = [
   {
     id: "hs-1",
     title: "Daily Multivitamin Pack",
-    description: "Balanced daily nutrients for routine wellness and energy support.",
+    shortDescription: "Balanced daily nutrients for routine wellness and energy support.",
+    longDescription:
+      "Daily Multivitamin Pack provides broad micronutrient coverage to support consistent energy and everyday wellness routines.",
+    features: ["Daily micronutrients", "Easy morning dosage", "Routine-friendly formula"],
+    rating: 4.8,
+    isNew: true,
+    category: "Supplements",
+    checkoutLink: makeLink("daily-multivitamin-pack"),
+    position: 1,
+    price: 39,
     priceLabel: "$39",
-    badge: "Popular",
-    imageUrl: "/logo.png",
-    link: "https://example.com/health/daily-multivitamin-pack"
+    imageUrl: "/logo.png"
   },
   {
     id: "hs-2",
     title: "Omega-3 Complex",
-    description: "High-strength omega blend focused on heart and cognitive support.",
+    shortDescription: "High-strength omega blend focused on heart and cognitive support.",
+    longDescription:
+      "Omega-3 Complex combines EPA and DHA in an easy daily dose designed for cardiovascular support and cognitive clarity.",
+    features: ["EPA + DHA blend", "Daily softgels", "Purity tested batches"],
+    rating: 4.7,
+    isNew: false,
+    category: "Supplements",
+    checkoutLink: makeLink("omega-3-complex"),
+    position: 2,
+    price: 44,
     priceLabel: "$44",
-    badge: "Staff Choice",
-    imageUrl: "/logo.png",
-    link: "https://example.com/health/omega-3-complex"
+    imageUrl: "/logo.png"
   }
 ];
 
