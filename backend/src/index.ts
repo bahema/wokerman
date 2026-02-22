@@ -1028,6 +1028,14 @@ const bootstrap = async () => {
     }
   });
 
+  app.use("/api/email", (_req, res, next) => {
+    // Email dashboards should reflect new subscriptions immediately.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
+
   app.post("/api/email/subscribe", subscribeIpLimiter, async (req, res) => {
     if (!EMAIL_SUBSCRIPTIONS_ENABLED) {
       res.status(503).json({

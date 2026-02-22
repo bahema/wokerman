@@ -143,6 +143,7 @@ const toCsvRow = (values: Array<string | number>) =>
     .join(",");
 
 const EmailAnalyticsEditor = () => {
+  const AUTO_REFRESH_MS = 2000;
   const [rangePreset, setRangePreset] = useState<RangePreset>("30d");
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
@@ -205,8 +206,23 @@ const EmailAnalyticsEditor = () => {
   useEffect(() => {
     const timer = window.setInterval(() => {
       void load(true);
-    }, 5000);
+    }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
+  }, [load]);
+
+  useEffect(() => {
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    const refreshOnFocus = () => {
+      void load(true);
+    };
+    document.addEventListener("visibilitychange", refreshOnVisible);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, [load]);
 
   useEffect(() => {
