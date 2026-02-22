@@ -2,13 +2,10 @@
   var params = new URLSearchParams(window.location.search);
   var redirectedPath = params.get("p");
   if (!redirectedPath) return;
-  var segments = window.location.pathname.split("/").filter(Boolean);
-  var isGithubProject = window.location.hostname.endsWith(".github.io") && segments.length > 0;
-  var basePath = isGithubProject ? "/" + segments[0] : "";
   var nextPath = redirectedPath.charAt(0) === "/" ? redirectedPath : "/" + redirectedPath;
   var nextQuery = params.get("q") || "";
   var nextHash = params.get("h") || "";
-  var finalUrl = basePath + nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
+  var finalUrl = nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
   window.history.replaceState({}, "", finalUrl);
 })();
 
