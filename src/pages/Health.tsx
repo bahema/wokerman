@@ -1,63 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Navbar from "../components/Navbar";
 import BackToTop from "../components/BackToTop";
-import { type SiteContent } from "../../shared/siteTypes";
-import { defaultSiteContent } from "../data/siteData";
+import { type HealthCatalogItem, type SiteContent } from "../../shared/siteTypes";
+import { defaultHealthPage, defaultSiteContent } from "../data/siteData";
 import { getPublishedContentAsync } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { withBasePath } from "../utils/basePath";
 import { useI18n } from "../i18n/provider";
-
-type HealthItem = {
-  id: string;
-  title: string;
-  description: string;
-  price: string;
-};
-
-const healthyGadgets: HealthItem[] = [
-  {
-    id: "g-1",
-    title: "Smart Posture Band",
-    description: "Tracks posture habits and gives gentle vibration reminders throughout the day.",
-    price: "$79"
-  },
-  {
-    id: "g-2",
-    title: "Portable Air Quality Meter",
-    description: "Measures PM2.5 and VOC levels so you can improve indoor breathing conditions.",
-    price: "$94"
-  },
-  {
-    id: "g-3",
-    title: "Hydration Reminder Bottle",
-    description: "LED and app reminders to keep daily hydration goals consistent.",
-    price: "$49"
-  }
-];
-
-const healthySupplements: HealthItem[] = [
-  {
-    id: "s-1",
-    title: "Daily Multivitamin Pack",
-    description: "Balanced daily support formula for energy, immunity, and micronutrient coverage.",
-    price: "$39"
-  },
-  {
-    id: "s-2",
-    title: "Omega-3 Complex",
-    description: "High-potency EPA/DHA support for heart, brain, and inflammatory balance.",
-    price: "$44"
-  },
-  {
-    id: "s-3",
-    title: "Magnesium + Zinc Recovery",
-    description: "Evening recovery formula designed for muscle support and sleep quality.",
-    price: "$36"
-  }
-];
 
 const Health = () => {
   const { t } = useI18n();
@@ -113,19 +64,85 @@ const Health = () => {
     return () => window.cancelAnimationFrame(rafId);
   }, [content.industries.length, industriesScrollPaused]);
 
+  const healthPage = {
+    ...defaultHealthPage,
+    ...(content.healthPage ?? {}),
+    hero2: {
+      ...defaultHealthPage.hero2,
+      ...(content.healthPage?.hero2 ?? {})
+    },
+    sections: {
+      gadgets: {
+        ...defaultHealthPage.sections.gadgets,
+        ...(content.healthPage?.sections?.gadgets ?? {})
+      },
+      supplements: {
+        ...defaultHealthPage.sections.supplements,
+        ...(content.healthPage?.sections?.supplements ?? {})
+      }
+    },
+    products: {
+      gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
+      supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    }
+  };
+
+  const runTarget = (target: string) => {
+    const normalized = target.trim().toLowerCase().replace("#", "");
+    if (normalized.startsWith("http")) {
+      window.open(target, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const targetMap: Record<string, string> = {
+      gadgets: "healthy-gadgets",
+      supplements: "healthy-supplements",
+      "healthy-gadgets": "healthy-gadgets",
+      "healthy-supplements": "healthy-supplements"
+    };
+    const nextId = targetMap[normalized] ?? normalized;
+    document.getElementById(nextId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const resolveImage = (input?: string) => {
+    if (!input) return "";
+    return input.startsWith("http") ? input : withBasePath(input);
+  };
+
   const eventTheme = content.branding.eventTheme ?? "none";
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
 
-  const sectionCard = (item: HealthItem) => (
+  const sectionCard = (item: HealthCatalogItem) => (
     <article
       key={item.id}
       className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400">Health Pick</p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400">{item.badge?.trim() || "Health Pick"}</p>
+        {item.priceLabel?.trim() ? (
+          <p className="inline-flex rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">{item.priceLabel}</p>
+        ) : null}
+      </div>
+      {item.imageUrl?.trim() ? (
+        <img
+          src={resolveImage(item.imageUrl)}
+          alt={item.title}
+          className="mb-3 h-36 w-full rounded-xl object-cover"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : null}
       <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{item.title}</h3>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{item.description}</p>
-      <p className="mt-4 inline-flex rounded-full bg-blue-600 px-3 py-1 text-sm font-semibold text-white">{item.price}</p>
+      {item.link?.trim() ? (
+        <button
+          type="button"
+          onClick={() => window.open(item.link, "_blank", "noopener,noreferrer")}
+          className="mt-4 inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/80 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/50"
+        >
+          View product
+        </button>
+      ) : null}
     </article>
   );
 
@@ -150,28 +167,24 @@ const Health = () => {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-emerald-50 via-cyan-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
-              Wellness Collection
+              {healthPage.hero2.eyebrow}
             </span>
-            <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">
-              Health Tools And Supplements For Better Daily Performance
-            </h1>
-            <p className="mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-300">
-              Discover high-quality healthy gadgets and trusted supplement picks designed for focus, energy, recovery, and long-term wellness habits.
-            </p>
+            <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">{healthPage.hero2.headline}</h1>
+            <p className="mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-300">{healthPage.hero2.subtext}</p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={() => document.getElementById("healthy-gadgets")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => runTarget(healthPage.hero2.ctaPrimary.target)}
                 className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
               >
-                View Healthy Gadgets
+                {healthPage.hero2.ctaPrimary.label}
               </button>
               <button
                 type="button"
-                onClick={() => document.getElementById("healthy-supplements")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => runTarget(healthPage.hero2.ctaSecondary.target)}
                 className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                View Healthy Supplements
+                {healthPage.hero2.ctaSecondary.label}
               </button>
             </div>
           </div>
@@ -180,22 +193,34 @@ const Health = () => {
         <section id="healthy-gadgets" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Section 1</p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight">Healthy Gadgets</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-              Smart devices to support better sleep, movement, breathing, and hydration.
-            </p>
-            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{healthyGadgets.map(sectionCard)}</div>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.gadgets.title}</h2>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.gadgets.description}</p>
+            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {healthPage.products.gadgets.length > 0 ? (
+                healthPage.products.gadgets.map(sectionCard)
+              ) : (
+                <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  No gadgets published yet.
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
         <section id="healthy-supplements" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Section 2</p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight">Healthy Supplements</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-              Daily wellness formulas selected for consistency, quality, and practical use.
-            </p>
-            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{healthySupplements.map(sectionCard)}</div>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.supplements.title}</h2>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.supplements.description}</p>
+            <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {healthPage.products.supplements.length > 0 ? (
+                healthPage.products.supplements.map(sectionCard)
+              ) : (
+                <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  No supplements published yet.
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </main>
@@ -258,6 +283,7 @@ const Health = () => {
               <div>
                 <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{t("home.quickLinks")}</h4>
                 <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+                  <a href={withBasePath("/health")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/health")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-600 dark:hover:text-emerald-400">{t("navbar.health")}</a>
                   <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/forex")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">{t("navbar.forex")}</a>
                   <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/betting")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">{t("navbar.betting")}</a>
                   <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/software")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">{t("navbar.software")}</a>
