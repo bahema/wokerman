@@ -383,25 +383,25 @@ const Health = () => {
 
         <section className="pb-8 sm:pb-12">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-5 shadow-[0_24px_40px_-30px_rgba(2,132,199,0.45)] dark:border-emerald-900/70 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 sm:p-6">
+            <div className="max-w-full rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-4 shadow-[0_24px_40px_-30px_rgba(2,132,199,0.45)] dark:border-emerald-900/70 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 sm:p-6">
               <div className="mb-5">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Upcoming</p>
-                <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{healthPage.upcoming.title}</h2>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{healthPage.upcoming.subtitle}</p>
+                <h2 className="mt-2 break-words text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{healthPage.upcoming.title}</h2>
+                <p className="mt-2 break-words text-sm text-slate-600 dark:text-slate-300">{healthPage.upcoming.subtitle}</p>
               </div>
               {upcomingItems.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                   No upcoming health releases published yet.
                 </div>
               ) : (
-                <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2">
-                  <div className="flex min-w-max snap-x snap-mandatory gap-4">
+                <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex min-w-max snap-x snap-mandatory gap-3 sm:gap-4">
                     {upcomingItems.map((item) => {
                       const launchLabel = formatLaunchDate(item.launchDate ?? "");
                       return (
                         <article
                           key={item.id}
-                          className="w-[17.25rem] max-w-[85vw] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_35px_-28px_rgba(15,23,42,0.85)] dark:border-slate-700 dark:bg-slate-900"
+                          className="w-[16.25rem] max-w-[84vw] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_35px_-28px_rgba(15,23,42,0.85)] max-[360px]:w-[14.5rem] dark:border-slate-700 dark:bg-slate-900"
                         >
                           {item.imageUrl.trim() ? (
                             <img
@@ -418,7 +418,7 @@ const Health = () => {
                           )}
                           <div className="space-y-3 p-4">
                             <div className="flex min-w-0 items-center justify-between gap-2">
-                              <h3 className="min-w-0 text-base font-bold text-slate-900 dark:text-slate-100">{item.title}</h3>
+                              <h3 className="min-w-0 break-words text-base font-bold text-slate-900 dark:text-slate-100">{item.title}</h3>
                               {item.badge?.trim() ? (
                                 <span className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200">
                                   {item.badge.trim()}
