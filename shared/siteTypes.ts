@@ -53,6 +53,9 @@ export type SiteContent = {
       subtext: string;
       ctaPrimary: { label: string; target: string };
       ctaSecondary: { label: string; target: string };
+      imageUrl: string;
+      imageAlt: string;
+      imageLink: string;
     };
     sections: Record<HealthCatalogSectionKey, ProductSectionCopy>;
     products: Record<HealthCatalogSectionKey, Product[]>;

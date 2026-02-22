@@ -120,6 +120,12 @@ const Health = () => {
     document.getElementById(nextId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const resolveImage = (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return "";
+    return trimmed.startsWith("http") ? trimmed : withBasePath(trimmed);
+  };
+
   const eventTheme = content.branding.eventTheme ?? "none";
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
@@ -181,27 +187,57 @@ const Health = () => {
       <main className="overflow-x-hidden">
         <section className="relative overflow-hidden py-16">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-emerald-50 via-cyan-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
-          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
-              {healthPage.hero2.eyebrow}
-            </span>
-            <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">{healthPage.hero2.headline}</h1>
-            <p className="mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-300">{healthPage.hero2.subtext}</p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => runTarget(healthPage.hero2.ctaPrimary.target)}
-                className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
-              >
-                {healthPage.hero2.ctaPrimary.label}
-              </button>
-              <button
-                type="button"
-                onClick={() => runTarget(healthPage.hero2.ctaSecondary.target)}
-                className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                {healthPage.hero2.ctaSecondary.label}
-              </button>
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+            <div>
+              <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {healthPage.hero2.eyebrow}
+              </span>
+              <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">{healthPage.hero2.headline}</h1>
+              <p className="mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-300">{healthPage.hero2.subtext}</p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => runTarget(healthPage.hero2.ctaPrimary.target)}
+                  className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  {healthPage.hero2.ctaPrimary.label}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runTarget(healthPage.hero2.ctaSecondary.target)}
+                  className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  {healthPage.hero2.ctaSecondary.label}
+                </button>
+              </div>
+            </div>
+            <div className="min-w-0">
+              {healthPage.hero2.imageUrl.trim() ? (
+                <a
+                  href={healthPage.hero2.imageLink.trim() || "#"}
+                  onClick={(event) => {
+                    if (!healthPage.hero2.imageLink.trim()) {
+                      event.preventDefault();
+                      return;
+                    }
+                  }}
+                  target={healthPage.hero2.imageLink.trim() ? "_blank" : undefined}
+                  rel={healthPage.hero2.imageLink.trim() ? "noopener noreferrer" : undefined}
+                  className="group block overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-[0_24px_40px_-24px_rgba(15,23,42,0.42)] dark:border-emerald-900/60 dark:bg-slate-900"
+                >
+                  <img
+                    src={resolveImage(healthPage.hero2.imageUrl)}
+                    alt={healthPage.hero2.imageAlt}
+                    className="h-72 w-full object-cover transition duration-300 group-hover:scale-[1.02] sm:h-80"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </a>
+              ) : (
+                <div className="flex h-72 items-center justify-center rounded-3xl border border-dashed border-emerald-300 bg-white/60 px-4 text-center text-sm text-slate-500 dark:border-emerald-900/70 dark:bg-slate-900/70 dark:text-slate-300 sm:h-80">
+                  Set Hero 2 image in Admin to display it here.
+                </div>
+              )}
             </div>
           </div>
         </section>

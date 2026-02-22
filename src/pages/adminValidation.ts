@@ -77,6 +77,10 @@ export const validateContentForSave = (content: SiteContent) => {
     if (!content.healthPage.hero2.ctaPrimary.target.trim()) return "Health Hero 2: Primary CTA target is required.";
     if (!content.healthPage.hero2.ctaSecondary.label.trim()) return "Health Hero 2: Secondary CTA label is required.";
     if (!content.healthPage.hero2.ctaSecondary.target.trim()) return "Health Hero 2: Secondary CTA target is required.";
+    if (!content.healthPage.hero2.imageAlt.trim()) return "Health Hero 2: Image alt text is required.";
+    if (content.healthPage.hero2.imageLink.trim() && !isValidUrl(content.healthPage.hero2.imageLink)) {
+      return "Health Hero 2: Image link URL must be valid http(s).";
+    }
     if (!content.healthPage.sections.gadgets.title.trim()) return "Health gadgets section: Title is required.";
     if (!content.healthPage.sections.gadgets.description.trim()) return "Health gadgets section: Description is required.";
     if (!content.healthPage.sections.supplements.title.trim()) return "Health supplements section: Title is required.";

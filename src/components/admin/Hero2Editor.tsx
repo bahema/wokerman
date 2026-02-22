@@ -67,6 +67,33 @@ const Hero2Editor = ({ value, onChange }: Hero2EditorProps) => (
           className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
         />
       </label>
+      <label className="space-y-1 text-sm md:col-span-2">
+        <span className="font-medium">Hero Image URL</span>
+        <input
+          value={value.imageUrl}
+          onChange={(event) => onChange({ ...value, imageUrl: event.target.value })}
+          placeholder="https://... or /uploads/..."
+          className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="font-medium">Hero Image Alt Text</span>
+        <input
+          value={value.imageAlt}
+          onChange={(event) => onChange({ ...value, imageAlt: event.target.value })}
+          placeholder="Describe the hero image"
+          className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="font-medium">Hero Image Link</span>
+        <input
+          value={value.imageLink}
+          onChange={(event) => onChange({ ...value, imageLink: event.target.value })}
+          placeholder="https://product-link..."
+          className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+        />
+      </label>
     </div>
   </div>
 );
