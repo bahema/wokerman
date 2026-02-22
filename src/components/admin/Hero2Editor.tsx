@@ -98,7 +98,7 @@ const Hero2Editor = ({ value, onChange }: Hero2EditorProps) => {
         />
       </label>
       <label className="space-y-1 text-sm md:col-span-2">
-        <span className="font-medium">Hero Image (from uploads only)</span>
+        <span className="font-medium">Hero Image</span>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={value.imageUrl}
@@ -114,7 +114,7 @@ const Hero2Editor = ({ value, onChange }: Hero2EditorProps) => {
             }}
             className="h-10 rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-700"
           >
-            Choose Upload
+            Grab Image
           </button>
           <button
             type="button"
@@ -159,7 +159,7 @@ const Hero2Editor = ({ value, onChange }: Hero2EditorProps) => {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-base font-semibold">Uploaded Images</h4>
+            <h4 className="text-base font-semibold">Uploaded Images</h4>
               <button type="button" onClick={() => setImagePickerOpen(false)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm dark:border-slate-700">
                 Close
               </button>
