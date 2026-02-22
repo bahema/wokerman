@@ -528,13 +528,13 @@ const Health = () => {
                     {industry.link?.trim() ? (
                       <a href={industry.link.trim()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${industry.label}`}>
                         {industry.imageUrl ? (
-                          <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] transition hover:scale-105 dark:shadow-none" />
+                          <img src={resolveImage(industry.imageUrl)} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] transition hover:scale-105 dark:shadow-none" />
                         ) : (
                           <span aria-hidden="true" className="text-4xl">{industry.icon ?? "•"}</span>
                         )}
                       </a>
                     ) : industry.imageUrl ? (
-                      <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] dark:shadow-none" />
+                      <img src={resolveImage(industry.imageUrl)} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] dark:shadow-none" />
                     ) : (
                       <span aria-hidden="true" className="text-4xl">{industry.icon ?? "•"}</span>
                     )}
