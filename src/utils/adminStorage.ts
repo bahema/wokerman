@@ -3,10 +3,31 @@ import { apiGet, apiJson } from "../api/client";
 
 export const PUBLISHED_KEY = "site:published";
 export const DRAFT_KEY = "site:draft";
+const PUBLISHED_CACHE_KEY = "site:published:cache";
 
 const cloneDefaultAsync = async (): Promise<SiteContent> => {
   const { defaultSiteContent } = await import("../data/siteData");
   return JSON.parse(JSON.stringify(defaultSiteContent)) as SiteContent;
+};
+
+const readPublishedCache = (): SiteContent | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PUBLISHED_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SiteContent;
+  } catch {
+    return null;
+  }
+};
+
+const writePublishedCache = (content: SiteContent) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PUBLISHED_CACHE_KEY, JSON.stringify(content));
+  } catch {
+    // Ignore storage quota/privacy errors.
+  }
 };
 
 export type SiteMeta = {
@@ -21,8 +42,12 @@ export const getPublishedContent = (): SiteContent => {
 export const getPublishedContentAsync = async (): Promise<SiteContent> => {
   try {
     const response = await apiGet<{ content: SiteContent }>("/api/site/published");
-    return response.content ?? (await cloneDefaultAsync());
+    const content = response.content ?? (await cloneDefaultAsync());
+    writePublishedCache(content);
+    return content;
   } catch {
+    const cached = readPublishedCache();
+    if (cached) return cached;
     return cloneDefaultAsync();
   }
 };
@@ -65,6 +90,7 @@ export const saveDraftContent = async (content: SiteContent) => {
 
 export const publishContent = async (content?: SiteContent) => {
   const response = await apiJson<{ content: SiteContent }>("/api/site/publish", "POST", content ? { content } : undefined);
+  if (response.content) writePublishedCache(response.content);
   return response.content;
 };
 

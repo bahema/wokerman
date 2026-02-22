@@ -25,6 +25,7 @@ const Signup = ({ postLoginPath }: SignupProps) => {
   const { t } = useI18n();
   const [hasOwner, setHasOwner] = useState(false);
   const [statusReady, setStatusReady] = useState(false);
+  const [statusError, setStatusError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [trustDevice, setTrustDevice] = useState(true);
@@ -39,6 +40,12 @@ const Signup = ({ postLoginPath }: SignupProps) => {
         const status = await getAuthStatus();
         if (!cancelled) {
           setHasOwner(status.hasOwner);
+          setStatusError("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : t("signup.errorAuthFailed");
+          setStatusError(message);
         }
       } finally {
         if (!cancelled) setStatusReady(true);
@@ -57,6 +64,10 @@ const Signup = ({ postLoginPath }: SignupProps) => {
 
   const startAuth = async () => {
     setError("");
+    if (statusError) {
+      setError(statusError);
+      return;
+    }
     if (!hasOwner) {
       setError(t("signup.ownerMissing"));
       return;
