@@ -107,9 +107,8 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
             className={`inline-flex min-w-0 max-w-[68%] items-center gap-2 rounded-xl p-1 pr-2 transition md:max-w-none ${
               eventThemeActive ? "hover:bg-white/10" : "hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
-            aria-label={logoText || "AutoHub"}
           >
-            <img src={logo} alt="AutoHub logo" className="h-9 w-9 rounded-lg object-cover" />
+            <img src={logo} alt="" aria-hidden="true" className="h-9 w-9 rounded-lg object-cover" />
             <span className={`truncate text-base font-bold tracking-tight ${eventThemeActive ? "event-nav-text" : "text-slate-900 dark:text-slate-50"}`}>
               {logoText || "AutoHub"}
             </span>
