@@ -18,11 +18,11 @@ type NavbarProps = {
 };
 
 const navLinks = [
-  { id: "health", key: "navbar.health", mode: "route" },
   { id: "forex", key: "navbar.forex", mode: "section" },
   { id: "betting", key: "navbar.betting", mode: "section" },
   { id: "software", key: "navbar.software", mode: "section" },
-  { id: "social", key: "navbar.social", mode: "section" }
+  { id: "social", key: "navbar.social", mode: "section" },
+  { id: "health", key: "navbar.health", mode: "route" }
 ] as const;
 
 const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventThemeActive = false }: NavbarProps) => {
@@ -118,6 +118,8 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = activeSection === link.id;
+              const healthActiveClass =
+                "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[0_8px_18px_-10px_rgba(16,185,129,0.85)] dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
               return (
                 <a
                   key={link.id}
@@ -130,7 +132,9 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                     isActive
                       ? eventThemeActive
                         ? "event-nav-active shadow"
-                        : "bg-blue-600 text-white shadow"
+                        : link.id === "health"
+                          ? healthActiveClass
+                          : "bg-blue-600 text-white shadow"
                       : eventThemeActive
                         ? "event-nav-muted hover:bg-white/10"
                         : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
@@ -196,6 +200,8 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           <div className="grid grid-cols-2 gap-2">
               {navLinks.map((link) => {
                 const isActive = activeSection === link.id;
+                const healthActiveClass =
+                  "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[0_8px_18px_-10px_rgba(16,185,129,0.85)] dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
                 return (
                   <a
                     key={`mobile-${link.id}`}
@@ -208,7 +214,9 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                       isActive
                         ? eventThemeActive
                           ? "event-nav-active text-white shadow"
-                          : "bg-blue-600 text-white shadow"
+                          : link.id === "health"
+                            ? healthActiveClass
+                            : "bg-blue-600 text-white shadow"
                         : eventThemeActive
                           ? "bg-black/35 text-white hover:bg-black/45"
                           : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
