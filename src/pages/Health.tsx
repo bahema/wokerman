@@ -205,7 +205,17 @@ const Health = () => {
   const resolveImage = (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return "";
-    if (trimmed.startsWith("http")) return trimmed;
+    if (trimmed.startsWith("http")) {
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.origin === window.location.origin) {
+          return withBasePath(`${parsed.pathname}${parsed.search}${parsed.hash}`);
+        }
+      } catch {
+        return trimmed;
+      }
+      return trimmed;
+    }
     if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
     return withBasePath(trimmed);
   };

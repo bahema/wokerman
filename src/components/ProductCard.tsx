@@ -68,7 +68,17 @@ const normalizePriceLabel = (value: string) => {
 const resolveImageUrl = (value?: string) => {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return "";
-  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed;
+  if (/^[a-z]+:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.origin === window.location.origin) {
+        return withBasePath(`${parsed.pathname}${parsed.search}${parsed.hash}`);
+      }
+    } catch {
+      return trimmed;
+    }
+    return trimmed;
+  }
   if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
   return withBasePath(trimmed);
 };
