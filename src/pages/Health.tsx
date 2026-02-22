@@ -3,14 +3,17 @@ import Navbar from "../components/Navbar";
 import BackToTop from "../components/BackToTop";
 import ProductCard from "../components/ProductCard";
 import ProductModal from "../components/ProductModal";
+import SectionHeader from "../components/SectionHeader";
 import { type Product, type SiteContent } from "../../shared/siteTypes";
 import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
 import { getDraftContentAsync, getPublishedContentAsync } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { getEventThemeCssVars } from "../utils/eventTheme";
+import { useProductFilters } from "../utils/useProductFilters";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { withBasePath } from "../utils/basePath";
 import { useI18n } from "../i18n/provider";
+import { trackAnalyticsEvent } from "../utils/analytics";
 
 const Health = () => {
   const { t } = useI18n();
@@ -21,6 +24,8 @@ const Health = () => {
   const industriesScrollRef = useRef<HTMLDivElement>(null);
   const [industriesScrollPaused, setIndustriesScrollPaused] = useState(false);
   const footerYear = new Date().getFullYear();
+  const gadgetsFilters = useProductFilters(content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets);
+  const supplementsFilters = useProductFilters(content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements);
 
   useEffect(() => {
     updateTheme(theme);
@@ -119,11 +124,19 @@ const Health = () => {
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
 
-  const renderProductGrid = (products: Product[], emptyMessage: string) => {
-    if (products.length === 0) {
+  const renderProductGrid = (products: Product[], sourceCount: number, emptyMessage: string) => {
+    if (sourceCount === 0) {
       return (
         <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
           {emptyMessage}
+        </div>
+      );
+    }
+
+    if (products.length === 0) {
+      return (
+        <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          No products match your current search/filter.
         </div>
       );
     }
@@ -195,20 +208,46 @@ const Health = () => {
 
         <section id="healthy-gadgets" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.gadgets.title}</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.gadgets.description}</p>
+            <SectionHeader
+              eyebrow="Healthy Gadgets"
+              title={healthPage.sections.gadgets.title}
+              description={healthPage.sections.gadgets.description}
+              searchValue={gadgetsFilters.search}
+              sortValue={gadgetsFilters.sort}
+              onSearchChange={(value) => {
+                gadgetsFilters.setSearch(value);
+                trackAnalyticsEvent("product_search", { sectionId: "health-gadgets", query: value });
+              }}
+              onSortChange={(value) => {
+                gadgetsFilters.setSort(value);
+                trackAnalyticsEvent("product_sort", { sectionId: "health-gadgets", sort: value });
+              }}
+            />
             <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {renderProductGrid(healthPage.products.gadgets, "No gadgets published yet.")}
+              {renderProductGrid(gadgetsFilters.filteredProducts, healthPage.products.gadgets.length, "No gadgets published yet.")}
             </div>
           </div>
         </section>
 
         <section id="healthy-supplements" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.supplements.title}</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.supplements.description}</p>
+            <SectionHeader
+              eyebrow="Healthy Supplements"
+              title={healthPage.sections.supplements.title}
+              description={healthPage.sections.supplements.description}
+              searchValue={supplementsFilters.search}
+              sortValue={supplementsFilters.sort}
+              onSearchChange={(value) => {
+                supplementsFilters.setSearch(value);
+                trackAnalyticsEvent("product_search", { sectionId: "health-supplements", query: value });
+              }}
+              onSortChange={(value) => {
+                supplementsFilters.setSort(value);
+                trackAnalyticsEvent("product_sort", { sectionId: "health-supplements", sort: value });
+              }}
+            />
             <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {renderProductGrid(healthPage.products.supplements, "No supplements published yet.")}
+              {renderProductGrid(supplementsFilters.filteredProducts, healthPage.products.supplements.length, "No supplements published yet.")}
             </div>
           </div>
         </section>
