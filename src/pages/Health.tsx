@@ -6,7 +6,7 @@ import ProductModal from "../components/ProductModal";
 import SectionHeader from "../components/SectionHeader";
 import { type Product, type SiteContent } from "../../shared/siteTypes";
 import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
-import { getDraftContentAsync, getPublishedContentAsync } from "../utils/adminStorage";
+import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { useProductFilters } from "../utils/useProductFilters";
@@ -19,6 +19,7 @@ const Health = () => {
   const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState<SiteContent>(defaultSiteContent);
+  const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
   const industriesScrollRef = useRef<HTMLDivElement>(null);
@@ -35,19 +36,53 @@ const Health = () => {
     let cancelled = false;
     void (async () => {
       try {
+        const metaPromise = getSiteMetaAsync();
         const params = new URLSearchParams(window.location.search);
         const isDraftPreview = params.get("preview") === "draft";
         const draft = isDraftPreview ? await getDraftContentAsync() : null;
         const nextContent = draft ?? (await getPublishedContentAsync());
-        if (!cancelled) setContent(nextContent);
+        const meta = await metaPromise;
+        if (!cancelled) {
+          setContent(nextContent);
+          setSiteUpdatedAt(meta?.updatedAt ?? null);
+        }
       } catch {
-        if (!cancelled) setContent(defaultSiteContent);
+        if (!cancelled) {
+          setContent(defaultSiteContent);
+          setSiteUpdatedAt(null);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      void (async () => {
+        try {
+          const meta = await getSiteMetaAsync();
+          if (!meta?.updatedAt || cancelled || meta.updatedAt === siteUpdatedAt) return;
+          const params = new URLSearchParams(window.location.search);
+          const isDraftPreview = params.get("preview") === "draft";
+          const draft = isDraftPreview ? await getDraftContentAsync() : null;
+          const nextContent = draft ?? (await getPublishedContentAsync());
+          if (!cancelled) {
+            setContent(nextContent);
+            setSiteUpdatedAt(meta.updatedAt);
+          }
+        } catch {
+          // Keep current content on polling failures.
+        }
+      })();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [siteUpdatedAt]);
 
   useEffect(() => {
     const el = industriesScrollRef.current;
