@@ -7,6 +7,7 @@ import { useI18n } from "./i18n/provider";
 
 const Admin = lazy(() => import("./pages/Admin"));
 const ConfirmResultPage = lazy(() => import("./pages/ConfirmResultPage"));
+const HealthPage = lazy(() => import("./pages/Health"));
 const LoginPage = lazy(() => import("./pages/Signup"));
 const PolicyPage = lazy(() => import("./pages/PolicyPage"));
 const UnsubscribeResultPage = lazy(() => import("./pages/UnsubscribeResultPage"));
@@ -53,6 +54,7 @@ const normalizePath = (rawPath: string) => {
     cleaned === "/betting" ||
     cleaned === "/software" ||
     cleaned === "/social" ||
+    cleaned === "/health" ||
     cleaned === "/affiliate-disclosure" ||
     cleaned === "/earnings-disclaimer" ||
     cleaned === "/privacy" ||
@@ -169,6 +171,11 @@ function App() {
         description: "Find social automation products for scheduling, engagement workflows, and campaign optimization.",
         canonicalPath: "/social"
       },
+      "/health": {
+        title: "Health Products | AutoHub",
+        description: "Explore healthy gadgets and supplements curated for wellness, daily performance, and recovery support.",
+        canonicalPath: "/health"
+      },
       "/login": {
         title: "Login | AutoHub Boss Panel",
         description: "Secure owner login for the AutoHub administration panel.",
@@ -246,6 +253,7 @@ function App() {
   if (normalizedPath === "/terms") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="terms" /></Suspense>);
   if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
   if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
+  if (normalizedPath === "/health") return withCookieConsent(<Suspense fallback={null}><HealthPage /></Suspense>);
   if (normalizedPath === "/admin") {
     if (checkingAuth) {
       return (

@@ -18,10 +18,11 @@ type NavbarProps = {
 };
 
 const navLinks = [
-  { id: "forex", key: "navbar.forex" },
-  { id: "betting", key: "navbar.betting" },
-  { id: "software", key: "navbar.software" },
-  { id: "social", key: "navbar.social" }
+  { id: "health", key: "navbar.health", mode: "route" },
+  { id: "forex", key: "navbar.forex", mode: "section" },
+  { id: "betting", key: "navbar.betting", mode: "section" },
+  { id: "software", key: "navbar.software", mode: "section" },
+  { id: "social", key: "navbar.social", mode: "section" }
 ] as const;
 
 const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventThemeActive = false }: NavbarProps) => {
@@ -29,22 +30,31 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const navigateToSection = (sectionId: string, options?: { closeMobileMenu?: boolean }) => {
-    const nextPath = withBasePath(`/${sectionId}`);
+  const navigateToLink = (
+    link: (typeof navLinks)[number],
+    options?: { closeMobileMenu?: boolean }
+  ) => {
+    const nextPath = withBasePath(`/${link.id}`);
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
 
+    if (link.mode === "route") {
+      if (options?.closeMobileMenu) setMobileMenuOpen(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     if (options?.closeMobileMenu) {
       setMobileMenuOpen(false);
       window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => smoothScrollToId(sectionId));
+        window.requestAnimationFrame(() => smoothScrollToId(link.id));
       });
       return;
     }
 
-    smoothScrollToId(sectionId);
+    smoothScrollToId(link.id);
   };
 
   useEffect(() => {
@@ -114,7 +124,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                   href={withBasePath(`/${link.id}`)}
                   onClick={(event) => {
                     event.preventDefault();
-                    navigateToSection(link.id);
+                    navigateToLink(link);
                   }}
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     isActive
@@ -192,7 +202,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                     href={withBasePath(`/${link.id}`)}
                     onClick={(event) => {
                       event.preventDefault();
-                      navigateToSection(link.id, { closeMobileMenu: true });
+                      navigateToLink(link, { closeMobileMenu: true });
                     }}
                     className={`rounded-xl px-3 py-2 text-center text-sm font-medium transition ${
                       isActive
