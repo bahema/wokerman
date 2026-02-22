@@ -123,7 +123,9 @@ const Health = () => {
   const resolveImage = (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return "";
-    return trimmed.startsWith("http") ? trimmed : withBasePath(trimmed);
+    if (trimmed.startsWith("http")) return trimmed;
+    if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
+    return withBasePath(trimmed);
   };
 
   const eventTheme = content.branding.eventTheme ?? "none";

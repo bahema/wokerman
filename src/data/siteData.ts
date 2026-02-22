@@ -484,9 +484,9 @@ export const defaultHealthPage = {
     subtext: "Control this hero block from Admin while we wire dynamic rendering on the client side.",
     ctaPrimary: { label: "Browse Gadgets", target: "gadgets" },
     ctaSecondary: { label: "Browse Supplements", target: "supplements" },
-    imageUrl: "/logo.png",
-    imageAlt: "Health product hero visual",
-    imageLink: "https://example.com/health/featured"
+    imageUrl: "",
+    imageAlt: "",
+    imageLink: ""
   },
   sections: {
     gadgets: {
