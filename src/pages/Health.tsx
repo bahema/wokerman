@@ -14,12 +14,15 @@ import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { withBasePath } from "../utils/basePath";
 import { useI18n } from "../i18n/provider";
 import { trackAnalyticsEvent } from "../utils/analytics";
+import { removeStructuredData, setStructuredData } from "../utils/seo";
 
 const Health = () => {
   const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [content, setContent] = useState<SiteContent>(defaultSiteContent);
   const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
+  const [newProductsNotice, setNewProductsNotice] = useState<string>("");
+  const knownHealthProductIdsRef = useRef<Set<string>>(new Set());
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
   const industriesScrollRef = useRef<HTMLDivElement>(null);
@@ -32,6 +35,25 @@ const Health = () => {
     updateTheme(theme);
   }, [theme]);
 
+  const collectHealthProductIds = (siteContent: SiteContent) => {
+    const ids = new Set<string>();
+    for (const item of siteContent.healthPage?.products?.gadgets ?? []) ids.add(item.id);
+    for (const item of siteContent.healthPage?.products?.supplements ?? []) ids.add(item.id);
+    return ids;
+  };
+
+  const detectNewHealthProducts = (siteContent: SiteContent) => {
+    const latest = collectHealthProductIds(siteContent);
+    const previous = knownHealthProductIdsRef.current;
+    if (previous.size > 0) {
+      const newCount = Array.from(latest).filter((id) => !previous.has(id)).length;
+      if (newCount > 0) {
+        setNewProductsNotice(`${newCount} new health product${newCount > 1 ? "s" : ""} just added.`);
+      }
+    }
+    knownHealthProductIdsRef.current = latest;
+  };
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -43,6 +65,7 @@ const Health = () => {
         const nextContent = draft ?? (await getPublishedContentAsync());
         const meta = await metaPromise;
         if (!cancelled) {
+          knownHealthProductIdsRef.current = collectHealthProductIds(nextContent);
           setContent(nextContent);
           setSiteUpdatedAt(meta?.updatedAt ?? null);
         }
@@ -50,6 +73,7 @@ const Health = () => {
         if (!cancelled) {
           setContent(defaultSiteContent);
           setSiteUpdatedAt(null);
+          knownHealthProductIdsRef.current = collectHealthProductIds(defaultSiteContent);
         }
       }
     })();
@@ -70,6 +94,7 @@ const Health = () => {
           const draft = isDraftPreview ? await getDraftContentAsync() : null;
           const nextContent = draft ?? (await getPublishedContentAsync());
           if (!cancelled) {
+            detectNewHealthProducts(nextContent);
             setContent(nextContent);
             setSiteUpdatedAt(meta.updatedAt);
           }
@@ -83,6 +108,12 @@ const Health = () => {
       window.clearInterval(interval);
     };
   }, [siteUpdatedAt]);
+
+  useEffect(() => {
+    if (!newProductsNotice) return;
+    const timer = window.setTimeout(() => setNewProductsNotice(""), 6500);
+    return () => window.clearTimeout(timer);
+  }, [newProductsNotice]);
 
   useEffect(() => {
     const el = industriesScrollRef.current;
@@ -166,6 +197,49 @@ const Health = () => {
   const eventTheme = content.branding.eventTheme ?? "none";
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
+
+  useEffect(() => {
+    const origin = window.location.origin;
+    const healthUrl = new URL(withBasePath("/health"), `${origin}/`).toString();
+    const sections = [
+      { id: "gadgets", name: healthPage.sections.gadgets.title, items: healthPage.products.gadgets },
+      { id: "supplements", name: healthPage.sections.supplements.title, items: healthPage.products.supplements }
+    ];
+    const graph = {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "CollectionPage",
+          "@id": `${healthUrl}#health`,
+          url: healthUrl,
+          name: "Health Products",
+          hasPart: sections.map((section) => ({
+            "@type": "ItemList",
+            name: section.name,
+            itemListElement: section.items.slice(0, 20).map((item, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              item: {
+                "@type": "Product",
+                name: item.title,
+                description: item.shortDescription,
+                category: item.category,
+                image: item.imageUrl || undefined,
+                offers: {
+                  "@type": "Offer",
+                  url: item.checkoutLink,
+                  priceCurrency: "USD",
+                  availability: "https://schema.org/InStock"
+                }
+              }
+            }))
+          }))
+        }
+      ]
+    };
+    setStructuredData("health-graph", graph);
+    return () => removeStructuredData("health-graph");
+  }, [healthPage.products.gadgets, healthPage.products.supplements, healthPage.sections.gadgets.title, healthPage.sections.supplements.title]);
 
   const renderProductGrid = (products: Product[], sourceCount: number, emptyMessage: string) => {
     if (sourceCount === 0) {
@@ -257,6 +331,10 @@ const Health = () => {
                       event.preventDefault();
                       return;
                     }
+                    trackAnalyticsEvent("hero_image_click", {
+                      sectionId: "health-hero2",
+                      url: healthPage.hero2.imageLink.trim()
+                    });
                   }}
                   target={healthPage.hero2.imageLink.trim() ? "_blank" : undefined}
                   rel={healthPage.hero2.imageLink.trim() ? "noopener noreferrer" : undefined}
@@ -287,6 +365,7 @@ const Health = () => {
               description={healthPage.sections.gadgets.description}
               searchValue={gadgetsFilters.search}
               sortValue={gadgetsFilters.sort}
+              updatedAt={siteUpdatedAt}
               onSearchChange={(value) => {
                 gadgetsFilters.setSearch(value);
                 trackAnalyticsEvent("product_search", { sectionId: "health-gadgets", query: value });
@@ -310,6 +389,7 @@ const Health = () => {
               description={healthPage.sections.supplements.description}
               searchValue={supplementsFilters.search}
               sortValue={supplementsFilters.sort}
+              updatedAt={siteUpdatedAt}
               onSearchChange={(value) => {
                 supplementsFilters.setSearch(value);
                 trackAnalyticsEvent("product_search", { sectionId: "health-supplements", query: value });
@@ -422,6 +502,11 @@ const Health = () => {
 
       <BackToTop isModalOpen={Boolean(infoProduct)} />
       <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
+      {newProductsNotice ? (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[1200] max-w-sm rounded-2xl border border-emerald-300 bg-emerald-50/95 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200">
+          {newProductsNotice}
+        </div>
+      ) : null}
     </div>
   );
 };

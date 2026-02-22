@@ -95,6 +95,9 @@ export const validateContentForSave = (content: SiteContent) => {
     if (content.healthPage.hero2.imageUrl.trim() && !content.healthPage.hero2.imageAlt.trim()) {
       return "Health Hero 2: Image alt text is required.";
     }
+    if (content.healthPage.hero2.imageUrl.trim() && !content.healthPage.hero2.imageLink.trim()) {
+      return "Health Hero 2: Image link URL is required when image is set.";
+    }
     if (content.healthPage.hero2.imageLink.trim() && !isValidUrl(content.healthPage.hero2.imageLink)) {
       return "Health Hero 2: Image link URL must be valid http(s).";
     }
