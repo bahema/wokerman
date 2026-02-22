@@ -26,17 +26,17 @@ const gradientByCategory: Record<Product["category"], string> = {
 
 const priceBadgeClassByCategory: Record<Product["category"], string> = {
   Forex:
-    "border-cyan-500/20 bg-cyan-600 text-white dark:border-cyan-400/40 dark:bg-cyan-500 dark:text-white",
+    "border-cyan-500/20 bg-cyan-700 text-white dark:border-cyan-400/40 dark:bg-cyan-600 dark:text-white",
   Betting:
-    "border-emerald-500/20 bg-emerald-600 text-white dark:border-emerald-400/40 dark:bg-emerald-500 dark:text-white",
+    "border-emerald-500/20 bg-emerald-700 text-white dark:border-emerald-400/40 dark:bg-emerald-600 dark:text-white",
   Software:
-    "border-violet-500/20 bg-violet-600 text-white dark:border-violet-400/40 dark:bg-violet-500 dark:text-white",
+    "border-violet-500/20 bg-violet-700 text-white dark:border-violet-400/40 dark:bg-violet-600 dark:text-white",
   Social:
-    "border-rose-500/20 bg-rose-600 text-white dark:border-rose-400/40 dark:bg-rose-500 dark:text-white",
+    "border-rose-500/20 bg-rose-700 text-white dark:border-rose-400/40 dark:bg-rose-600 dark:text-white",
   Gadgets:
-    "border-cyan-500/20 bg-cyan-600 text-white dark:border-cyan-400/40 dark:bg-cyan-500 dark:text-white",
+    "border-cyan-500/20 bg-cyan-700 text-white dark:border-cyan-400/40 dark:bg-cyan-600 dark:text-white",
   Supplements:
-    "border-emerald-500/20 bg-emerald-600 text-white dark:border-emerald-400/40 dark:bg-emerald-500 dark:text-white"
+    "border-emerald-500/20 bg-emerald-700 text-white dark:border-emerald-400/40 dark:bg-emerald-600 dark:text-white"
 };
 
 const priceBadgeShadowByCategory: Record<Product["category"], string> = {

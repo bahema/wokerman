@@ -333,7 +333,7 @@ const Health = () => {
                 <button
                   type="button"
                   onClick={() => runTarget(healthPage.hero2.ctaPrimary.target)}
-                  className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                  className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600"
                 >
                   {healthPage.hero2.ctaPrimary.label}
                 </button>
@@ -436,7 +436,7 @@ const Health = () => {
                                 setQuickGrabsOpen(true);
                                 trackAnalyticsEvent("health_upcoming_notify_click", { itemId: item.id, title: item.title });
                               }}
-                              className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                              className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
                             >
                               {(item.notifyLabel ?? "").trim() || "Notify me"}
                             </button>

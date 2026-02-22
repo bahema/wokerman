@@ -1,4 +1,4 @@
-export type AppLocale = "en" | "ar";
+export type AppLocale = "en" | "ar" | "es" | "fr" | "de" | "pt" | "hi" | "zh" | "ja" | "ru";
 
 const enMessages = {
   "app.checkingSession": "Checking secure session...",
@@ -151,6 +151,11 @@ const enMessages = {
 
 export type MessageKey = keyof typeof enMessages;
 
+const withFallback = (overrides: Partial<Record<MessageKey, string>>): Record<MessageKey, string> => ({
+  ...enMessages,
+  ...overrides
+});
+
 export const messages: Record<AppLocale, Record<MessageKey, string>> = {
   en: enMessages,
   ar: {
@@ -300,5 +305,134 @@ export const messages: Record<AppLocale, Record<MessageKey, string>> = {
     "quickGrabs.failedSubscribe": "فشل الاشتراك. حاول مرة أخرى.",
     "productModal.closeAria": "إغلاق تفاصيل المنتج",
     "backToTop.aria": "العودة للأعلى"
-  }
+  },
+  es: withFallback({
+    "navbar.forex": "Forex",
+    "navbar.health": "Salud",
+    "navbar.betting": "Apuestas",
+    "navbar.software": "Software",
+    "navbar.social": "Social",
+    "navbar.menu": "Menu",
+    "navbar.followUs": "Siguenos",
+    "theme.switchToLight": "Cambiar a modo claro",
+    "theme.switchToDark": "Cambiar a modo oscuro",
+    "cookie.bannerTitle": "Usamos cookies",
+    "cookie.acceptAll": "Aceptar todo",
+    "cookie.rejectNonEssential": "Rechazar no esenciales",
+    "cookie.customize": "Personalizar",
+    "quickGrabs.subscribe": "Suscribirse",
+    "backToTop.aria": "Volver arriba"
+  }),
+  fr: withFallback({
+    "navbar.health": "Sante",
+    "navbar.betting": "Paris",
+    "navbar.software": "Logiciels",
+    "navbar.social": "Social",
+    "navbar.followUs": "Suivez-nous",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Passer au mode clair",
+    "theme.switchToDark": "Passer au mode sombre",
+    "cookie.bannerTitle": "Nous utilisons des cookies",
+    "cookie.acceptAll": "Tout accepter",
+    "cookie.rejectNonEssential": "Refuser les non essentiels",
+    "cookie.customize": "Personnaliser",
+    "quickGrabs.subscribe": "S'abonner",
+    "backToTop.aria": "Retour en haut"
+  }),
+  de: withFallback({
+    "navbar.health": "Gesundheit",
+    "navbar.betting": "Wetten",
+    "navbar.software": "Software",
+    "navbar.social": "Sozial",
+    "navbar.followUs": "Folgen",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Zum hellen Modus wechseln",
+    "theme.switchToDark": "Zum dunklen Modus wechseln",
+    "cookie.bannerTitle": "Wir verwenden Cookies",
+    "cookie.acceptAll": "Alle akzeptieren",
+    "cookie.rejectNonEssential": "Nicht notwendige ablehnen",
+    "cookie.customize": "Anpassen",
+    "quickGrabs.subscribe": "Abonnieren",
+    "backToTop.aria": "Nach oben"
+  }),
+  pt: withFallback({
+    "navbar.health": "Saude",
+    "navbar.betting": "Apostas",
+    "navbar.software": "Software",
+    "navbar.social": "Social",
+    "navbar.followUs": "Siga-nos",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Mudar para modo claro",
+    "theme.switchToDark": "Mudar para modo escuro",
+    "cookie.bannerTitle": "Usamos cookies",
+    "cookie.acceptAll": "Aceitar tudo",
+    "cookie.rejectNonEssential": "Rejeitar nao essenciais",
+    "cookie.customize": "Personalizar",
+    "quickGrabs.subscribe": "Inscrever-se",
+    "backToTop.aria": "Voltar ao topo"
+  }),
+  hi: withFallback({
+    "navbar.health": "Swasthya",
+    "navbar.betting": "Betting",
+    "navbar.software": "Software",
+    "navbar.social": "Social",
+    "navbar.followUs": "Follow karein",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Light mode par badlein",
+    "theme.switchToDark": "Dark mode par badlein",
+    "cookie.bannerTitle": "Hum cookies ka upyog karte hain",
+    "cookie.acceptAll": "Sab kabul karein",
+    "cookie.rejectNonEssential": "Non-essential asvikar karein",
+    "cookie.customize": "Customize",
+    "quickGrabs.subscribe": "Subscribe karein",
+    "backToTop.aria": "Upar jaiye"
+  }),
+  zh: withFallback({
+    "navbar.health": "Jiankang",
+    "navbar.betting": "Cai piao",
+    "navbar.software": "Ruanjian",
+    "navbar.social": "Shejiao",
+    "navbar.followUs": "Guanzhu women",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Qiehuan dao mingliang moshi",
+    "theme.switchToDark": "Qiehuan dao anhei moshi",
+    "cookie.bannerTitle": "Women shiyong cookies",
+    "cookie.acceptAll": "Quanbu jieshou",
+    "cookie.rejectNonEssential": "Jujue fei bixu",
+    "cookie.customize": "Zidingyi",
+    "quickGrabs.subscribe": "Dingyue",
+    "backToTop.aria": "Fan hui ding bu"
+  }),
+  ja: withFallback({
+    "navbar.health": "Kenko",
+    "navbar.betting": "Betting",
+    "navbar.software": "Software",
+    "navbar.social": "Social",
+    "navbar.followUs": "Follow",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Light mode ni kirikae",
+    "theme.switchToDark": "Dark mode ni kirikae",
+    "cookie.bannerTitle": "Cookie o shiyou shiteimasu",
+    "cookie.acceptAll": "Subete kyoka",
+    "cookie.rejectNonEssential": "Hitsuyo igai o kyohi",
+    "cookie.customize": "Customize",
+    "quickGrabs.subscribe": "Subscribe",
+    "backToTop.aria": "Ue ni modoru"
+  }),
+  ru: withFallback({
+    "navbar.health": "Zdorove",
+    "navbar.betting": "Stavki",
+    "navbar.software": "Programmy",
+    "navbar.social": "Social",
+    "navbar.followUs": "Podpisatsya",
+    "navbar.menu": "Menu",
+    "theme.switchToLight": "Perekluchit na svetluyu temu",
+    "theme.switchToDark": "Perekluchit na temnuyu temu",
+    "cookie.bannerTitle": "My ispolzuem cookie",
+    "cookie.acceptAll": "Prinyat vse",
+    "cookie.rejectNonEssential": "Otkлонit neobyazatelnye",
+    "cookie.customize": "Nastroit",
+    "quickGrabs.subscribe": "Podpisatsya",
+    "backToTop.aria": "Naverh"
+  })
 };
