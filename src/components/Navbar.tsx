@@ -118,6 +118,8 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = activeSection === link.id;
+              const healthBaseClass =
+                "border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
               const healthActiveClass =
                 "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[0_8px_18px_-10px_rgba(16,185,129,0.85)] dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
               return (
@@ -129,12 +131,14 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                     navigateToLink(link);
                   }}
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                    isActive
+                    link.id === "health"
+                      ? isActive
+                        ? healthActiveClass
+                        : `${healthBaseClass} hover:bg-emerald-200 dark:hover:bg-emerald-900/60`
+                      : isActive
                       ? eventThemeActive
                         ? "event-nav-active shadow"
-                        : link.id === "health"
-                          ? healthActiveClass
-                          : "bg-blue-600 text-white shadow"
+                        : "bg-blue-600 text-white shadow"
                       : eventThemeActive
                         ? "event-nav-muted hover:bg-white/10"
                         : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
@@ -200,6 +204,8 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
           <div className="grid grid-cols-2 gap-2">
               {navLinks.map((link) => {
                 const isActive = activeSection === link.id;
+                const healthBaseClass =
+                  "border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
                 const healthActiveClass =
                   "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[0_8px_18px_-10px_rgba(16,185,129,0.85)] dark:border-emerald-700 dark:bg-emerald-900/45 dark:text-emerald-200";
                 return (
@@ -211,12 +217,14 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                       navigateToLink(link, { closeMobileMenu: true });
                     }}
                     className={`rounded-xl px-3 py-2 text-center text-sm font-medium transition ${
-                      isActive
+                      link.id === "health"
+                        ? isActive
+                          ? healthActiveClass
+                          : `${healthBaseClass} hover:bg-emerald-200 dark:hover:bg-emerald-900/60`
+                        : isActive
                         ? eventThemeActive
                           ? "event-nav-active text-white shadow"
-                          : link.id === "health"
-                            ? healthActiveClass
-                            : "bg-blue-600 text-white shadow"
+                          : "bg-blue-600 text-white shadow"
                         : eventThemeActive
                           ? "bg-black/35 text-white hover:bg-black/45"
                           : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"

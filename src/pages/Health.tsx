@@ -195,7 +195,6 @@ const Health = () => {
 
         <section id="healthy-gadgets" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Section 1</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.gadgets.title}</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.gadgets.description}</p>
             <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -206,7 +205,6 @@ const Health = () => {
 
         <section id="healthy-supplements" className="py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Section 2</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight">{healthPage.sections.supplements.title}</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">{healthPage.sections.supplements.description}</p>
             <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
