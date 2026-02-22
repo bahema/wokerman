@@ -9,6 +9,7 @@ export type AdminSection =
   | "branding"
   | "social-links"
   | "hero"
+  | "hero-2"
   | "adsection-man"
   | "testimonials"
   | "industries"
@@ -16,7 +17,9 @@ export type AdminSection =
   | "products-forex"
   | "products-betting"
   | "products-software"
-  | "products-social";
+  | "products-social"
+  | "products-supplements"
+  | "products-gadgets";
 
 type SidebarProps = {
   active: AdminSection;
@@ -44,6 +47,7 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
     title: "Homepage",
     items: [
       { key: "hero", label: "Hero" },
+      { key: "hero-2", label: "Hero 2" },
       { key: "adsection-man", label: "Adsection Man" },
       { key: "testimonials", label: "Testimonials" },
       { key: "industries", label: "Industries Slider" },
@@ -56,7 +60,9 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
       { key: "products-forex", label: "Forex" },
       { key: "products-betting", label: "Betting" },
       { key: "products-software", label: "New Released Software" },
-      { key: "products-social", label: "Social Automation" }
+      { key: "products-social", label: "Social Automation" },
+      { key: "products-supplements", label: "Supplements" },
+      { key: "products-gadgets", label: "Gadgets" }
     ]
   },
   {

@@ -2,6 +2,7 @@ export type ProductCategory = "Forex" | "Betting" | "Software" | "Social";
 export type AdminThemePreference = "system" | "light" | "dark";
 export type SiteEventTheme = "none" | "christmas" | "new-year" | "valentine" | "easter" | "ramadan" | "eid";
 export type ProductSectionKey = "forex" | "betting" | "software" | "social";
+export type HealthCatalogSectionKey = "gadgets" | "supplements";
 
 export type ProductSectionCopy = {
   title: string;
@@ -9,6 +10,16 @@ export type ProductSectionCopy = {
 };
 
 export type ProductSections = Record<ProductSectionKey, ProductSectionCopy>;
+
+export type HealthCatalogItem = {
+  id: string;
+  title: string;
+  description: string;
+  priceLabel: string;
+  badge?: string;
+  imageUrl?: string;
+  link?: string;
+};
 
 export type Product = {
   id: string;
@@ -44,6 +55,17 @@ export type SiteContent = {
     ctaPrimary: { label: string; target: "forex" | "betting" | "social" | string };
     ctaSecondary: { label: string; target: "forex" | "betting" | "social" | string };
     stats: Array<{ label: string; value: string }>;
+  };
+  healthPage?: {
+    hero2: {
+      eyebrow: string;
+      headline: string;
+      subtext: string;
+      ctaPrimary: { label: string; target: string };
+      ctaSecondary: { label: string; target: string };
+    };
+    sections: Record<HealthCatalogSectionKey, ProductSectionCopy>;
+    products: Record<HealthCatalogSectionKey, HealthCatalogItem[]>;
   };
   homeUi?: {
     heroEyebrow: string;

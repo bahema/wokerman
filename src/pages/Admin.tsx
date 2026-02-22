@@ -9,7 +9,9 @@ import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
 import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
+import HealthCatalogEditor from "../components/admin/HealthCatalogEditor";
 import HeroEditor from "../components/admin/HeroEditor";
+import Hero2Editor from "../components/admin/Hero2Editor";
 import HomeUiEditor from "../components/admin/HomeUiEditor";
 import IndustryManager from "../components/admin/IndustryManager";
 import ProductManager from "../components/admin/ProductManager";
@@ -30,7 +32,7 @@ import {
 } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useEffect } from "react";
-import { defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
+import { defaultHealthPage, defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
@@ -40,6 +42,9 @@ const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/system-health": "system-health",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
+  "/boss/hero-2": "hero-2",
+  "/boss/products-supplements": "products-supplements",
+  "/boss/products-gadgets": "products-gadgets",
   "/boss/adsection-man": "adsection-man",
   "/boss/account-settings": "account-settings"
 };
@@ -49,6 +54,9 @@ const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "system-health": "/boss/system-health",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
+  "hero-2": "/boss/hero-2",
+  "products-supplements": "/boss/products-supplements",
+  "products-gadgets": "/boss/products-gadgets",
   "adsection-man": "/boss/adsection-man",
   "account-settings": "/boss/account-settings"
 };
@@ -162,6 +170,29 @@ const Admin = () => {
     };
   }, []);
 
+  const resolveHealthPageContent = () => ({
+    ...defaultHealthPage,
+    ...(content.healthPage ?? {}),
+    hero2: {
+      ...defaultHealthPage.hero2,
+      ...(content.healthPage?.hero2 ?? {})
+    },
+    sections: {
+      gadgets: {
+        ...defaultHealthPage.sections.gadgets,
+        ...(content.healthPage?.sections?.gadgets ?? {})
+      },
+      supplements: {
+        ...defaultHealthPage.sections.supplements,
+        ...(content.healthPage?.sections?.supplements ?? {})
+      }
+    },
+    products: {
+      gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
+      supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    }
+  });
+
   const sectionNode = useMemo(() => {
     switch (activeSection) {
       case "pre-deploy-checklist":
@@ -258,6 +289,24 @@ const Admin = () => {
                 }}
               />
             </div>
+          </EditorShell>
+        );
+      case "hero-2":
+        return (
+          <EditorShell title="Hero 2" description="Configure the hero content for the Health page (UI scaffolding only).">
+            <Hero2Editor
+              value={resolveHealthPageContent().hero2}
+              onChange={(next) => {
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...resolveHealthPageContent(),
+                    hero2: next
+                  }
+                };
+                queueAutoPublish(nextContent, "Hero 2 updated and published.", "Failed to publish Hero 2 updates.");
+              }}
+            />
           </EditorShell>
         );
       case "adsection-man":
@@ -481,6 +530,112 @@ const Admin = () => {
                   setStatus("Draft");
                   window.open(withBasePath("/?preview=draft"), "_blank", "noopener,noreferrer");
                 })();
+              }}
+            />
+          </EditorShell>
+        );
+      case "products-supplements":
+        return (
+          <EditorShell title="Supplements" description="Manage health supplements section title and product cards.">
+            <HealthCatalogEditor
+              title="Supplements"
+              sectionTitle={resolveHealthPageContent().sections.supplements.title}
+              sectionDescription={resolveHealthPageContent().sections.supplements.description}
+              items={resolveHealthPageContent().products.supplements}
+              onSectionTitleChange={(value) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    sections: {
+                      ...current.sections,
+                      supplements: { ...current.sections.supplements, title: value }
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Supplements section title updated and published.", "Failed to publish supplements section updates.");
+              }}
+              onSectionDescriptionChange={(value) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    sections: {
+                      ...current.sections,
+                      supplements: { ...current.sections.supplements, description: value }
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Supplements section description updated and published.", "Failed to publish supplements section updates.");
+              }}
+              onChange={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      supplements: nextItems
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Supplements products updated and published.", "Failed to publish supplements products.");
+              }}
+            />
+          </EditorShell>
+        );
+      case "products-gadgets":
+        return (
+          <EditorShell title="Gadgets" description="Manage healthy gadgets section title and product cards.">
+            <HealthCatalogEditor
+              title="Gadgets"
+              sectionTitle={resolveHealthPageContent().sections.gadgets.title}
+              sectionDescription={resolveHealthPageContent().sections.gadgets.description}
+              items={resolveHealthPageContent().products.gadgets}
+              onSectionTitleChange={(value) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    sections: {
+                      ...current.sections,
+                      gadgets: { ...current.sections.gadgets, title: value }
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Gadgets section title updated and published.", "Failed to publish gadgets section updates.");
+              }}
+              onSectionDescriptionChange={(value) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    sections: {
+                      ...current.sections,
+                      gadgets: { ...current.sections.gadgets, description: value }
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Gadgets section description updated and published.", "Failed to publish gadgets section updates.");
+              }}
+              onChange={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      gadgets: nextItems
+                    }
+                  }
+                };
+                queueAutoPublish(nextContent, "Gadgets products updated and published.", "Failed to publish gadgets products.");
               }}
             />
           </EditorShell>

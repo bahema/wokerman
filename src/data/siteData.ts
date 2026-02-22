@@ -1,5 +1,5 @@
-import type { Product, ProductSections, SiteContent } from "../../shared/siteTypes";
-export type { Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
+import type { HealthCatalogItem, Product, ProductSections, SiteContent } from "../../shared/siteTypes";
+export type { HealthCatalogItem, Product, SiteContent, ProductCategory, AdminThemePreference, SiteEventTheme } from "../../shared/siteTypes";
 
 type ProductWithOptionalPrice = Product & {
   price?: number;
@@ -407,6 +407,72 @@ export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
   productCardAffiliateDisclosure: "Affiliate disclosure: we may earn a commission if you buy through this link, at no extra cost to you."
 };
 
+const defaultHealthGadgetProducts: HealthCatalogItem[] = [
+  {
+    id: "hg-1",
+    title: "Smart Posture Band",
+    description: "Tracks posture and gives gentle reminders to improve desk habits.",
+    priceLabel: "$79",
+    badge: "Top Pick",
+    imageUrl: "/logo.png",
+    link: "https://example.com/health/smart-posture-band"
+  },
+  {
+    id: "hg-2",
+    title: "Portable Air Quality Meter",
+    description: "Monitors air quality and helps optimize home and office breathing conditions.",
+    priceLabel: "$94",
+    badge: "New",
+    imageUrl: "/logo.png",
+    link: "https://example.com/health/portable-air-quality-meter"
+  }
+];
+
+const defaultHealthSupplementProducts: HealthCatalogItem[] = [
+  {
+    id: "hs-1",
+    title: "Daily Multivitamin Pack",
+    description: "Balanced daily nutrients for routine wellness and energy support.",
+    priceLabel: "$39",
+    badge: "Popular",
+    imageUrl: "/logo.png",
+    link: "https://example.com/health/daily-multivitamin-pack"
+  },
+  {
+    id: "hs-2",
+    title: "Omega-3 Complex",
+    description: "High-strength omega blend focused on heart and cognitive support.",
+    priceLabel: "$44",
+    badge: "Staff Choice",
+    imageUrl: "/logo.png",
+    link: "https://example.com/health/omega-3-complex"
+  }
+];
+
+export const defaultHealthPage = {
+  hero2: {
+    eyebrow: "Wellness Essentials",
+    headline: "Health products curated for strong daily performance",
+    subtext: "Control this hero block from Admin while we wire dynamic rendering on the client side.",
+    ctaPrimary: { label: "Browse Gadgets", target: "gadgets" },
+    ctaSecondary: { label: "Browse Supplements", target: "supplements" }
+  },
+  sections: {
+    gadgets: {
+      title: "Healthy Gadgets",
+      description: "Smart devices to support sleep, hydration, posture, and recovery."
+    },
+    supplements: {
+      title: "Healthy Supplements",
+      description: "Daily formulas selected for practical routine support and consistency."
+    }
+  },
+  products: {
+    gadgets: defaultHealthGadgetProducts,
+    supplements: defaultHealthSupplementProducts
+  }
+} satisfies NonNullable<SiteContent["healthPage"]>;
+
 export const defaultSiteContent: SiteContent = {
   branding: { logoText: "AutoHub", accentColor: "#2563eb", defaultTheme: "system", eventTheme: "none" },
   socials: {
@@ -426,6 +492,7 @@ export const defaultSiteContent: SiteContent = {
       { label: "Live tools", value: "24" }
     ]
   },
+  healthPage: defaultHealthPage,
   homeUi: defaultHomeUi,
   testimonials: [
     {
