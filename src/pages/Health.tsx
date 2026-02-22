@@ -174,6 +174,10 @@ const Health = () => {
   };
 
   const upcomingItems: HealthUpcomingItem[] = [...healthPage.upcoming.items]
+    .map((item) => ({
+      ...item,
+      active: item.active !== false
+    }))
     .filter((item) => item.active)
     .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER));
 
