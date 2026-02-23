@@ -1068,6 +1068,76 @@ const bootstrap = async () => {
     }
   });
 
+  app.post("/api/ai/control/prepare-action", requireAdminAuth, async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const imageUrlRaw = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+
+    const lower = message.toLowerCase();
+    const section =
+      lower.includes("supplement")
+        ? "supplements"
+        : lower.includes("gadget")
+          ? "gadgets"
+          : lower.includes("forex")
+            ? "forex"
+            : lower.includes("betting")
+              ? "betting"
+              : lower.includes("software")
+                ? "software"
+                : lower.includes("social")
+                  ? "social"
+                  : "gadgets";
+    const targetPath = section === "supplements" || section === "gadgets" ? "/health" : `/${section}`;
+
+    const safeImageUrl =
+      imageUrlRaw && imageUrlRaw.includes("/uploads/") && imageUrlRaw.startsWith("http") ? imageUrlRaw : "";
+    const titleBase =
+      section === "supplements"
+        ? "Smart Wellness Supplement"
+        : section === "gadgets"
+          ? "Smart Health Gadget"
+          : section === "forex"
+            ? "Forex Strategy Toolkit"
+            : section === "betting"
+              ? "Betting Insight Engine"
+              : section === "software"
+                ? "Workflow Automation Suite"
+                : "Social Growth Automation";
+
+    const suggestedTitle = `${titleBase} Pro`;
+    const productDraft = {
+      title: suggestedTitle,
+      shortDescription: `AI-prepared draft for ${section} section based on your command.`,
+      longDescription:
+        "This draft is generated in prepare-only mode. Review product claims, add clear affiliate disclosure, and verify all benefits before publishing.",
+      features: ["Clear value proposition", "Compliance-ready copy scaffold", "Conversion-focused CTA placeholder"],
+      rating: 4.6,
+      isNew: true,
+      imageUrl: safeImageUrl,
+      checkoutLink: "https://example.com/product-link",
+      complianceWarnings: [
+        "Add visible affiliate disclosure near CTA.",
+        "Avoid guaranteed outcomes/earnings or unverified health claims.",
+        "Confirm product source and pricing before publish."
+      ]
+    };
+
+    res.status(200).json({
+      mode: "preview-only",
+      actionType: "add_product",
+      executeAvailable: false,
+      confirmationRequired: true,
+      target: { section, path: targetPath },
+      productDraft,
+      nextStep:
+        "Phase 2a only prepares this draft. No write action is executed. Approve to move to next phase where execute endpoint will be added."
+    });
+  });
+
   app.get("/api/traffic-ai/plan/latest", requireAdminAuth, async (_req, res) => {
     try {
       const latest = await trafficAiStore.getLatestPlan();

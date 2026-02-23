@@ -37,6 +37,29 @@ type AiChatResponse = {
   suggestions: string[];
 };
 
+type PreparedActionResponse = {
+  mode: "preview-only";
+  actionType: "add_product";
+  executeAvailable: false;
+  confirmationRequired: true;
+  target: {
+    section: "forex" | "betting" | "software" | "social" | "gadgets" | "supplements";
+    path: string;
+  };
+  productDraft: {
+    title: string;
+    shortDescription: string;
+    longDescription: string;
+    features: string[];
+    rating: number;
+    isNew: boolean;
+    imageUrl: string;
+    checkoutLink: string;
+    complianceWarnings: string[];
+  };
+  nextStep: string;
+};
+
 type ChatItem = {
   id: string;
   role: "user" | "assistant";
@@ -48,6 +71,10 @@ const AiControlCenterEditor = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionImageUrl, setActionImageUrl] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [preparedAction, setPreparedAction] = useState<PreparedActionResponse | null>(null);
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [chat, setChat] = useState<ChatItem[]>([]);
 
@@ -86,6 +113,25 @@ const AiControlCenterEditor = () => {
       setError(err instanceof Error ? err.message : "AI chat failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const prepareAction = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = actionMessage.trim();
+    if (!trimmed || actionBusy) return;
+    setActionBusy(true);
+    setError("");
+    try {
+      const response = await apiJson<PreparedActionResponse>("/api/ai/control/prepare-action", "POST", {
+        message: trimmed,
+        imageUrl: actionImageUrl.trim()
+      });
+      setPreparedAction(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to prepare action.");
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -188,9 +234,75 @@ const AiControlCenterEditor = () => {
           )}
         </div>
       </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
+        <h4 className="mb-3 text-base font-bold">Prepare Action (Phase 2a)</h4>
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
+          Example: <span className="font-semibold">add product to gadgets</span>. This prepares a product draft preview only.
+        </p>
+        <form onSubmit={prepareAction} className="space-y-3">
+          <textarea
+            value={actionMessage}
+            onChange={(event) => setActionMessage(event.target.value)}
+            rows={2}
+            placeholder="Add product to gadgets section..."
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950"
+          />
+          <input
+            value={actionImageUrl}
+            onChange={(event) => setActionImageUrl(event.target.value)}
+            placeholder="Optional upload image URL (must be /uploads/...)"
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              disabled={actionBusy}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionBusy ? "Preparing..." : "Prepare Draft"}
+            </button>
+            <button
+              type="button"
+              disabled
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:text-slate-400"
+              title="Execution is intentionally disabled in Phase 2a."
+            >
+              Confirm & Execute (Locked)
+            </button>
+          </div>
+        </form>
+        {preparedAction ? (
+          <div className="mt-4 space-y-3">
+            <article className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <p className="text-sm font-semibold">Target: {preparedAction.target.section} ({preparedAction.target.path})</p>
+              <p className="mt-1 text-sm">{preparedAction.productDraft.title}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{preparedAction.productDraft.shortDescription}</p>
+              {preparedAction.productDraft.imageUrl ? (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Image: {preparedAction.productDraft.imageUrl}</p>
+              ) : null}
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Rating: {preparedAction.productDraft.rating} | New: {preparedAction.productDraft.isNew ? "yes" : "no"}
+              </p>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Features</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+                {preparedAction.productDraft.features.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Compliance Warnings</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-amber-700 dark:text-amber-300">
+                {preparedAction.productDraft.complianceWarnings.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{preparedAction.nextStep}</p>
+            </article>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 };
 
 export default AiControlCenterEditor;
-
