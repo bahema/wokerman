@@ -43,6 +43,14 @@ type SourceItem = {
 
 type AiChatResponse = {
   mode: "read-only" | "super";
+  intent?:
+    | "CODING_HELP"
+    | "AD_COPY"
+    | "SEO_RESEARCH"
+    | "COMPLIANCE"
+    | "DASHBOARD_INSIGHTS"
+    | "PRODUCT_POSITIONING"
+    | "GENERAL_QA";
   answer: string;
   suggestions: string[];
   sources?: SourceItem[];
@@ -146,6 +154,20 @@ type AiExportResponse = {
 };
 
 type ToolPanel = "none" | "web" | "action" | "email" | "docs";
+type AiMainTab = "chat" | "snapshot" | "tools";
+type AiIntent =
+  | "CODING_HELP"
+  | "AD_COPY"
+  | "SEO_RESEARCH"
+  | "COMPLIANCE"
+  | "DASHBOARD_INSIGHTS"
+  | "PRODUCT_POSITIONING"
+  | "GENERAL_QA";
+type SessionContext = {
+  category: string;
+  platform: string;
+  tone: string;
+};
 
 const QUICK_PROMPTS = [
   "What happened on my page today?",
@@ -157,6 +179,7 @@ const QUICK_PROMPTS = [
 const STORAGE_SESSIONS_KEY = "autohub_ai_sessions_v2";
 const STORAGE_MESSAGES_KEY = "autohub_ai_messages_by_session_v2";
 const STORAGE_ACTIVE_SESSION_KEY = "autohub_ai_active_session_v2";
+const STORAGE_SESSION_CONTEXT_KEY = "autohub_ai_session_context_v1";
 
 const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
@@ -247,6 +270,53 @@ const improveSearchQuery = (query: string) => {
   if (!base) return "";
   if (/\b(2026|latest|guidelines|best practices|compliance|seo)\b/i.test(base)) return base;
   return `${base} latest guidelines 2026 best practices compliance`;
+};
+
+const rewriteQuestionText = (input: string) => {
+  const cleaned = input.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const normalized = cleaned.endsWith("?") ? cleaned : `${cleaned}?`;
+  const first = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return `Please help with this request clearly and step by step: ${first}`;
+};
+
+const inferActiveSection = (input: string) => {
+  const lower = input.toLowerCase();
+  if (/\bforex\b/.test(lower)) return "forex";
+  if (/\bbetting\b/.test(lower)) return "betting";
+  if (/\bsoftware\b/.test(lower)) return "software";
+  if (/\bsocial\b/.test(lower)) return "social";
+  if (/\bgadget\b/.test(lower)) return "gadgets";
+  if (/\bsupplement\b/.test(lower)) return "supplements";
+  if (/\bupcoming\b/.test(lower)) return "upcoming";
+  if (/\bhealth\b/.test(lower)) return "health";
+  return "marketing";
+};
+
+const defaultSessionContext = (): SessionContext => ({
+  category: "health",
+  platform: "web",
+  tone: "professional"
+});
+
+const suggestionsForIntent = (intent: AiIntent, sessionContext: SessionContext): string[] => {
+  const base = `${sessionContext.category} on ${sessionContext.platform}`;
+  switch (intent) {
+    case "SEO_RESEARCH":
+      return [`Latest SEO opportunities for ${base}`, "Keyword cluster ideas", "Internal linking plan", "Competitor gap summary"];
+    case "COMPLIANCE":
+      return ["Affiliate disclosure rewrite", "Risky claims audit", "Policy/rules latest check", "Compliant CTA examples"];
+    case "AD_COPY":
+      return [`Ad headlines for ${base}`, "Short social captions", "High-converting CTA set", "A/B ad angle ideas"];
+    case "PRODUCT_POSITIONING":
+      return ["Positioning statement", "Feature-to-benefit mapping", "Audience persona fit", "Offer differentiation"];
+    case "DASHBOARD_INSIGHTS":
+      return ["What changed today", "Weakest section by count", "Top growth bottlenecks", "Weekly action priorities"];
+    case "CODING_HELP":
+      return ["Route handler example", "Type-safe payload model", "Validation checklist", "Refactor proposal"];
+    default:
+      return ["Summarize opportunities", "Create action plan", "Ask a focused question", "Generate next steps"];
+  }
 };
 
 const parseMarkdown = (input: string): MarkdownBlock[] => {
@@ -369,9 +439,14 @@ const AiControlCenterEditor = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lastFailedPrompt, setLastFailedPrompt] = useState("");
   const [message, setMessage] = useState("");
   const [toolPanel, setToolPanel] = useState<ToolPanel>("none");
   const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<AiMainTab>("chat");
+  const [forceMarkdown, setForceMarkdown] = useState(true);
+  const [autoRewrite, setAutoRewrite] = useState(true);
+  const [lastIntent, setLastIntent] = useState<AiIntent>("GENERAL_QA");
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -423,6 +498,12 @@ const AiControlCenterEditor = () => {
   const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() =>
     parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
   );
+  const [sessionContextBySession, setSessionContextBySession] = useState<Record<string, SessionContext>>(() =>
+    parseJson<Record<string, SessionContext>>(
+      typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSION_CONTEXT_KEY) : null,
+      {}
+    )
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [followLatest, setFollowLatest] = useState(true);
 
@@ -432,10 +513,15 @@ const AiControlCenterEditor = () => {
     if (!activeSessionId) return [];
     return messagesBySession[activeSessionId] ?? [];
   }, [activeSessionId, messagesBySession]);
+  const activeSessionContext = useMemo(
+    () => (activeSessionId ? sessionContextBySession[activeSessionId] ?? defaultSessionContext() : defaultSessionContext()),
+    [activeSessionId, sessionContextBySession]
+  );
   const filteredMedia = useMemo(
     () => mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase())),
     [imageSearch, mediaLibrary]
   );
+  const smartPrompts = useMemo(() => suggestionsForIntent(lastIntent, activeSessionContext), [lastIntent, activeSessionContext]);
 
   const latestTitle = useMemo(() => {
     if (!activeSessionId) return "AI Assistant Control";
@@ -483,6 +569,7 @@ const AiControlCenterEditor = () => {
     welcome.suggestions = ["Ask: what happened on my page today?", "Ask: search online FTC affiliate rules"];
     setSessions((prev) => [session, ...prev]);
     setMessagesBySession((prev) => ({ ...prev, [session.id]: [welcome] }));
+    setSessionContextBySession((prev) => ({ ...prev, [session.id]: defaultSessionContext() }));
     setActiveSessionId(session.id);
     return session.id;
   };
@@ -523,6 +610,13 @@ const AiControlCenterEditor = () => {
   }, [activeSessionId, sessions]);
 
   useEffect(() => {
+    if (!activeSessionId) return;
+    setSessionContextBySession((prev) =>
+      prev[activeSessionId] ? prev : { ...prev, [activeSessionId]: defaultSessionContext() }
+    );
+  }, [activeSessionId]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(sessions));
     }
@@ -533,6 +627,12 @@ const AiControlCenterEditor = () => {
       window.localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messagesBySession));
     }
   }, [messagesBySession]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_SESSION_CONTEXT_KEY, JSON.stringify(sessionContextBySession));
+    }
+  }, [sessionContextBySession]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -579,14 +679,32 @@ const AiControlCenterEditor = () => {
     };
   }, [imagePickerOpen]);
 
+  useEffect(() => {
+    if (mainTab === "tools") {
+      if (toolPanel === "none") setToolPanel("web");
+      setToolDrawerOpen(true);
+      return;
+    }
+    setToolDrawerOpen(false);
+  }, [mainTab, toolPanel]);
+
   const sendPrompt = async (prompt: string) => {
     const trimmed = prompt.trim();
     const normalizedPrompt = trimmed || (chatImageUrl ? "Analyze this uploaded image and generate ad copy." : "");
     if (!normalizedPrompt || busy) return;
     const sessionId = ensureActiveSession();
+    const priorMessages = (messagesBySession[sessionId] ?? []).slice(-20).map((item) => ({
+      role: item.role,
+      content: item.content
+    }));
+    const activeSection = inferActiveSection(
+      [normalizedPrompt, actionMessage, latestTitle, toolPanel].filter(Boolean).join(" ")
+    );
+    const sessionContext = activeSessionContext;
 
     setBusy(true);
     setError("");
+    setLastFailedPrompt("");
     setMessage("");
 
     const userItem = createUserMessage(sessionId, normalizedPrompt, "sending");
@@ -600,14 +718,36 @@ const AiControlCenterEditor = () => {
     appendMessage(sessionId, placeholder);
 
     try {
-      const enrichedMessage = shouldUseAnalysisContext(normalizedPrompt)
+      let enrichedMessage = shouldUseAnalysisContext(normalizedPrompt)
         ? buildAnalysisPrompt(normalizedPrompt, context)
         : normalizedPrompt;
+      if (forceMarkdown) {
+        enrichedMessage = `${enrichedMessage}\n\nReturn the final answer in markdown with clear headings, bullet lists, and concise action steps.`;
+      }
       const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", {
+        sessionId,
         message: enrichedMessage,
         rawMessage: normalizedPrompt,
-        imageUrl: chatImageUrl || undefined
+        imageUrl: chatImageUrl || undefined,
+        messages: priorMessages,
+        clientContext: {
+          currentMode: aiMode,
+          productsCount: context?.site.totalProducts ?? 0,
+          subscribersCount: context?.email.subscribers ?? 0,
+          eventsCount: context?.analytics.totalEvents ?? 0,
+          snapshotTime: context?.snapshotAt ?? ""
+        },
+        sessionContext: {
+          category: sessionContext.category || activeSection,
+          platform: sessionContext.platform,
+          tone: sessionContext.tone
+        },
+        autoRewrite,
+        formatting: {
+          markdown: forceMarkdown
+        }
       });
+      if (response.intent) setLastIntent(response.intent);
       if (response.mode === "super") {
         setAiMode("super");
       }
@@ -621,6 +761,7 @@ const AiControlCenterEditor = () => {
       setChatImageName("");
       await loadContext();
     } catch (err) {
+      setLastFailedPrompt(normalizedPrompt);
       replaceMessage(sessionId, placeholder.id, {
         content: err instanceof Error ? err.message : "AI chat failed.",
         status: "error"
@@ -708,6 +849,13 @@ const AiControlCenterEditor = () => {
     await sendPrompt(message);
   };
 
+  const rewriteQuestion = () => {
+    const rewritten = rewriteQuestionText(message);
+    if (!rewritten) return;
+    setMessage(rewritten);
+    setToast("Question rewritten");
+  };
+
   const runWebSearch = async (event: FormEvent) => {
     event.preventDefault();
     const query = webQuery.trim();
@@ -749,6 +897,7 @@ const AiControlCenterEditor = () => {
       );
       setToolPanel("none");
       setToolDrawerOpen(false);
+      setMainTab("chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Web search failed.");
     } finally {
@@ -805,6 +954,7 @@ const AiControlCenterEditor = () => {
       setConfirmText("");
       setToolPanel("none");
       setToolDrawerOpen(false);
+      setMainTab("chat");
       appendMessage(
         sessionId,
         createAssistantMessage(
@@ -838,12 +988,29 @@ const AiControlCenterEditor = () => {
       delete next[sessionId];
       return next;
     });
+    setSessionContextBySession((prev) => {
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
     setMessage("");
     setPreparedAction(null);
     setExecuteIssues([]);
     setToolPanel("none");
     setToolDrawerOpen(false);
+    setMainTab("chat");
     setWebResults([]);
+  };
+
+  const updateActiveSessionContext = (patch: Partial<SessionContext>) => {
+    if (!activeSessionId) return;
+    setSessionContextBySession((prev) => ({
+      ...prev,
+      [activeSessionId]: {
+        ...(prev[activeSessionId] ?? defaultSessionContext()),
+        ...patch
+      }
+    }));
   };
 
   const generateAiEmail = async (event: FormEvent) => {
@@ -876,6 +1043,7 @@ const AiControlCenterEditor = () => {
       await loadContext();
       setToolPanel("none");
       setToolDrawerOpen(false);
+      setMainTab("chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Email generation failed.");
     } finally {
@@ -908,6 +1076,7 @@ const AiControlCenterEditor = () => {
       setDocsQuestion("");
       setToolPanel("none");
       setToolDrawerOpen(false);
+      setMainTab("chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate export.");
     } finally {
@@ -1063,7 +1232,7 @@ const AiControlCenterEditor = () => {
             type="button"
             onClick={() => {
               if (toolPanel === "none") setToolPanel("web");
-              setToolDrawerOpen(true);
+              setMainTab("tools");
             }}
             className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
           >
@@ -1098,40 +1267,81 @@ const AiControlCenterEditor = () => {
             </button>
           </header>
 
-          <div className="grid grid-cols-2 gap-3 border-b border-slate-800/90 px-4 py-3 sm:grid-cols-4 md:px-6">
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Products</p>
-              <p className="text-sm font-semibold">{context?.site.totalProducts ?? "-"}</p>
-            </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Subscribers</p>
-              <p className="text-sm font-semibold">{context?.email.subscribers ?? "-"}</p>
-            </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Events</p>
-              <p className="text-sm font-semibold">{context?.analytics.totalEvents ?? "-"}</p>
-            </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Snapshot</p>
-              <p className="text-sm font-semibold">
-                {context ? new Date(context.snapshotAt).toLocaleTimeString() : loading ? "Loading..." : "-"}
-              </p>
-            </article>
+          <div className="border-b border-slate-800/90 px-4 py-3 md:px-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMainTab("chat")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "chat" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab("snapshot")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "snapshot" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Snapshot
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab("tools")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "tools" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Tools
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 border-b border-slate-800/90 px-4 py-2.5 sm:grid-cols-3 md:px-6">
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Role</p>
-              <p className="text-sm font-semibold capitalize">{context?.role ?? "-"}</p>
-            </article>
-            <article className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">Capabilities</p>
-              <p className="break-words text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
-            </article>
-          </div>
+
+          {mainTab === "snapshot" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-800/90 px-4 py-3 sm:grid-cols-4 md:px-6">
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Products</p>
+                  <p className="text-sm font-semibold">{context?.site.totalProducts ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Subscribers</p>
+                  <p className="text-sm font-semibold">{context?.email.subscribers ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Events</p>
+                  <p className="text-sm font-semibold">{context?.analytics.totalEvents ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Snapshot</p>
+                  <p className="text-sm font-semibold">
+                    {context ? new Date(context.snapshotAt).toLocaleTimeString() : loading ? "Loading..." : "-"}
+                  </p>
+                </article>
+              </div>
+              <div className="grid grid-cols-1 gap-3 border-b border-slate-800/90 px-4 py-2.5 sm:grid-cols-3 md:px-6">
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Role</p>
+                  <p className="text-sm font-semibold capitalize">{context?.role ?? "-"}</p>
+                </article>
+                <article className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Capabilities</p>
+                  <p className="break-words text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
+                </article>
+              </div>
+            </>
+          ) : null}
 
           {error ? (
             <div className="px-4 pt-3 md:px-6">
-              <p className="rounded-xl border border-rose-800 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">{error}</p>
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-800 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
+                <p className="min-w-0 break-words">{error}</p>
+                {lastFailedPrompt ? (
+                  <button
+                    type="button"
+                    onClick={() => void sendPrompt(lastFailedPrompt)}
+                    className="shrink-0 rounded border border-rose-500 px-2 py-0.5 text-xs text-rose-100 hover:bg-rose-900/40"
+                  >
+                    Retry
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {toast ? <div className="px-4 pt-3 text-xs text-emerald-300 md:px-6">{toast}</div> : null}
@@ -1226,8 +1436,21 @@ const AiControlCenterEditor = () => {
                     </article>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-400">
-                    No messages in this session yet.
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-300">
+                    <p>No messages in this session yet.</p>
+                    <p className="mt-1 text-xs text-slate-400">Try one of these:</p>
+                    <div className="mt-3 flex flex-wrap justify-center gap-2">
+                      {smartPrompts.map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => void sendPrompt(prompt)}
+                          className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )
               ) : (
@@ -1256,6 +1479,18 @@ const AiControlCenterEditor = () => {
 
           <footer className="sticky bottom-0 shrink-0 border-t border-slate-800/90 bg-slate-950/90 px-4 py-4 backdrop-blur md:px-6">
             <div className="mx-auto w-full max-w-3xl">
+            <div className="mb-2 flex flex-wrap gap-2">
+              {smartPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => void sendPrompt(prompt)}
+                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 shadow-[0_8px_24px_rgba(2,6,23,0.35)]">
               {chatImageUrl ? (
                 <div className="mb-2 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-2 py-2 text-xs text-slate-200">
@@ -1279,10 +1514,74 @@ const AiControlCenterEditor = () => {
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 rows={2}
-                placeholder="Ask AI to audit status, search online sources, or prepare actions..."
+                placeholder="Ask this admin AI about site status, traffic opportunities, compliance checks, or content actions."
                 className="w-full resize-none border-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-400 outline-none"
               />
               <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={rewriteQuestion}
+                    disabled={!message.trim() || busy}
+                    className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                  >
+                    Rewrite my question
+                  </button>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={forceMarkdown}
+                      onChange={(event) => setForceMarkdown(event.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    Improve answer formatting
+                  </label>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={autoRewrite}
+                      onChange={(event) => setAutoRewrite(event.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    Auto understand
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <select
+                    value={activeSessionContext.category}
+                    onChange={(event) => updateActiveSessionContext({ category: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="health">health</option>
+                    <option value="forex">forex</option>
+                    <option value="betting">betting</option>
+                    <option value="software">software</option>
+                    <option value="social">social</option>
+                    <option value="gadgets">gadgets</option>
+                    <option value="supplements">supplements</option>
+                    <option value="upcoming">upcoming</option>
+                  </select>
+                  <select
+                    value={activeSessionContext.platform}
+                    onChange={(event) => updateActiveSessionContext({ platform: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="web">web</option>
+                    <option value="email">email</option>
+                    <option value="social">social</option>
+                    <option value="search">search</option>
+                  </select>
+                  <select
+                    value={activeSessionContext.tone}
+                    onChange={(event) => updateActiveSessionContext({ tone: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="professional">professional</option>
+                    <option value="friendly">friendly</option>
+                    <option value="direct">direct</option>
+                    <option value="urgent">urgent</option>
+                  </select>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
@@ -1298,7 +1597,7 @@ const AiControlCenterEditor = () => {
                     type="button"
                     onClick={() => {
                       if (toolPanel === "none") setToolPanel("web");
-                      setToolDrawerOpen(true);
+                      setMainTab("tools");
                     }}
                     className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
                   >
@@ -1372,7 +1671,14 @@ const AiControlCenterEditor = () => {
       ) : null}
 
       {toolDrawerOpen ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/75 p-4" role="presentation" onClick={() => setToolDrawerOpen(false)}>
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/75 p-4"
+          role="presentation"
+          onClick={() => {
+            setToolDrawerOpen(false);
+            setMainTab("chat");
+          }}
+        >
           <div
             role="dialog"
             aria-modal="true"
@@ -1382,7 +1688,14 @@ const AiControlCenterEditor = () => {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h4 className="text-base font-semibold text-slate-100">AI Tools</h4>
-              <button type="button" onClick={() => setToolDrawerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setToolDrawerOpen(false);
+                  setMainTab("chat");
+                }}
+                className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200"
+              >
                 Close
               </button>
             </div>

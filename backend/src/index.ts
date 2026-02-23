@@ -1421,9 +1421,152 @@ const bootstrap = async () => {
   );
 
   app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
+    const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : "";
     const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+    const formattingMarkdown = req.body?.formatting?.markdown === true;
+    type HistoryMessage = { role: "user" | "assistant"; content: string };
+    const incomingMessages: unknown[] = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const historyMessages = incomingMessages
+      .map((item: unknown) => {
+        const asRecord = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+        const role = typeof asRecord.role === "string" ? asRecord.role.toLowerCase() : "";
+        const content = typeof asRecord.content === "string" ? asRecord.content.trim() : "";
+        if (!content || (role !== "user" && role !== "assistant")) return null;
+        return { role: role as "user" | "assistant", content } satisfies HistoryMessage;
+      })
+      .filter((item: HistoryMessage | null): item is HistoryMessage => Boolean(item))
+      .slice(-20);
+    const clientContextPayload = typeof req.body?.clientContext === "object" && req.body.clientContext !== null
+      ? (req.body.clientContext as Record<string, unknown>)
+      : {};
+    const clientContext = {
+      currentMode:
+        clientContextPayload.currentMode === "super" || clientContextPayload.currentMode === "current"
+          ? clientContextPayload.currentMode
+          : "current",
+      productsCount:
+        typeof clientContextPayload.productsCount === "number" && Number.isFinite(clientContextPayload.productsCount)
+          ? clientContextPayload.productsCount
+          : 0,
+      subscribersCount:
+        typeof clientContextPayload.subscribersCount === "number" && Number.isFinite(clientContextPayload.subscribersCount)
+          ? clientContextPayload.subscribersCount
+          : 0,
+      eventsCount:
+        typeof clientContextPayload.eventsCount === "number" && Number.isFinite(clientContextPayload.eventsCount)
+          ? clientContextPayload.eventsCount
+          : 0,
+      snapshotTime: typeof clientContextPayload.snapshotTime === "string" ? clientContextPayload.snapshotTime : "",
+      activeSection: typeof clientContextPayload.activeSection === "string" ? clientContextPayload.activeSection : "marketing"
+    };
+    const sessionContextPayload =
+      typeof req.body?.sessionContext === "object" && req.body.sessionContext !== null
+        ? (req.body.sessionContext as Record<string, unknown>)
+        : {};
+    const sessionContext = {
+      category: typeof sessionContextPayload.category === "string" ? sessionContextPayload.category : "health",
+      platform: typeof sessionContextPayload.platform === "string" ? sessionContextPayload.platform : "web",
+      tone: typeof sessionContextPayload.tone === "string" ? sessionContextPayload.tone : "professional"
+    };
+    const autoRewrite = req.body?.autoRewrite !== false;
+    type NormalizedUserMessage = {
+      cleaned: string;
+      intentHint: string | null;
+      entities: {
+        category?: "forex" | "betting" | "social" | "software" | "other";
+        platform?: "facebook" | "x" | "tiktok" | "youtube" | "website";
+        goal?: "fix" | "research" | "write" | "plan" | "summarize";
+      };
+      isVague: boolean;
+      clarifyingQuestion?: string;
+      options?: string[];
+    };
+    const normalizeUserMessage = (rawInput: string, sessionCtx: typeof sessionContext): NormalizedUserMessage => {
+      const protectedParts: string[] = [];
+      let working = rawInput || "";
+      const protect = (pattern: RegExp) => {
+        working = working.replace(pattern, (segment) => {
+          const token = `__PROTECTED_${protectedParts.length}__`;
+          protectedParts.push(segment);
+          return token;
+        });
+      };
+      protect(/```[\s\S]*?```/g);
+      protect(/`[^`\n]+`/g);
+      protect(/https?:\/\/\S+/g);
+      protect(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi);
+
+      working = working.trim().replace(/\s+/g, " ").replace(/([!?.,])\1{1,}/g, "$1").replace(/([a-zA-Z])\1{2,}/g, "$1$1");
+      const wordFixes: Record<string, string> = {
+        lenguage: "language",
+        reorganise: "reorganize",
+        syetem: "system",
+        frinedly: "friendly",
+        wheather: "whether",
+        visiblity: "visibility",
+        appering: "appearing",
+        clinet: "client",
+        adimin: "admin"
+      };
+      working = working.replace(/\b[a-zA-Z]{3,}\b/g, (word) => {
+        const lower = word.toLowerCase();
+        if (!wordFixes[lower]) return word;
+        if (word === lower) return wordFixes[lower];
+        if (/^[A-Z]/.test(word)) return `${wordFixes[lower].charAt(0).toUpperCase()}${wordFixes[lower].slice(1)}`;
+        return wordFixes[lower];
+      });
+      for (let index = 0; index < protectedParts.length; index += 1) {
+        working = working.replace(`__PROTECTED_${index}__`, protectedParts[index]);
+      }
+      const cleaned = working;
+      const lower = cleaned.toLowerCase();
+      const entities: NormalizedUserMessage["entities"] = {};
+      if (/\bforex\b/.test(lower)) entities.category = "forex";
+      else if (/\bbetting\b/.test(lower)) entities.category = "betting";
+      else if (/\bsocial\b/.test(lower)) entities.category = "social";
+      else if (/\bsoftware\b/.test(lower)) entities.category = "software";
+      else if (/\b(gadget|supplement|health|upcoming)\b/.test(lower)) entities.category = "other";
+      if (/\bfacebook\b/.test(lower)) entities.platform = "facebook";
+      else if (/\bx\b|\btwitter\b/.test(lower)) entities.platform = "x";
+      else if (/\btiktok\b/.test(lower)) entities.platform = "tiktok";
+      else if (/\byoutube\b/.test(lower)) entities.platform = "youtube";
+      else if (/\bweb(site)?\b/.test(lower)) entities.platform = "website";
+      if (/\bfix|bug|issue|error|overflow|layout|scroll|visible|button|ui\b/.test(lower)) entities.goal = "fix";
+      else if (/\bresearch|find|latest|rules|pricing|keyword|rank|google\b/.test(lower)) entities.goal = "research";
+      else if (/\bwrite|generate|create|draft|copy|headline|cta\b/.test(lower)) entities.goal = "write";
+      else if (/\bplan|roadmap|steps|checklist\b/.test(lower)) entities.goal = "plan";
+      else if (/\bsummarize|summary|overview|insights\b/.test(lower)) entities.goal = "summarize";
+
+      let intentHint: string | null = null;
+      if (/\boverflow|visible|scroll|button|layout|ui\b/.test(lower)) intentHint = "UI bug";
+      else if (/\bheadline|hook|cta|copy|emojis?|ad\b/.test(lower)) intentHint = "ad copy";
+      else if (/\bkeywords?|rank|google|content|seo\b/.test(lower)) intentHint = "SEO";
+
+      const vaguePhrases = /^(help me|help|fix this|what now|make it better|do it|improve)$/i;
+      const tooShort = cleaned.split(/\s+/).filter(Boolean).length < 2;
+      const missingSignals = !entities.goal && !entities.category && !entities.platform;
+      const isVague = vaguePhrases.test(lower) || tooShort || missingSignals;
+      if (!isVague) return { cleaned, intentHint, entities, isVague: false };
+
+      const clarifyingQuestion = intentHint === "SEO"
+        ? "Quick question: should I focus on keyword research, ranking fixes, or content structure first?"
+        : intentHint === "ad copy"
+          ? "Quick question: is this for product ads, social captions, or email campaign copy?"
+          : entities.goal === "fix"
+            ? "Quick question: is this a UI layout issue, button behavior issue, or scroll/visibility issue?"
+            : `Quick question: should I focus on ${sessionCtx.category} on ${sessionCtx.platform}, or another category/platform?`;
+      const options =
+        intentHint === "SEO"
+          ? ["Keyword clusters", "Ranking quick wins", "Content rewrite", "Technical SEO checks"]
+          : intentHint === "ad copy"
+            ? ["5 ad headlines", "Short social captions", "Email ad copy", "CTA options"]
+            : entities.goal === "fix"
+              ? ["Fix overflow/layout", "Fix button visibility", "Fix scroll behavior", "Audit mobile UI"]
+              : ["Status summary", "Traffic opportunities", "Compliance check", "Action plan"];
+      return { cleaned, intentHint, entities, isVague: true, clarifyingQuestion, options };
+    };
     const normalizedApiBase = normalizePublicBaseUrl(API_PUBLIC_BASE_URL);
     const isUploadsImageUrl =
       !imageUrl ||
@@ -1435,6 +1578,8 @@ const bootstrap = async () => {
     }
     const userMessage = rawMessage || message;
     const providerMessage = message || userMessage;
+    const understanding = normalizeUserMessage(userMessage, sessionContext);
+    const normalizedUserMessage = autoRewrite ? understanding.cleaned : userMessage;
     if (!userMessage) {
       res.status(400).json({ error: "message is required." });
       return;
@@ -1447,7 +1592,7 @@ const bootstrap = async () => {
         analyticsStore.summary(),
         trafficAiStore.getLatestPlan()
       ]);
-      const lower = userMessage.toLowerCase();
+      const lower = normalizedUserMessage.toLowerCase();
       const productTotal =
         published.products.forex.length +
         published.products.betting.length +
@@ -1455,10 +1600,42 @@ const bootstrap = async () => {
         published.products.social.length +
         (published.healthPage?.products.gadgets.length ?? 0) +
         (published.healthPage?.products.supplements.length ?? 0);
+      const effectiveProducts = clientContext.productsCount > 0 ? clientContext.productsCount : productTotal;
+      const effectiveSubscribers =
+        clientContext.subscribersCount > 0 ? clientContext.subscribersCount : emailSummary.totals.subscribers;
+      const effectiveEvents = clientContext.eventsCount > 0 ? clientContext.eventsCount : analyticsSummary.totalEvents;
+      const compactContext = {
+        sessionId: sessionId || "unknown",
+        mode: clientContext.currentMode,
+        activeSection: clientContext.activeSection || "marketing",
+        products: effectiveProducts,
+        subscribers: effectiveSubscribers,
+        events: effectiveEvents,
+        snapshotTime: clientContext.snapshotTime || new Date().toISOString(),
+        siteUpdatedAt: siteMeta.updatedAt,
+        hasDraft: siteMeta.hasDraft
+      };
+      const conversationHistoryBlock = historyMessages
+        .map((item: HistoryMessage) => `${item.role.toUpperCase()}: ${item.content}`)
+        .join("\n");
+      const superSystemPrompt = [
+        "You are the Admin assistant for this product website.",
+        "Always answer specifically using the provided context and conversation history.",
+        formattingMarkdown
+          ? "Return markdown with clear headings, bullet points, and practical next steps."
+          : "Return concise clear text with practical next steps."
+      ].join(" ");
+      const providerPrompt = [
+        superSystemPrompt,
+        "",
+        `ClientContext: ${JSON.stringify(compactContext)}`,
+        conversationHistoryBlock ? `ConversationHistory:\n${conversationHistoryBlock}` : "ConversationHistory: (none)",
+        `CurrentUserMessage: ${autoRewrite ? normalizedUserMessage : providerMessage}`
+      ].join("\n");
 
       try {
         const superReply = await callSuperModeChat({
-          message: providerMessage,
+          message: providerPrompt,
           imageUrl: imageUrl || undefined,
           context: {
             siteUpdatedAt: siteMeta.updatedAt,
@@ -1511,16 +1688,215 @@ const bootstrap = async () => {
       const isImageAdRequest =
         Boolean(imageUrl) &&
         (/\b(ad|advert|campaign|copy|message|caption|headline|cta|analy|analyze|analyse)\b/i.test(lower) || !userMessage.trim());
+      const previousUserMessage =
+        [...historyMessages]
+          .reverse()
+          .find((item) => item.role === "user" && item.content.toLowerCase() !== normalizedUserMessage.toLowerCase())?.content ?? "";
+      const followsPreviousContext = /\b(that|those|it|same|previous|above|earlier|q1|follow up)\b/i.test(lower);
+      const missingEntities = !understanding.entities.goal && !understanding.entities.category && !understanding.entities.platform;
+
+      if ((understanding.isVague || missingEntities) && !isGreeting) {
+        const followUpQuestion =
+          understanding.clarifyingQuestion ??
+          "Quick question: should I focus on SEO opportunities, compliance, ad copy, or dashboard insights first?";
+        res.status(200).json({
+          mode: "read-only",
+          answer: [
+            "## Clarify First",
+            `I understood you might mean: ${understanding.cleaned}`,
+            "",
+            followUpQuestion,
+            "",
+            `Current context: section=${clientContext.activeSection || "marketing"}, products=${effectiveProducts}, subscribers=${effectiveSubscribers}, events=${effectiveEvents}.`
+          ].join("\n"),
+          suggestions: (understanding.options ?? ["SEO for health supplements", "Paid traffic for betting section", "Quick wins for forex this week"]).slice(0, 5),
+          sources: []
+        });
+        return;
+      }
+
+      const effectiveUserMessage =
+        followsPreviousContext && previousUserMessage
+          ? `${previousUserMessage}\nFollow-up instruction: ${normalizedUserMessage}`
+          : normalizedUserMessage;
+
+      type ChatIntent =
+        | "CODING_HELP"
+        | "AD_COPY"
+        | "SEO_RESEARCH"
+        | "COMPLIANCE"
+        | "DASHBOARD_INSIGHTS"
+        | "PRODUCT_POSITIONING"
+        | "GENERAL_QA";
+      const classifyIntent = (input: string): ChatIntent => {
+        if (understanding.intentHint === "UI bug") return "CODING_HELP";
+        if (understanding.intentHint === "ad copy") return "AD_COPY";
+        if (understanding.intentHint === "SEO") return "SEO_RESEARCH";
+        const text = input.toLowerCase();
+        if (/\b(code|typescript|javascript|python|sql|bug|refactor|api route|function|compile|build|fix error)\b/.test(text)) return "CODING_HELP";
+        if (/\b(ad copy|headline|cta|caption|campaign copy|creative|advert)\b/.test(text)) return "AD_COPY";
+        if (/\b(seo|keyword|ranking|serp|search traffic|backlink|internal link)\b/.test(text)) return "SEO_RESEARCH";
+        if (/\b(compliance|policy|affiliate|disclosure|rule|regulation|legal)\b/.test(text)) return "COMPLIANCE";
+        if (/\b(status|dashboard|kpi|insight|what changed|summary|analytics|subscribers|events)\b/.test(text)) return "DASHBOARD_INSIGHTS";
+        if (/\b(positioning|value proposition|persona|offer|differentiat|feature benefit|product angle)\b/.test(text)) return "PRODUCT_POSITIONING";
+        return "GENERAL_QA";
+      };
+      const intent = classifyIntent(effectiveUserMessage);
+      const adminRole = ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer").toString();
+      const roleCapabilities = listCapabilitiesForRole(
+        (adminRole as "viewer" | "editor" | "publisher" | "owner") === "viewer" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "editor" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "publisher" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "owner"
+          ? (adminRole as "viewer" | "editor" | "publisher" | "owner")
+          : "viewer"
+      );
+      const asksCurrentInfo = /\b(latest|most recent|today|rules|regulations?|pricing|price|updated|current)\b/i.test(
+        effectiveUserMessage
+      );
+      const codingNeedsCurrentLibrary = /\b(latest|current|new|recent)\b.*\b(version|library|framework|package)\b/i.test(
+        effectiveUserMessage
+      );
+      const shouldUseWebSearch =
+        ((intent === "SEO_RESEARCH" || intent === "COMPLIANCE") && asksCurrentInfo) ||
+        (asksCurrentInfo && intent !== "CODING_HELP") ||
+        (intent === "CODING_HELP" && codingNeedsCurrentLibrary);
+      const collectedSources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
+      if (shouldUseWebSearch) {
+        try {
+          const results = await searchWeb(effectiveUserMessage);
+          collectedSources.push(...results.slice(0, 5));
+        } catch {
+          // Keep response resilient; fallback to local context without failing chat.
+        }
+      }
+      const sourceLines =
+        collectedSources.length > 0
+          ? ["", "### Sources", ...collectedSources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)]
+          : [];
+      const ownerRules = [
+        "## Owner Assistant",
+        `- Role: ${adminRole}`,
+        `- Mode: ${clientContext.currentMode}`,
+        `- Session focus: ${sessionContext.category}/${sessionContext.platform} (${sessionContext.tone})`,
+        `- Context counts: products ${effectiveProducts}, subscribers ${effectiveSubscribers}, events ${effectiveEvents}`
+      ];
+      const addAffiliateDisclaimer = /\b(ad|affiliate|campaign|offer|cta|promotion)\b/i.test(effectiveUserMessage);
+      let routedAnswer = "";
+      const routedSuggestions: string[] = [];
+
+      switch (intent) {
+        case "CODING_HELP":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Action Plan",
+            "- Identify the exact component/route to change.",
+            "- Add minimal typed payload validation first.",
+            "- Implement and run build/tests before deploy.",
+            "",
+            "### Recommended Next Step",
+            "- Share the exact failing snippet or error line so I can provide a targeted patch."
+          ].join("\n");
+          routedSuggestions.push("Provide exact error and file path", "Refactor payload validator", "Generate patch for chat route");
+          break;
+        case "AD_COPY":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Ad Copy Direction",
+            `- Category: ${sessionContext.category}`,
+            `- Platform: ${sessionContext.platform}`,
+            `- Tone: ${sessionContext.tone}`,
+            "- Lead with one clear user benefit and one proof point.",
+            "- Use one CTA only to reduce friction."
+          ].join("\n");
+          routedSuggestions.push("Generate 5 headlines", "Generate 3 CTA variants", "Create short social caption set");
+          break;
+        case "SEO_RESEARCH":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### SEO Research",
+            "- Prioritize high-intent transactional terms by section.",
+            "- Expand weakest-content sections first.",
+            "- Improve internal linking from strong pages to weak pages.",
+            ...(collectedSources.length === 0 && asksCurrentInfo
+              ? ["", "- Note: no live sources found now; retry with narrower query."]
+              : [])
+          ].join("\n");
+          routedSuggestions.push("Cluster keywords by section", "Top 10 quick SEO wins", "Internal link map");
+          break;
+        case "COMPLIANCE":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Compliance Review",
+            "- Validate affiliate disclosure placement near CTA.",
+            "- Remove absolute/guaranteed claims.",
+            "- Keep substantiation-ready language for sensitive categories.",
+            ...(collectedSources.length === 0 && asksCurrentInfo
+              ? ["", "- Note: live rules lookup returned no sources; narrow by country + category."]
+              : [])
+          ].join("\n");
+          routedSuggestions.push("Draft compliant disclosure", "Audit risky claims", "Check latest policy updates");
+          break;
+        case "DASHBOARD_INSIGHTS":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Dashboard Insights",
+            "- Identify lowest-performing section by product count.",
+            "- Compare subscriber trend with recent campaign output.",
+            "- Focus next actions on one section for measurable gains."
+          ].join("\n");
+          routedSuggestions.push("Weakest section breakdown", "7-day priority plan", "Traffic opportunity summary");
+          break;
+        case "PRODUCT_POSITIONING":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Product Positioning",
+            `- Position around ${sessionContext.category} buyer intent.`,
+            "- Translate features into outcomes and proof.",
+            "- Differentiate against generic alternatives with one strong angle."
+          ].join("\n");
+          routedSuggestions.push("Value proposition draft", "Persona-fit messaging", "Feature-to-benefit rewrite");
+          break;
+        default:
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Direct Answer",
+            "- I can provide a concise, actionable plan based on your current context.",
+            "- If you want deeper output, specify section + platform + target outcome."
+          ].join("\n");
+          routedSuggestions.push("Summarize next actions", "Focus on one section", "Ask for checklist output");
+          break;
+      }
+
+      if (addAffiliateDisclaimer) {
+        routedAnswer = `${routedAnswer}\n\n### Compliance Disclaimer\nAffiliate disclosure: we may earn a commission from qualifying purchases.`;
+      }
+      if (sourceLines.length > 0) {
+        routedAnswer = `${routedAnswer}\n${sourceLines.join("\n")}`;
+      }
+      res.status(200).json({
+        mode: "read-only",
+        intent,
+        answer: routedAnswer,
+        suggestions: routedSuggestions.slice(0, 4),
+        sources: collectedSources,
+        capabilities: roleCapabilities
+      });
+      return;
       if (isGreeting) {
         answer = [
           "## Hello",
           "I am your admin AI copilot for this website.",
           "",
-          "I can help you with:",
-          "- Full site status review (products, subscribers, analytics, drafts)",
-          "- SEO and traffic opportunities with prioritized actions",
-          "- Compliance checks for affiliate/product copy",
-          "- Content action preparation before publishing",
+          `Current snapshot: products ${effectiveProducts}, subscribers ${effectiveSubscribers}, events ${effectiveEvents}.`,
+          `Active section focus: ${clientContext.activeSection || "marketing"}.`,
           "",
           "If you want, ask me one of these now:",
           "1. What changed on my site today?",
@@ -1641,7 +2017,7 @@ const bootstrap = async () => {
         suggestions.push("Ask: prepare add product to gadgets");
         suggestions.push("Ask: prepare edit item in supplements");
       } else if (isSearchPrompt) {
-        const query = userMessage
+        const query = effectiveUserMessage
           .replace(/search online/gi, "")
           .replace(/find online/gi, "")
           .replace(/where to find/gi, "")
@@ -1662,7 +2038,8 @@ const bootstrap = async () => {
               suggestions.push("Ask: prepare action plan from these links");
             }
           } catch (error) {
-            answer = `Online search failed for "${query}". ${error instanceof Error ? error.message : "Unknown error."}`;
+            const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+            answer = `Online search failed for "${query}". ${errorMessage}`;
           }
         }
       } else if (/\b(qa audit|content audit|compliance audit|policy audit|affiliate audit)\b/i.test(lower)) {
@@ -1762,7 +2139,7 @@ const bootstrap = async () => {
         suggestions.push("Ask: generate day-by-day task checklist");
         suggestions.push("Ask: prepare products for day 2");
       } else if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
-        answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${productTotal}. Subscribers: ${emailSummary.totals.subscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${analyticsSummary.totalEvents}.`;
+        answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${effectiveProducts}. Subscribers: ${effectiveSubscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${effectiveEvents}. Active section: ${clientContext.activeSection || "marketing"}.`;
         suggestions.push("Ask: show weakest section by product count");
         suggestions.push("Ask: traffic opportunities overview");
       } else if (lower.includes("expire") || lower.includes("expir")) {
@@ -1787,13 +2164,13 @@ const bootstrap = async () => {
         suggestions.push("Ask: prepare email campaign draft plan");
       } else if (/^(what is|who is|how to|why|when|where)\b/i.test(lower) || lower.endsWith("?")) {
         try {
-          const results = await searchWeb(userMessage);
+          const results = await searchWeb(effectiveUserMessage);
           if (results.length > 0) {
             sources = results.slice(0, 5);
             const top = sources.slice(0, 3);
             answer = [
               "## Global Answer",
-              top[0]?.snippet || `Here is what I found about "${userMessage}":`,
+              top[0]?.snippet || `Here is what I found about "${effectiveUserMessage}":`,
               "",
               "### Quick points",
               ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
@@ -1804,22 +2181,23 @@ const bootstrap = async () => {
             suggestions.push("Ask: explain this in simple terms");
             suggestions.push("Ask: compare the top 2 sources");
           } else {
-            answer = `I could not find strong web sources for "${userMessage}" right now. Try rephrasing with more detail.`;
+            answer = `I could not find strong web sources for "${effectiveUserMessage}" right now. Try rephrasing with more detail.`;
             suggestions.push("Ask: search online <topic> latest");
           }
         } catch (error) {
-          answer = `I could not fetch global sources right now. ${error instanceof Error ? error.message : "Unknown error."}`;
+          const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+          answer = `I could not fetch global sources right now. ${errorMessage}`;
           suggestions.push("Ask: try again with a shorter question");
         }
       } else {
         try {
-          const results = await searchWeb(userMessage);
+          const results = await searchWeb(effectiveUserMessage);
           if (results.length > 0) {
             sources = results.slice(0, 5);
             const top = sources.slice(0, 3);
             answer = [
               "## Detailed Answer",
-              top[0]?.snippet || `Here is what I found for "${userMessage}":`,
+              top[0]?.snippet || `Here is what I found for "${effectiveUserMessage}":`,
               "",
               "### Key points",
               ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
@@ -1833,14 +2211,15 @@ const bootstrap = async () => {
             answer = [
               "I could not find enough external sources for that exact prompt yet.",
               "Try rephrasing with more context, for example:",
-              `- "Explain ${userMessage} with examples"`,
-              `- "Latest best practices for ${userMessage}"`
+              `- "Explain ${effectiveUserMessage} with examples"`,
+              `- "Latest best practices for ${effectiveUserMessage}"`
             ].join("\n");
             suggestions.push("Ask: explain with examples");
             suggestions.push("Ask: latest best practices");
           }
         } catch (error) {
-          answer = `I could not fetch external sources right now. ${error instanceof Error ? error.message : "Unknown error."}`;
+          const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+          answer = `I could not fetch external sources right now. ${errorMessage}`;
           suggestions.push("Ask: try again");
           suggestions.push("Ask: summarize from local context");
         }
