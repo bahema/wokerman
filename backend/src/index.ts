@@ -1601,6 +1601,102 @@ const bootstrap = async () => {
             answer = `Online search failed for "${query}". ${error instanceof Error ? error.message : "Unknown error."}`;
           }
         }
+      } else if (/\b(qa audit|content audit|compliance audit|policy audit|affiliate audit)\b/i.test(lower)) {
+        const sections = [
+          ...published.products.forex,
+          ...published.products.betting,
+          ...published.products.software,
+          ...published.products.social,
+          ...(published.healthPage?.products.gadgets ?? []),
+          ...(published.healthPage?.products.supplements ?? [])
+        ];
+        const missingDisclosure = sections.filter(
+          (item) => {
+            const maybeWarnings = (item as unknown as { complianceWarnings?: string[] }).complianceWarnings ?? [];
+            return !hasAffiliateDisclosureSignal(maybeWarnings, item.shortDescription ?? "", item.longDescription ?? "");
+          }
+        );
+        const riskyClaims = sections.filter((item) =>
+          hasHealthRiskClaims(`${item.title} ${item.shortDescription ?? ""} ${item.longDescription ?? ""}`)
+        );
+        const duplicateTitleCount =
+          sections.length -
+          new Set(sections.map((item) => normalizeForCompare(item.title ?? ""))).size;
+
+        answer = [
+          "## QA / Compliance Audit",
+          `- Total products scanned: ${sections.length}`,
+          `- Missing affiliate disclosure signals: ${missingDisclosure.length}`,
+          `- Risky claim signals: ${riskyClaims.length}`,
+          `- Possible duplicate titles: ${duplicateTitleCount}`,
+          "",
+          "### Priority actions",
+          "1. Add explicit affiliate disclosure text to missing products.",
+          "2. Remove or rewrite risky health/guarantee language.",
+          "3. Resolve duplicate titles to avoid confusion and SEO overlap."
+        ].join("\n");
+        suggestions.push("Ask: list top 10 products missing disclosure");
+        suggestions.push("Ask: generate safe rewrite for risky products");
+      } else if (/\b(seo audit|seo report|keyword audit|ranking|internal links|schema)\b/i.test(lower)) {
+        const bySection = {
+          forex: published.products.forex.length,
+          betting: published.products.betting.length,
+          software: published.products.software.length,
+          social: published.products.social.length,
+          gadgets: published.healthPage?.products.gadgets.length ?? 0,
+          supplements: published.healthPage?.products.supplements.length ?? 0,
+          upcoming: published.healthPage?.upcoming.items.length ?? 0
+        };
+        const weakSections = Object.entries(bySection)
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 3)
+          .map(([name, count]) => `${name} (${count})`);
+        answer = [
+          "## SEO Audit",
+          `- Products indexed in content model: ${Object.values(bySection).reduce((a, b) => a + b, 0)}`,
+          `- Lowest-content sections: ${weakSections.join(", ")}`,
+          latestTrafficPlan
+            ? `- Latest traffic plan: ${latestTrafficPlan.summary.opportunities} opportunities (avg score ${latestTrafficPlan.summary.avgCompositeScore})`
+            : "- Latest traffic plan: not generated yet",
+          "",
+          "### Recommended SEO actions",
+          "1. Expand weak sections with 3-5 high-intent product pages each.",
+          "2. Strengthen internal linking between related sections.",
+          "3. Improve title/meta uniqueness and affiliate disclosure consistency."
+        ].join("\n");
+        suggestions.push("Ask: generate 7-day SEO action checklist");
+        suggestions.push("Ask: build internal-link plan by section");
+      } else if (/\b(playbook|execution plan|weekly plan|action plan)\b/i.test(lower)) {
+        const weakestSections = Object.entries({
+          forex: published.products.forex.length,
+          betting: published.products.betting.length,
+          software: published.products.software.length,
+          social: published.products.social.length,
+          gadgets: published.healthPage?.products.gadgets.length ?? 0,
+          supplements: published.healthPage?.products.supplements.length ?? 0
+        })
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 2)
+          .map(([name]) => name);
+        answer = [
+          "## 7-Day Growth Playbook",
+          "### Day 1",
+          "- Run QA/compliance audit and fix high-risk claims.",
+          "### Day 2",
+          `- Add 2 products to weakest sections: ${weakestSections.join(", ")}.`,
+          "### Day 3",
+          "- Publish one SEO-focused comparison article with affiliate disclosure.",
+          "### Day 4",
+          "- Generate and schedule one HTML campaign per top section.",
+          "### Day 5",
+          "- Review analytics events and optimize lowest-performing CTA.",
+          "### Day 6",
+          "- Expand internal linking across top 3 converting pages.",
+          "### Day 7",
+          "- Generate weekly report and lock next-week priorities."
+        ].join("\n");
+        suggestions.push("Ask: generate day-by-day task checklist");
+        suggestions.push("Ask: prepare products for day 2");
       } else if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
         answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${productTotal}. Subscribers: ${emailSummary.totals.subscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${analyticsSummary.totalEvents}.`;
         suggestions.push("Ask: show weakest section by product count");
