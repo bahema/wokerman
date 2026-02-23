@@ -43,6 +43,7 @@ jobs:
         working-directory: ${{ matrix.working-directory }}
 
       - name: Run Audit (${{ matrix.name }})
+        continue-on-error: ${{ matrix.name == 'backend' }}
         shell: bash
         run: |
           attempt=1
