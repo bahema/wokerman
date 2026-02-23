@@ -1544,10 +1544,19 @@ const bootstrap = async () => {
       else if (/\bheadline|hook|cta|copy|emojis?|ad\b/.test(lower)) intentHint = "ad copy";
       else if (/\bkeywords?|rank|google|content|seo\b/.test(lower)) intentHint = "SEO";
 
-      const vaguePhrases = /^(help me|help|fix this|what now|make it better|do it|improve)$/i;
-      const tooShort = cleaned.split(/\s+/).filter(Boolean).length < 2;
-      const missingSignals = !entities.goal && !entities.category && !entities.platform;
-      const isVague = vaguePhrases.test(lower) || tooShort || missingSignals;
+      const words = cleaned.split(/\s+/).filter(Boolean);
+      const wordCount = words.length;
+      const vaguePhrases = /^(help me|help|fix this|what now|make it better|do it|improve|traffic overview|status)$/i;
+      const hasQuestionShape =
+        /\?$/.test(cleaned) ||
+        /\b(what|why|how|when|where|who|which|can|could|should|is|are|do|does|tell me|explain)\b/.test(lower);
+      const followUpCue = /\b(step\s*\d+|more detail|more detailed|expand|continue|next|follow up|that|those|it|same|previous|above|earlier)\b/.test(
+        lower
+      );
+      const hasSignal = Boolean(entities.goal || entities.category || entities.platform || intentHint);
+      const tooShort = wordCount < 2;
+      const missingSignals = !hasSignal && !hasQuestionShape && wordCount < 5;
+      const isVague = vaguePhrases.test(lower) || tooShort || (missingSignals && !followUpCue);
       if (!isVague) return { cleaned, intentHint, entities, isVague: false };
 
       const clarifyingQuestion = intentHint === "SEO"
@@ -1693,9 +1702,7 @@ const bootstrap = async () => {
           .reverse()
           .find((item) => item.role === "user" && item.content.toLowerCase() !== normalizedUserMessage.toLowerCase())?.content ?? "";
       const followsPreviousContext = /\b(that|those|it|same|previous|above|earlier|q1|follow up)\b/i.test(lower);
-      const missingEntities = !understanding.entities.goal && !understanding.entities.category && !understanding.entities.platform;
-
-      if ((understanding.isVague || missingEntities) && !isGreeting) {
+      if (understanding.isVague && !isGreeting && !followsPreviousContext) {
         const followUpQuestion =
           understanding.clarifyingQuestion ??
           "Quick question: should I focus on SEO opportunities, compliance, ad copy, or dashboard insights first?";
@@ -1761,6 +1768,55 @@ const bootstrap = async () => {
         ((intent === "SEO_RESEARCH" || intent === "COMPLIANCE") && asksCurrentInfo) ||
         (asksCurrentInfo && intent !== "CODING_HELP") ||
         (intent === "CODING_HELP" && codingNeedsCurrentLibrary);
+      const buildCuratedFallbackSources = (
+        activeIntent: ChatIntent
+      ): Array<{ title: string; url: string; snippet: string; source: string }> => {
+        if (activeIntent === "COMPLIANCE") {
+          return [
+            {
+              title: "FTC Endorsement Guides",
+              url: "https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides",
+              snippet: "Primary U.S. guidance for endorsements, testimonials, and material connection disclosures.",
+              source: "curated-fallback"
+            },
+            {
+              title: "FTC Advertising and Marketing Basics",
+              url: "https://www.ftc.gov/business-guidance/advertising-marketing",
+              snippet: "Core truth-in-advertising expectations and compliance references for marketers.",
+              source: "curated-fallback"
+            },
+            {
+              title: "FDA Dietary Supplements",
+              url: "https://www.fda.gov/food/dietary-supplements",
+              snippet: "Regulatory overview for supplements and health-claim boundaries in the U.S.",
+              source: "curated-fallback"
+            }
+          ];
+        }
+        if (activeIntent === "SEO_RESEARCH") {
+          return [
+            {
+              title: "Google Search Essentials",
+              url: "https://developers.google.com/search/docs/fundamentals/creating-helpful-content",
+              snippet: "Google guidance on helpful content and sustainable search visibility.",
+              source: "curated-fallback"
+            },
+            {
+              title: "Google SEO Starter Guide",
+              url: "https://developers.google.com/search/docs/fundamentals/seo-starter-guide",
+              snippet: "Baseline technical and content SEO practices from Google.",
+              source: "curated-fallback"
+            },
+            {
+              title: "Google Search Ranking Systems Guide",
+              url: "https://developers.google.com/search/docs/appearance/ranking-systems-guide",
+              snippet: "High-level overview of ranking systems to align SEO strategy with quality signals.",
+              source: "curated-fallback"
+            }
+          ];
+        }
+        return [];
+      };
       const collectedSources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
       if (shouldUseWebSearch) {
         try {
@@ -1768,6 +1824,9 @@ const bootstrap = async () => {
           collectedSources.push(...results.slice(0, 5));
         } catch {
           // Keep response resilient; fallback to local context without failing chat.
+        }
+        if (collectedSources.length === 0) {
+          collectedSources.push(...buildCuratedFallbackSources(intent).slice(0, 5));
         }
       }
       const sourceLines =
