@@ -1247,7 +1247,7 @@ const AiControlCenterEditor = () => {
                 placeholder="Ask AI to audit status, search online sources, or prepare actions..."
                 className="w-full resize-none border-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-400 outline-none"
               />
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-2 space-y-2">
                 <input
                   ref={chatImageInputRef}
                   type="file"
@@ -1259,49 +1259,55 @@ const AiControlCenterEditor = () => {
                     void uploadChatImage(file);
                   }}
                 />
-                <button
-                  type="button"
-                  disabled={chatImageBusy}
-                  onClick={() => chatImageInputRef.current?.click()}
-                  className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
-                >
-                  {chatImageBusy ? "Uploading..." : "Upload Image"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setToolPanel((prev) => (prev === "web" ? "none" : "web"))}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "web" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
-                >
-                  Sources Tool
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setToolPanel((prev) => (prev === "action" ? "none" : "action"))}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "action" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
-                >
-                  Ads/Product Tool
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setToolPanel((prev) => (prev === "email" ? "none" : "email"))}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "email" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "border-slate-700 text-slate-200"}`}
-                >
-                  Email Tool
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setToolPanel((prev) => (prev === "docs" ? "none" : "docs"))}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "docs" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
-                >
-                  Docs Tool
-                </button>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="ml-auto rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busy ? "Thinking..." : "Send"}
-                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    disabled={chatImageBusy}
+                    onClick={() => chatImageInputRef.current?.click()}
+                    className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
+                  >
+                    {chatImageBusy ? "Uploading..." : "Upload Image"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="shrink-0 rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busy ? "Thinking..." : "Send"}
+                  </button>
+                </div>
+                <div className="overflow-x-auto pb-1">
+                  <div className="flex w-max items-center gap-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => setToolPanel((prev) => (prev === "web" ? "none" : "web"))}
+                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "web" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
+                    >
+                      Sources Tool
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolPanel((prev) => (prev === "action" ? "none" : "action"))}
+                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "action" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
+                    >
+                      Ads/Product Tool
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolPanel((prev) => (prev === "email" ? "none" : "email"))}
+                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "email" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "border-slate-700 text-slate-200"}`}
+                    >
+                      Email Tool
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolPanel((prev) => (prev === "docs" ? "none" : "docs"))}
+                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "docs" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
+                    >
+                      Docs Tool
+                    </button>
+                  </div>
+                </div>
               </div>
             </form>
 
