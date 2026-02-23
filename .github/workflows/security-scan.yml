@@ -43,7 +43,23 @@ jobs:
         working-directory: ${{ matrix.working-directory }}
 
       - name: Run Audit (${{ matrix.name }})
-        run: npm audit --audit-level=high
+        shell: bash
+        run: |
+          attempt=1
+          max_attempts=3
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Running npm audit (attempt ${attempt}/${max_attempts})..."
+            if npm audit --audit-level=high; then
+              exit 0
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "npm audit failed; retrying in 10 seconds..."
+              sleep 10
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "npm audit failed after ${max_attempts} attempts."
+          exit 1
         working-directory: ${{ matrix.working-directory }}
 
   codeql:
