@@ -4122,6 +4122,28 @@ const bootstrap = async () => {
     }
     next(error);
   });
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Not found." });
+  });
+  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    if (!req.path.startsWith("/api/")) {
+      next(error);
+      return;
+    }
+    const statusRaw = typeof error === "object" && error !== null && "status" in error ? (error as { status?: unknown }).status : undefined;
+    const statusCode = typeof statusRaw === "number" && Number.isFinite(statusRaw) ? Math.max(400, Math.floor(statusRaw)) : 500;
+    if (statusCode >= 500) {
+      res.status(statusCode).json({ error: safeServerErrorMessage(error, "Internal server error.") });
+      return;
+    }
+    const message =
+      error instanceof Error && error.message.trim() ? error.message : statusCode === 404 ? "Not found." : "Request failed.";
+    res.status(statusCode).json({ error: message });
+  });
 
   const startupSenderProfile = await emailStore.getSenderProfile();
   const startupMissingFields: string[] = [];
