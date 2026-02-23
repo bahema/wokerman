@@ -180,6 +180,9 @@ const STORAGE_SESSIONS_KEY = "autohub_ai_sessions_v2";
 const STORAGE_MESSAGES_KEY = "autohub_ai_messages_by_session_v2";
 const STORAGE_ACTIVE_SESSION_KEY = "autohub_ai_active_session_v2";
 const STORAGE_SESSION_CONTEXT_KEY = "autohub_ai_session_context_v1";
+const MAX_STORED_SESSIONS = 40;
+const MAX_MESSAGES_PER_SESSION = 160;
+const MAX_MESSAGE_CONTENT_CHARS = 12_000;
 
 const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
@@ -232,6 +235,11 @@ const createUserMessage = (sessionId: string, content: string, status: MessageSt
   content,
   createdAt: now(),
   status
+});
+const normalizeMessageContent = (value: string) => value.slice(0, MAX_MESSAGE_CONTENT_CHARS);
+const normalizeMessage = (item: ChatMessage): ChatMessage => ({
+  ...item,
+  content: normalizeMessageContent(item.content)
 });
 
 const isNearBottom = (el: HTMLElement, threshold = 120) =>
@@ -490,14 +498,25 @@ const AiControlCenterEditor = () => {
 
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>(() =>
-    parseJson<ChatSession[]>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSIONS_KEY) : null, [])
+    parseJson<ChatSession[]>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSIONS_KEY) : null, []).slice(
+      0,
+      MAX_STORED_SESSIONS
+    )
   );
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() =>
     typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY) : null
   );
-  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() =>
-    parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
-  );
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() => {
+    const stored = parseJson<Record<string, ChatMessage[]>>(
+      typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null,
+      {}
+    );
+    const next: Record<string, ChatMessage[]> = {};
+    for (const [key, items] of Object.entries(stored)) {
+      next[key] = items.slice(-MAX_MESSAGES_PER_SESSION).map((item) => normalizeMessage(item));
+    }
+    return next;
+  });
   const [sessionContextBySession, setSessionContextBySession] = useState<Record<string, SessionContext>>(() =>
     parseJson<Record<string, SessionContext>>(
       typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSION_CONTEXT_KEY) : null,
@@ -540,14 +559,19 @@ const AiControlCenterEditor = () => {
   };
 
   const appendMessage = (sessionId: string, messageToAdd: ChatMessage, titleFromUser?: string) => {
-    setMessagesBySession((prev) => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), messageToAdd] }));
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: [...(prev[sessionId] ?? []), normalizeMessage(messageToAdd)].slice(-MAX_MESSAGES_PER_SESSION)
+    }));
     updateSessionMeta(sessionId, titleFromUser);
   };
 
   const replaceMessage = (sessionId: string, messageId: string, patch: Partial<ChatMessage>) => {
     setMessagesBySession((prev) => ({
       ...prev,
-      [sessionId]: (prev[sessionId] ?? []).map((item) => (item.id === messageId ? { ...item, ...patch } : item))
+      [sessionId]: (prev[sessionId] ?? [])
+        .map((item) => (item.id === messageId ? normalizeMessage({ ...item, ...patch }) : item))
+        .slice(-MAX_MESSAGES_PER_SESSION)
     }));
     updateSessionMeta(sessionId);
   };
@@ -567,7 +591,7 @@ const AiControlCenterEditor = () => {
       "I can audit your live site status, search online sources, and prepare product actions. Use quick prompts or ask directly."
     );
     welcome.suggestions = ["Ask: what happened on my page today?", "Ask: search online FTC affiliate rules"];
-    setSessions((prev) => [session, ...prev]);
+    setSessions((prev) => [session, ...prev].slice(0, MAX_STORED_SESSIONS));
     setMessagesBySession((prev) => ({ ...prev, [session.id]: [welcome] }));
     setSessionContextBySession((prev) => ({ ...prev, [session.id]: defaultSessionContext() }));
     setActiveSessionId(session.id);
@@ -608,6 +632,36 @@ const AiControlCenterEditor = () => {
       setActiveSessionId(null);
     }
   }, [activeSessionId, sessions]);
+
+  useEffect(() => {
+    const allowedSessionIds = new Set(sessions.map((item) => item.id));
+    setMessagesBySession((prev) => {
+      let changed = false;
+      const next: Record<string, ChatMessage[]> = {};
+      for (const [sessionId, items] of Object.entries(prev)) {
+        if (!allowedSessionIds.has(sessionId)) {
+          changed = true;
+          continue;
+        }
+        const normalized = items.slice(-MAX_MESSAGES_PER_SESSION).map((item) => normalizeMessage(item));
+        if (normalized.length !== items.length) changed = true;
+        next[sessionId] = normalized;
+      }
+      return changed ? next : prev;
+    });
+    setSessionContextBySession((prev) => {
+      let changed = false;
+      const next: Record<string, SessionContext> = {};
+      for (const [sessionId, ctx] of Object.entries(prev)) {
+        if (!allowedSessionIds.has(sessionId)) {
+          changed = true;
+          continue;
+        }
+        next[sessionId] = ctx;
+      }
+      return changed ? next : prev;
+    });
+  }, [sessions]);
 
   useEffect(() => {
     if (!activeSessionId) return;
