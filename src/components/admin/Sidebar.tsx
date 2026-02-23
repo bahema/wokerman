@@ -1,6 +1,7 @@
 export type AdminSection =
   | "pre-deploy-checklist"
   | "system-health"
+  | "traffic-ai"
   | "email-analytics"
   | "email-sender"
   | "account-settings"
@@ -32,7 +33,8 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
     title: "Operations",
     items: [
       { key: "pre-deploy-checklist", label: "Pre-Deploy Checklist" },
-      { key: "system-health", label: "System Health" }
+      { key: "system-health", label: "System Health" },
+      { key: "traffic-ai", label: "Traffic AI" }
     ]
   },
   {

@@ -14,6 +14,8 @@ import { createEmailStore } from "./email/store.js";
 import { createCookieConsentStore } from "./cookies/store.js";
 import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
+import { createTrafficAiStore } from "./traffic/store.js";
+import { generateTrafficAiPlan } from "./traffic/engine.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
   EMAIL_CAMPAIGN_BODY_MODE,
@@ -232,6 +234,7 @@ const bootstrap = async () => {
   const authStore = await createAuthStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
+  const trafficAiStore = await createTrafficAiStore(MEDIA_DIR);
   const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
     ...profile,
     smtpPass: "",
@@ -948,6 +951,47 @@ const bootstrap = async () => {
     const next = await siteStore.reset();
     res.status(200).json({ published: next.published, draft: next.draft });
   });
+
+  app.get("/api/traffic-ai/plan/latest", requireAdminAuth, async (_req, res) => {
+    try {
+      const latest = await trafficAiStore.getLatestPlan();
+      res.status(200).json({ plan: latest });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load traffic AI plan." });
+    }
+  });
+
+  app.get("/api/traffic-ai/plans", requireAdminAuth, async (_req, res) => {
+    try {
+      const plans = await trafficAiStore.listPlans();
+      res.status(200).json({ items: plans, total: plans.length });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load traffic AI plan history." });
+    }
+  });
+
+  app.post(
+    "/api/traffic-ai/plan/generate",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("traffic_ai.generate_plan"),
+    async (_req, res) => {
+      try {
+        const [publishedContent, emailSummary] = await Promise.all([
+          siteStore.getPublished(),
+          emailStore.getAnalyticsSummary()
+        ]);
+        const nextPlan = generateTrafficAiPlan({
+          content: publishedContent,
+          emailSummary
+        });
+        const saved = await trafficAiStore.addPlan(nextPlan);
+        res.status(201).json({ plan: saved });
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate traffic AI plan." });
+      }
+    }
+  );
 
   app.post("/api/analytics/events", async (req, res) => {
     const eventName = typeof req.body?.eventName === "string" ? req.body.eventName.trim() : "";

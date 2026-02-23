@@ -20,6 +20,7 @@ import { type AdminSection } from "../components/admin/Sidebar";
 import SocialLinksEditor from "../components/admin/SocialLinksEditor";
 import SystemHealthEditor from "../components/admin/SystemHealthEditor";
 import TestimonialManager from "../components/admin/TestimonialManager";
+import TrafficAiEditor from "../components/admin/TrafficAiEditor";
 import TopBar from "../components/admin/TopBar";
 import Drawer from "../components/admin/Drawer";
 import ProductCard from "../components/ProductCard";
@@ -40,6 +41,7 @@ import { withBasePath } from "../utils/basePath";
 const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/pre-deploy-checklist": "pre-deploy-checklist",
   "/boss/system-health": "system-health",
+  "/boss/traffic-ai": "traffic-ai",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
   "/boss/hero-2": "hero-2",
@@ -53,6 +55,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
 const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "pre-deploy-checklist": "/boss/pre-deploy-checklist",
   "system-health": "/boss/system-health",
+  "traffic-ai": "/boss/traffic-ai",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
   "hero-2": "/boss/hero-2",
@@ -257,6 +260,15 @@ const Admin = () => {
         return (
           <EditorShell title="System Health" description="Run quick local checks to ensure frontend and backend are ready.">
             <SystemHealthEditor />
+          </EditorShell>
+        );
+      case "traffic-ai":
+        return (
+          <EditorShell
+            title="Traffic AI"
+            description="Local-first traffic opportunity planner (rule-based, no external AI APIs)."
+          >
+            <TrafficAiEditor />
           </EditorShell>
         );
       case "account-settings":
