@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiJson } from "../../api/client";
 
 type AiContextResponse = {
@@ -41,7 +41,7 @@ type SourceItem = {
 };
 
 type AiChatResponse = {
-  mode: "read-only";
+  mode: "read-only" | "super";
   answer: string;
   suggestions: string[];
   sources?: SourceItem[];
@@ -89,19 +89,32 @@ type WebSearchResponse = {
   results: SourceItem[];
 };
 
-type ChatItem = {
+type MessageStatus = "sending" | "streaming" | "complete" | "error";
+
+type ChatSession = {
   id: string;
+  title: string;
+  createdAt: number;
+  lastUpdatedAt: number;
+};
+
+type ChatMessage = {
+  id: string;
+  sessionId: string;
   role: "user" | "assistant";
-  text: string;
+  content: string;
+  createdAt: number;
+  status: MessageStatus;
   suggestions?: string[];
   sources?: SourceItem[];
 };
 
-type AskedSessionItem = {
-  id: string;
-  question: string;
-  createdAt: number;
-};
+type MarkdownBlock =
+  | { type: "heading"; level: number; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "blockquote"; text: string }
+  | { type: "code"; language: string; code: string };
 
 type AiEmailResponse = {
   ok: true;
@@ -138,12 +151,222 @@ const QUICK_PROMPTS = [
   "Prepare add product to gadgets"
 ];
 
+const STORAGE_SESSIONS_KEY = "autohub_ai_sessions_v2";
+const STORAGE_MESSAGES_KEY = "autohub_ai_messages_by_session_v2";
+const STORAGE_ACTIVE_SESSION_KEY = "autohub_ai_active_session_v2";
+
+const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const now = () => Date.now();
+
+const parseJson = <T,>(value: string | null, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+type AiSettingsResponse = {
+  mode: "current" | "super";
+  superModeConfigured: boolean;
+  superMode: null | {
+    provider: string;
+    baseUrl: string;
+    model: string;
+    apiKeyMask: string;
+    updatedAt: string;
+  };
+};
+
+const truncateTitle = (value: string, max = 52) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "AI Assistant Control";
+  return trimmed.length > max ? `${trimmed.slice(0, max)}...` : trimmed;
+};
+
+const createSession = (title = "New session"): ChatSession => {
+  const timestamp = now();
+  return { id: createId("session"), title, createdAt: timestamp, lastUpdatedAt: timestamp };
+};
+
+const createAssistantMessage = (sessionId: string, content: string, status: MessageStatus = "complete"): ChatMessage => ({
+  id: createId("msg-a"),
+  sessionId,
+  role: "assistant",
+  content,
+  createdAt: now(),
+  status
+});
+
+const createUserMessage = (sessionId: string, content: string, status: MessageStatus = "complete"): ChatMessage => ({
+  id: createId("msg-u"),
+  sessionId,
+  role: "user",
+  content,
+  createdAt: now(),
+  status
+});
+
+const buildAnalysisPrompt = (message: string, context: AiContextResponse | null) => {
+  const trimmed = message.trim();
+  if (!context) return `${trimmed}\n\nRespond with markdown headings, bullets, and concrete next steps.`;
+  return `${trimmed}
+
+Use markdown output with sections:
+- Summary
+- Key Risks
+- Search/SEO Opportunities
+- Recommended Actions (prioritized)
+
+Current snapshot:
+- Total products: ${context.site.totalProducts}
+- Subscribers: ${context.email.subscribers}
+- Analytics events: ${context.analytics.totalEvents}
+- Industries: ${context.site.industries}
+- Section counts: ${JSON.stringify(context.site.sectionCounts)}
+`;
+};
+
+const improveSearchQuery = (query: string) => {
+  const base = query.trim();
+  if (!base) return "";
+  if (/\b(2026|latest|guidelines|best practices|compliance|seo)\b/i.test(base)) return base;
+  return `${base} latest guidelines 2026 best practices compliance`;
+};
+
+const parseMarkdown = (input: string): MarkdownBlock[] => {
+  const lines = input.replace(/\r\n/g, "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    const codeStart = line.match(/^```\s*(\w+)?\s*$/);
+    if (codeStart) {
+      const language = codeStart[1] ?? "text";
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```\s*$/.test(lines[index] ?? "")) {
+        codeLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      blocks.push({ type: "code", language, code: codeLines.join("\n") });
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index] ?? "")) {
+        items.push((lines[index] ?? "").replace(/^\s*[-*]\s+/, "").trim());
+        index += 1;
+      }
+      blocks.push({ type: "list", items });
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^>\s?/.test(lines[index] ?? "")) {
+        quoteLines.push((lines[index] ?? "").replace(/^>\s?/, ""));
+        index += 1;
+      }
+      blocks.push({ type: "blockquote", text: quoteLines.join("\n") });
+      continue;
+    }
+
+    const paragraphLines: string[] = [line];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index]?.trim() &&
+      !/^(#{1,6})\s+/.test(lines[index] ?? "") &&
+      !/^\s*[-*]\s+/.test(lines[index] ?? "") &&
+      !/^>\s?/.test(lines[index] ?? "") &&
+      !/^```/.test(lines[index] ?? "")
+    ) {
+      paragraphLines.push(lines[index] ?? "");
+      index += 1;
+    }
+    blocks.push({ type: "paragraph", text: paragraphLines.join("\n") });
+  }
+
+  return blocks;
+};
+
+const renderInline = (text: string, keyPrefix: string): ReactNode[] => {
+  const nodes: ReactNode[] = [];
+  const pattern = /(https?:\/\/\S+)|`([^`]+)`|\*\*([^*]+)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null = pattern.exec(text);
+  let part = 0;
+
+  while (match) {
+    if (match.index > lastIndex) {
+      nodes.push(<span key={`${keyPrefix}-t-${part}`}>{text.slice(lastIndex, match.index)}</span>);
+      part += 1;
+    }
+    const [full, link, inlineCode, bold] = match;
+    if (link) {
+      nodes.push(
+        <a key={`${keyPrefix}-l-${part}`} href={link} target="_blank" rel="noopener noreferrer nofollow" className="text-blue-300 underline underline-offset-2 hover:text-blue-200">
+          {link}
+        </a>
+      );
+    } else if (inlineCode) {
+      nodes.push(
+        <code key={`${keyPrefix}-c-${part}`} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[0.9em] text-cyan-200">
+          {inlineCode}
+        </code>
+      );
+    } else if (bold) {
+      nodes.push(
+        <strong key={`${keyPrefix}-b-${part}`} className="font-semibold text-white">
+          {bold}
+        </strong>
+      );
+    } else {
+      nodes.push(<span key={`${keyPrefix}-f-${part}`}>{full}</span>);
+    }
+    lastIndex = match.index + full.length;
+    part += 1;
+    match = pattern.exec(text);
+  }
+  if (lastIndex < text.length) {
+    nodes.push(<span key={`${keyPrefix}-tail`}>{text.slice(lastIndex)}</span>);
+  }
+  return nodes;
+};
+
 const AiControlCenterEditor = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [toolPanel, setToolPanel] = useState<ToolPanel>("none");
+  const [toast, setToast] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [aiMode, setAiMode] = useState<"current" | "super">("current");
+  const [superConfigured, setSuperConfigured] = useState(false);
+  const [superProvider, setSuperProvider] = useState("openai_compatible");
+  const [superBaseUrl, setSuperBaseUrl] = useState("https://api.openai.com/v1");
+  const [superModel, setSuperModel] = useState("gpt-4o-mini");
+  const [superApiKey, setSuperApiKey] = useState("");
+  const [superApiKeyMask, setSuperApiKeyMask] = useState("");
 
   const [actionMessage, setActionMessage] = useState("");
   const [actionImageUrl, setActionImageUrl] = useState("");
@@ -151,7 +374,7 @@ const AiControlCenterEditor = () => {
   const [confirmText, setConfirmText] = useState("");
   const [preparedAction, setPreparedAction] = useState<PreparedActionResponse | null>(null);
   const [executeIssues, setExecuteIssues] = useState<string[]>([]);
-  const [askedSessions, setAskedSessions] = useState<AskedSessionItem[]>([]);
+
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailObjective, setEmailObjective] = useState("");
   const [emailSection, setEmailSection] = useState("health");
@@ -169,14 +392,78 @@ const AiControlCenterEditor = () => {
   const [webResults, setWebResults] = useState<SourceItem[]>([]);
 
   const [context, setContext] = useState<AiContextResponse | null>(null);
-  const [chat, setChat] = useState<ChatItem[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>(() =>
+    parseJson<ChatSession[]>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSIONS_KEY) : null, [])
+  );
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY) : null
+  );
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() =>
+    parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
+  );
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt), [sessions]);
+
+  const activeMessages = useMemo(() => {
+    if (!activeSessionId) return [];
+    return messagesBySession[activeSessionId] ?? [];
+  }, [activeSessionId, messagesBySession]);
 
   const latestTitle = useMemo(() => {
-    const firstUser = chat.find((item) => item.role === "user");
-    if (!firstUser) return "AI Assistant Control";
-    const trimmed = firstUser.text.trim();
-    return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
-  }, [chat]);
+    if (!activeSessionId) return "AI Assistant Control";
+    const current = sessions.find((item) => item.id === activeSessionId);
+    return current?.title ?? "AI Assistant Control";
+  }, [activeSessionId, sessions]);
+
+  const updateSessionMeta = (sessionId: string, titleOverride?: string) => {
+    setSessions((prev) =>
+      prev.map((item) =>
+        item.id === sessionId
+          ? { ...item, title: titleOverride ? truncateTitle(titleOverride) : item.title, lastUpdatedAt: now() }
+          : item
+      )
+    );
+  };
+
+  const appendMessage = (sessionId: string, messageToAdd: ChatMessage, titleFromUser?: string) => {
+    setMessagesBySession((prev) => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), messageToAdd] }));
+    updateSessionMeta(sessionId, titleFromUser);
+  };
+
+  const replaceMessage = (sessionId: string, messageId: string, patch: Partial<ChatMessage>) => {
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] ?? []).map((item) => (item.id === messageId ? { ...item, ...patch } : item))
+    }));
+    updateSessionMeta(sessionId);
+  };
+
+  const removeMessage = (sessionId: string, messageId: string) => {
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] ?? []).filter((item) => item.id !== messageId)
+    }));
+    updateSessionMeta(sessionId);
+  };
+
+  const createEmptySession = () => {
+    const session = createSession();
+    const welcome = createAssistantMessage(
+      session.id,
+      "I can audit your live site status, search online sources, and prepare product actions. Use quick prompts or ask directly."
+    );
+    welcome.suggestions = ["Ask: what happened on my page today?", "Ask: search online FTC affiliate rules"];
+    setSessions((prev) => [session, ...prev]);
+    setMessagesBySession((prev) => ({ ...prev, [session.id]: [welcome] }));
+    setActiveSessionId(session.id);
+    return session.id;
+  };
+
+  const ensureActiveSession = () => {
+    if (activeSessionId && sessions.some((item) => item.id === activeSessionId)) return activeSessionId;
+    return createEmptySession();
+  };
 
   const loadContext = async () => {
     setError("");
@@ -192,46 +479,162 @@ const AiControlCenterEditor = () => {
 
   useEffect(() => {
     void loadContext();
-    setChat([
-      {
-        id: "welcome",
-        role: "assistant",
-        text:
-          "I can audit your live site status, search online sources, and prepare product actions. Use quick prompts or ask directly.",
-        suggestions: ["Ask: what happened on my page today?", "Ask: search online FTC affiliate rules"]
-      }
-    ]);
+    void loadAiSettings();
   }, []);
+
+  useEffect(() => {
+    if (sessions.length === 0) {
+      createEmptySession();
+    }
+  }, [sessions.length]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    if (!sessions.some((item) => item.id === activeSessionId)) {
+      setActiveSessionId(null);
+    }
+  }, [activeSessionId, sessions]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messagesBySession));
+    }
+  }, [messagesBySession]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeSessionId) {
+      window.localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, activeSessionId);
+    } else {
+      window.localStorage.removeItem(STORAGE_ACTIVE_SESSION_KEY);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 1400);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [activeMessages, activeSessionId]);
 
   const sendPrompt = async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed || busy) return;
+    const sessionId = ensureActiveSession();
+
     setBusy(true);
     setError("");
     setMessage("");
-    const userItem: ChatItem = { id: `${Date.now()}-u`, role: "user", text: trimmed };
-    setChat((prev) => [...prev, userItem]);
-    setAskedSessions((prev) => {
-      const nextItem: AskedSessionItem = { id: `${Date.now()}-s`, question: trimmed, createdAt: Date.now() };
-      const deduped = [nextItem, ...prev.filter((item) => item.question !== trimmed)];
-      return deduped.slice(0, 50);
-    });
+
+    const userItem = createUserMessage(sessionId, trimmed, "sending");
+    appendMessage(sessionId, userItem, trimmed);
+    replaceMessage(sessionId, userItem.id, { status: "complete" });
+    const placeholder = createAssistantMessage(sessionId, "Thinking...", "streaming");
+    appendMessage(sessionId, placeholder);
 
     try {
-      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", { message: trimmed });
-      const assistantItem: ChatItem = {
-        id: `${Date.now()}-a`,
-        role: "assistant",
-        text: response.answer,
+      const enrichedMessage = buildAnalysisPrompt(trimmed, context);
+      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", { message: enrichedMessage });
+      if (response.mode === "super") {
+        setAiMode("super");
+      }
+      replaceMessage(sessionId, placeholder.id, {
+        content: response.answer,
+        status: "complete",
         suggestions: response.suggestions,
         sources: response.sources ?? []
-      };
-      setChat((prev) => [...prev, assistantItem]);
+      });
       await loadContext();
     } catch (err) {
+      replaceMessage(sessionId, placeholder.id, {
+        content: err instanceof Error ? err.message : "AI chat failed.",
+        status: "error"
+      });
       setError(err instanceof Error ? err.message : "AI chat failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const hydrateSettings = (settings: AiSettingsResponse) => {
+    setAiMode(settings.mode);
+    setSuperConfigured(settings.superModeConfigured);
+    setSuperProvider(settings.superMode?.provider ?? "openai_compatible");
+    setSuperBaseUrl(settings.superMode?.baseUrl ?? "https://api.openai.com/v1");
+    setSuperModel(settings.superMode?.model ?? "gpt-4o-mini");
+    setSuperApiKeyMask(settings.superMode?.apiKeyMask ?? "");
+  };
+
+  const loadAiSettings = async () => {
+    try {
+      const settings = await apiGet<AiSettingsResponse>("/api/ai/control/settings");
+      hydrateSettings(settings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load AI settings.");
+    }
+  };
+
+  const saveMode = async (mode: "current" | "super") => {
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/mode", "PUT", { mode });
+      hydrateSettings(settings);
+      setToast(`Mode set to ${settings.mode}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save AI mode.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const saveSuperMode = async () => {
+    const key = superApiKey.trim();
+    if (!key) {
+      setError("Super mode API key is required.");
+      return;
+    }
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/super", "PUT", {
+        provider: superProvider,
+        baseUrl: superBaseUrl.trim(),
+        model: superModel.trim(),
+        apiKey: key
+      });
+      hydrateSettings(settings);
+      setSuperApiKey("");
+      setToast("Super mode key saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save super mode settings.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const clearSuperMode = async () => {
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/super", "DELETE");
+      hydrateSettings(settings);
+      setSuperApiKey("");
+      setToast("Super mode removed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear super mode settings.");
+    } finally {
+      setSettingsBusy(false);
     }
   };
 
@@ -244,30 +647,41 @@ const AiControlCenterEditor = () => {
     event.preventDefault();
     const query = webQuery.trim();
     if (!query || webBusy) return;
+    const sessionId = ensureActiveSession();
     setWebBusy(true);
     setError("");
     try {
       const response = await apiJson<WebSearchResponse>("/api/ai/control/web-search", "POST", { query });
-      setWebResults(response.results ?? []);
-      setChat((prev) => [
-        ...prev,
-        { id: `${Date.now()}-wu`, role: "user", text: `Search online: ${query}` },
-        {
-          id: `${Date.now()}-wa`,
-          role: "assistant",
-          text:
-            response.results.length > 0
-              ? `Found ${response.results.length} online sources for "${query}".`
-              : `No web sources found for "${query}".`,
-          sources: response.results
+      let mergedResults = response.results ?? [];
+
+      if (mergedResults.length < 4) {
+        const improvedQuery = improveSearchQuery(query);
+        if (improvedQuery && improvedQuery.toLowerCase() !== query.toLowerCase()) {
+          const retry = await apiJson<WebSearchResponse>("/api/ai/control/web-search", "POST", { query: improvedQuery });
+          const combined = [...mergedResults, ...(retry.results ?? [])];
+          const seen = new Set<string>();
+          mergedResults = combined.filter((item) => {
+            if (seen.has(item.url)) return false;
+            seen.add(item.url);
+            return true;
+          });
         }
-      ]);
-      setAskedSessions((prev) => {
-        const question = `Search online: ${query}`;
-        const nextItem: AskedSessionItem = { id: `${Date.now()}-s`, question, createdAt: Date.now() };
-        const deduped = [nextItem, ...prev.filter((item) => item.question !== question)];
-        return deduped.slice(0, 50);
-      });
+      }
+
+      setWebResults(mergedResults);
+      appendMessage(sessionId, createUserMessage(sessionId, `Search online: ${query}`), `Search online: ${query}`);
+      appendMessage(
+        sessionId,
+        {
+          ...createAssistantMessage(
+            sessionId,
+            mergedResults.length > 0
+              ? `Found ${mergedResults.length} online sources for "${query}".`
+              : `No web sources found for "${query}".`
+          ),
+          sources: mergedResults
+        }
+      );
       setToolPanel("none");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Web search failed.");
@@ -280,6 +694,7 @@ const AiControlCenterEditor = () => {
     event.preventDefault();
     const trimmed = actionMessage.trim();
     if (!trimmed || actionBusy) return;
+    const sessionId = ensureActiveSession();
     setActionBusy(true);
     setError("");
     setExecuteIssues([]);
@@ -290,20 +705,14 @@ const AiControlCenterEditor = () => {
       });
       setPreparedAction(response);
       setConfirmText("");
-      setChat((prev) => [
-        ...prev,
-        { id: `${Date.now()}-pu`, role: "user", text: trimmed },
-        {
-          id: `${Date.now()}-pa`,
-          role: "assistant",
-          text: `Prepared ${response.actionType} for ${response.target.section}. Confirm with exact phrase before expiry: ${response.approval.confirmPhrase}`
-        }
-      ]);
-      setAskedSessions((prev) => {
-        const nextItem: AskedSessionItem = { id: `${Date.now()}-s`, question: trimmed, createdAt: Date.now() };
-        const deduped = [nextItem, ...prev.filter((item) => item.question !== trimmed)];
-        return deduped.slice(0, 50);
-      });
+      appendMessage(sessionId, createUserMessage(sessionId, trimmed), trimmed);
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Prepared ${response.actionType} for ${response.target.section}. Confirm with exact phrase before expiry: ${response.approval.confirmPhrase}`
+        )
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to prepare action.");
     } finally {
@@ -313,6 +722,7 @@ const AiControlCenterEditor = () => {
 
   const executePreparedAction = async () => {
     if (!preparedAction || actionBusy) return;
+    const sessionId = ensureActiveSession();
     setActionBusy(true);
     setError("");
     setExecuteIssues([]);
@@ -328,14 +738,13 @@ const AiControlCenterEditor = () => {
       setActionImageUrl("");
       setConfirmText("");
       setToolPanel("none");
-      setChat((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-exec`,
-          role: "assistant",
-          text: `Executed: inserted "${result.insertedTitle}" into ${result.section}. Total products now: ${result.productsInSection}.${result.rollbackId ? ` Rollback ID: ${result.rollbackId}.` : ""}`
-        }
-      ]);
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Executed: inserted "${result.insertedTitle}" into ${result.section}. Total products now: ${result.productsInSection}.${result.rollbackId ? ` Rollback ID: ${result.rollbackId}.` : ""}`
+        )
+      );
       await loadContext();
     } catch (err) {
       const messageText = err instanceof Error ? err.message : "Failed to execute action.";
@@ -348,35 +757,37 @@ const AiControlCenterEditor = () => {
     }
   };
 
-  const resetChat = () => {
-    setChat([
-      {
-        id: `welcome-${Date.now()}`,
-        role: "assistant",
-        text: "New session ready. Ask about performance, compliance, traffic, or product actions.",
-        suggestions: ["Ask: status summary", "Ask: search online best affiliate CTAs"]
+  const deleteSession = (sessionId: string) => {
+    setSessions((prev) => {
+      const remaining = prev.filter((item) => item.id !== sessionId);
+      if (sessionId === activeSessionId) {
+        const next = [...remaining].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt)[0] ?? null;
+        setActiveSessionId(next?.id ?? null);
       }
-    ]);
+      return remaining;
+    });
+    setMessagesBySession((prev) => {
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
     setMessage("");
-    setWebResults([]);
     setPreparedAction(null);
     setExecuteIssues([]);
-    setAskedSessions([]);
     setToolPanel("none");
-  };
-
-  const deleteAskedSession = (id: string) => {
-    setAskedSessions((prev) => prev.filter((item) => item.id !== id));
+    setWebResults([]);
   };
 
   const generateAiEmail = async (event: FormEvent) => {
     event.preventDefault();
     if (!emailObjective.trim() || emailBusy) return;
+    const sessionId = ensureActiveSession();
     setEmailBusy(true);
     setError("");
     try {
+      const objective = emailObjective.trim();
       const response = await apiJson<AiEmailResponse>("/api/ai/control/email/generate", "POST", {
-        objective: emailObjective.trim(),
+        objective,
         section: emailSection,
         language: emailLanguage,
         tone: emailTone,
@@ -384,23 +795,16 @@ const AiControlCenterEditor = () => {
         saveDraft: true
       });
       setEmailResult(response);
-      setChat((prev) => [
-        ...prev,
-        { id: `${Date.now()}-eu`, role: "user", text: `Generate email draft: ${emailObjective.trim()}` },
-        {
-          id: `${Date.now()}-ea`,
-          role: "assistant",
-          text: `Email draft generated for ${response.section} (${response.language}/${response.tone}). ${
+      appendMessage(sessionId, createUserMessage(sessionId, `Generate email draft: ${objective}`), `Generate email draft: ${objective}`);
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Email draft generated for ${response.section} (${response.language}/${response.tone}). ${
             response.draftSaved && response.campaignId ? `Saved as campaign ${response.campaignId}.` : "Draft not saved."
           }`
-        }
-      ]);
-      setAskedSessions((prev) => {
-        const question = `Generate email draft: ${emailObjective.trim()}`;
-        const nextItem: AskedSessionItem = { id: `${Date.now()}-s`, question, createdAt: Date.now() };
-        const deduped = [nextItem, ...prev.filter((item) => item.question !== question)];
-        return deduped.slice(0, 50);
-      });
+        )
+      );
       await loadContext();
       setToolPanel("none");
     } catch (err) {
@@ -414,6 +818,7 @@ const AiControlCenterEditor = () => {
     event.preventDefault();
     const question = docsQuestion.trim();
     if (!question || docsBusy) return;
+    const sessionId = ensureActiveSession();
     setDocsBusy(true);
     setError("");
     try {
@@ -422,21 +827,15 @@ const AiControlCenterEditor = () => {
         format: docsFormat
       });
       setExportResults((prev) => [response, ...prev].slice(0, 20));
-      setChat((prev) => [
-        ...prev,
-        { id: `${Date.now()}-du`, role: "user", text: `Generate ${docsFormat.toUpperCase()} export: ${question}` },
-        {
-          id: `${Date.now()}-da`,
-          role: "assistant",
-          text: `Generated ${response.format.toUpperCase()} export: ${response.fileName}`
-        }
-      ]);
-      setAskedSessions((prev) => {
-        const q = `Generate ${docsFormat.toUpperCase()} export: ${question}`;
-        const nextItem: AskedSessionItem = { id: `${Date.now()}-s`, question: q, createdAt: Date.now() };
-        const deduped = [nextItem, ...prev.filter((item) => item.question !== q)];
-        return deduped.slice(0, 50);
-      });
+      appendMessage(
+        sessionId,
+        createUserMessage(sessionId, `Generate ${docsFormat.toUpperCase()} export: ${question}`),
+        `Generate ${docsFormat.toUpperCase()} export: ${question}`
+      );
+      appendMessage(
+        sessionId,
+        createAssistantMessage(sessionId, `Generated ${response.format.toUpperCase()} export: ${response.fileName}`)
+      );
       setDocsQuestion("");
       setToolPanel("none");
     } catch (err) {
@@ -450,13 +849,85 @@ const AiControlCenterEditor = () => {
     if (!emailResult?.email.bodyHtml) return;
     try {
       await navigator.clipboard.writeText(emailResult.email.bodyHtml);
-      setChat((prev) => [
-        ...prev,
-        { id: `${Date.now()}-copy`, role: "assistant", text: "Copied generated HTML email to clipboard." }
-      ]);
+      setToast("Copied");
+      const sessionId = ensureActiveSession();
+      appendMessage(sessionId, createAssistantMessage(sessionId, "Copied generated HTML email to clipboard."));
     } catch {
       setError("Clipboard copy failed. Select and copy manually.");
     }
+  };
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setToast("Copied");
+    } catch {
+      setError("Clipboard copy failed.");
+    }
+  };
+
+  const renderMarkdownMessage = (content: string) => {
+    const blocks = parseMarkdown(content);
+    return (
+      <div className="space-y-3">
+        {blocks.map((block, index) => {
+          const key = `b-${index}`;
+          if (block.type === "heading") {
+            const cls =
+              block.level <= 2
+                ? "text-base font-semibold text-white"
+                : block.level === 3
+                  ? "text-sm font-semibold text-white"
+                  : "text-sm font-medium text-slate-100";
+            return (
+              <h4 key={key} className={cls}>
+                {renderInline(block.text, `${key}-h`)}
+              </h4>
+            );
+          }
+          if (block.type === "list") {
+            return (
+              <ul key={key} className="list-disc space-y-1 pl-5 text-sm leading-6 text-slate-100">
+                {block.items.map((item, itemIndex) => (
+                  <li key={`${key}-i-${itemIndex}`}>{renderInline(item, `${key}-i-${itemIndex}`)}</li>
+                ))}
+              </ul>
+            );
+          }
+          if (block.type === "blockquote") {
+            return (
+              <blockquote key={key} className="border-l-2 border-slate-600 pl-3 text-sm italic text-slate-300">
+                {renderInline(block.text, `${key}-q`)}
+              </blockquote>
+            );
+          }
+          if (block.type === "code") {
+            return (
+              <div key={key} className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950/80">
+                <div className="flex items-center justify-between border-b border-slate-700 px-3 py-2 text-[11px] uppercase tracking-wide text-slate-400">
+                  <span>{block.language || "code"}</span>
+                  <button
+                    type="button"
+                    onClick={() => void copyText(block.code)}
+                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                  >
+                    Copy code
+                  </button>
+                </div>
+                <pre className="overflow-x-auto px-3 py-3 text-xs leading-5 text-cyan-200">
+                  <code>{block.code}</code>
+                </pre>
+              </div>
+            );
+          }
+          return (
+            <p key={key} className="whitespace-pre-wrap text-sm leading-6 text-slate-100">
+              {renderInline(block.text, `${key}-p`)}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -465,7 +936,7 @@ const AiControlCenterEditor = () => {
         <aside className="hidden border-r border-slate-800/90 bg-slate-900/80 p-4 lg:flex lg:flex-col">
           <button
             type="button"
-            onClick={resetChat}
+            onClick={createEmptySession}
             className="mb-4 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-left text-sm font-semibold hover:bg-slate-800"
           >
             + New Chat
@@ -487,26 +958,28 @@ const AiControlCenterEditor = () => {
           </div>
           <p className="mb-2 mt-5 text-xs uppercase tracking-wide text-slate-400">Asked Sessions</p>
           <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-            {askedSessions.length === 0 ? (
+            {sortedSessions.length === 0 ? (
               <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400">
                 No asked sessions yet.
               </p>
             ) : (
-              askedSessions.map((item) => (
+              sortedSessions.map((item) => (
                 <div key={item.id} className="rounded-xl border border-slate-700 bg-slate-900/70 px-2 py-2">
                   <button
                     type="button"
-                    onClick={() => void sendPrompt(item.question)}
-                    className="w-full text-left text-xs text-slate-200 hover:text-white"
-                    title="Replay this session question"
+                    onClick={() => setActiveSessionId(item.id)}
+                    className={`w-full text-left text-xs hover:text-white ${
+                      item.id === activeSessionId ? "text-blue-200" : "text-slate-200"
+                    }`}
+                    title="Open this session"
                   >
-                    {item.question}
+                    {item.title}
                   </button>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">{new Date(item.createdAt).toLocaleTimeString()}</span>
+                    <span className="text-[10px] text-slate-500">{new Date(item.lastUpdatedAt).toLocaleTimeString()}</span>
                     <button
                       type="button"
-                      onClick={() => deleteAskedSession(item.id)}
+                      onClick={() => deleteSession(item.id)}
                       className="rounded-md border border-slate-600 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-800"
                     >
                       Delete
@@ -516,13 +989,25 @@ const AiControlCenterEditor = () => {
               ))
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Settings
+          </button>
         </aside>
 
         <div className="flex min-h-[80vh] flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/90 px-4 py-3 md:px-6">
             <div>
               <h3 className="text-lg font-bold md:text-xl">AI Assistant Offers Help</h3>
-              <p className="text-xs text-slate-400">Global system brain: status, web sources, and safe action prep.</p>
+              <p className="text-xs text-slate-400">
+                Global system brain: status, web sources, and safe action prep.{" "}
+                <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                  {aiMode} mode
+                </span>
+              </p>
             </div>
             <button
               type="button"
@@ -569,55 +1054,94 @@ const AiControlCenterEditor = () => {
               <p className="rounded-xl border border-rose-800 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">{error}</p>
             </div>
           ) : null}
+          {toast ? <div className="px-4 pt-3 text-xs text-emerald-300 md:px-6">{toast}</div> : null}
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6">
-            {chat.map((item) => (
-              <article key={item.id} className={`max-w-4xl ${item.role === "user" ? "ml-auto" : ""}`}>
-                <div
-                  className={`rounded-2xl border px-4 py-3 text-sm whitespace-pre-wrap ${
-                    item.role === "user"
-                      ? "border-slate-700 bg-slate-800 text-slate-100"
-                      : "border-slate-800 bg-slate-900/80 text-slate-100"
-                  }`}
-                >
-                  {item.text}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
+              {activeSessionId ? (
+                activeMessages.length > 0 ? (
+                  activeMessages.map((item) => (
+                    <article key={item.id} className={`flex ${item.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`w-full max-w-[85%] rounded-2xl border px-4 py-3 md:max-w-[75%] ${
+                          item.role === "user"
+                            ? "border-slate-700 bg-slate-800 text-slate-100"
+                            : item.status === "error"
+                              ? "border-rose-800 bg-rose-950/30 text-rose-100"
+                              : "border-slate-800 bg-slate-900/80 text-slate-100"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-slate-400">
+                          <span>{item.role}</span>
+                          <div className="flex items-center gap-2">
+                            <span>{item.status}</span>
+                            <button
+                              type="button"
+                              onClick={() => void copyText(item.content)}
+                              className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                            >
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeMessage(item.sessionId, item.id)}
+                              className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        {item.role === "assistant" ? renderMarkdownMessage(item.content) : <p className="whitespace-pre-wrap text-sm leading-6">{item.content}</p>}
+                        {item.status === "streaming" ? <p className="mt-2 text-xs text-slate-400">Generating...</p> : null}
+                        {item.suggestions && item.suggestions.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {item.suggestions.map((suggestion) => (
+                              <button
+                                key={suggestion}
+                                type="button"
+                                onClick={() => void sendPrompt(suggestion.replace(/^Ask:\s*/i, ""))}
+                                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {item.sources && item.sources.length > 0 ? (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {item.sources.slice(0, 6).map((source) => (
+                              <a
+                                key={`${item.id}-${source.url}`}
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer nofollow"
+                                className="rounded-xl border border-slate-800 bg-slate-950 p-3 hover:bg-slate-800/80"
+                              >
+                                <p className="text-sm font-semibold text-blue-300">{source.title}</p>
+                                <p className="mt-1 line-clamp-2 text-xs text-slate-300">{source.snippet}</p>
+                                <p className="mt-1 text-[11px] text-slate-500">{source.source}</p>
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-400">
+                    No messages in this session yet.
+                  </div>
+                )
+              ) : (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-400">
+                  No active session. Create a new chat to start.
                 </div>
-                {item.suggestions && item.suggestions.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {item.suggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => void sendPrompt(suggestion.replace(/^Ask:\s*/i, ""))}
-                        className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {item.sources && item.sources.length > 0 ? (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {item.sources.slice(0, 6).map((source) => (
-                      <a
-                        key={`${item.id}-${source.url}`}
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow"
-                        className="rounded-xl border border-slate-800 bg-slate-900 p-3 hover:bg-slate-800/80"
-                      >
-                        <p className="text-sm font-semibold text-blue-300">{source.title}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-slate-300">{source.snippet}</p>
-                        <p className="mt-1 text-[11px] text-slate-500">{source.source}</p>
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
+              )}
+            </div>
           </div>
 
           <footer className="border-t border-slate-800/90 bg-slate-950/95 px-4 py-4 md:px-6">
+            <div className="mx-auto w-full max-w-3xl">
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3">
               <textarea
                 value={message}
@@ -882,9 +1406,101 @@ const AiControlCenterEditor = () => {
                 ) : null}
               </div>
             ) : null}
+            </div>
           </footer>
         </div>
       </div>
+      {settingsOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h4 className="text-base font-semibold text-slate-100">AI Settings</h4>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={settingsBusy}
+                onClick={() => void saveMode("current")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm ${
+                  aiMode === "current" ? "border-emerald-500 bg-emerald-900/30 text-emerald-200" : "border-slate-700 text-slate-200"
+                }`}
+              >
+                <p className="font-semibold">Current mode</p>
+                <p className="mt-1 text-xs text-slate-400">Default local AI system.</p>
+              </button>
+              <button
+                type="button"
+                disabled={settingsBusy || !superConfigured}
+                onClick={() => void saveMode("super")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm ${
+                  aiMode === "super" ? "border-cyan-500 bg-cyan-900/30 text-cyan-200" : "border-slate-700 text-slate-200"
+                }`}
+              >
+                <p className="font-semibold">Super mode</p>
+                <p className="mt-1 text-xs text-slate-400">External provider via your API key.</p>
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Super mode provider</p>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  value={superProvider}
+                  onChange={(event) => setSuperProvider(event.target.value)}
+                  placeholder="Provider"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  value={superModel}
+                  onChange={(event) => setSuperModel(event.target.value)}
+                  placeholder="Model (e.g. gpt-4o-mini)"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  value={superBaseUrl}
+                  onChange={(event) => setSuperBaseUrl(event.target.value)}
+                  placeholder="Base URL (e.g. https://api.openai.com/v1)"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
+                />
+                <input
+                  value={superApiKey}
+                  onChange={(event) => setSuperApiKey(event.target.value)}
+                  type="password"
+                  placeholder={superApiKeyMask ? `Stored key: ${superApiKeyMask} (enter new key to replace)` : "Paste API key"}
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={settingsBusy}
+                  onClick={() => void saveSuperMode()}
+                  className="rounded-full bg-cyan-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {settingsBusy ? "Saving..." : "Save Super Mode"}
+                </button>
+                <button
+                  type="button"
+                  disabled={settingsBusy || !superConfigured}
+                  onClick={() => void clearSuperMode()}
+                  className="rounded-full border border-slate-600 px-4 py-1.5 text-xs font-semibold text-slate-200 disabled:opacity-50"
+                >
+                  Clear Super Mode
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {emailResult ? (
         <section className="border-t border-slate-800/90 bg-slate-950/95 px-4 py-4 md:px-6">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3">

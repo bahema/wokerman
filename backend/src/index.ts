@@ -57,6 +57,7 @@ const TRUSTED_DEVICE_COOKIE_NAME = "autohub_admin_trusted_device";
 const resolveAuthCookieSigningKey = () =>
   (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
 const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
+const AI_SUPER_MODE_ENCRYPTION_SECRET = (process.env.AI_SUPER_MODE_ENCRYPTION_SECRET ?? AUTH_COOKIE_SIGNING_KEY).trim();
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
@@ -239,7 +240,9 @@ const bootstrap = async () => {
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
   const trafficAiStore = await createTrafficAiStore(MEDIA_DIR);
-  const aiControlStore = await createAiControlStore(MEDIA_DIR);
+  const aiControlStore = await createAiControlStore(MEDIA_DIR, {
+    encryptionSecret: AI_SUPER_MODE_ENCRYPTION_SECRET
+  });
   const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
     ...profile,
     smtpPass: "",
@@ -1201,6 +1204,68 @@ const bootstrap = async () => {
     return reasons;
   };
 
+  const callSuperModeChat = async (input: {
+    message: string;
+    context: {
+      siteUpdatedAt: string;
+      totalProducts: number;
+      subscribers: number;
+      analyticsEvents: number;
+      hasDraft: boolean;
+    };
+  }) => {
+    const runtime = await aiControlStore.getRuntimeSettings();
+    if (runtime.mode !== "super" || !runtime.superMode) return null;
+
+    const endpoint = `${runtime.superMode.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+    const systemPrompt =
+      "You are an admin AI copilot for a content + affiliate website. Respond in concise markdown with sections, bullets, and practical actions. Avoid unsafe or misleading claims.";
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${runtime.superMode.apiKey}`
+      },
+      body: JSON.stringify({
+        model: runtime.superMode.model,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              `User request: ${input.message}`,
+              "Current snapshot:",
+              `- Site updated at: ${input.context.siteUpdatedAt}`,
+              `- Total products: ${input.context.totalProducts}`,
+              `- Subscribers: ${input.context.subscribers}`,
+              `- Analytics events: ${input.context.analyticsEvents}`,
+              `- Has draft: ${String(input.context.hasDraft)}`
+            ].join("\n")
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`Super mode provider error (${response.status}): ${message.slice(0, 240)}`);
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content) {
+      throw new Error("Super mode provider returned an empty response.");
+    }
+    return {
+      provider: runtime.superMode.provider,
+      model: runtime.superMode.model,
+      answer: content
+    };
+  };
+
   app.get("/api/ai/control/context", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (req, res) => {
     try {
       const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
@@ -1272,6 +1337,69 @@ const bootstrap = async () => {
     }
   });
 
+  app.get("/api/ai/control/settings", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (_req, res) => {
+    try {
+      const settings = await aiControlStore.getSettings();
+      res.status(200).json(settings);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI settings." });
+    }
+  });
+
+  app.put(
+    "/api/ai/control/settings/mode",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_mode"),
+    async (req, res) => {
+      const mode = req.body?.mode === "super" ? "super" : "current";
+      try {
+        const next = await aiControlStore.setMode(mode);
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update AI mode." });
+      }
+    }
+  );
+
+  app.put(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const apiKey = typeof payload.apiKey === "string" ? payload.apiKey : "";
+      const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl : undefined;
+      const model = typeof payload.model === "string" ? payload.model : undefined;
+      const provider = typeof payload.provider === "string" ? payload.provider : undefined;
+      try {
+        const next = await aiControlStore.upsertSuperMode({ apiKey, baseUrl, model, provider });
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save super mode settings." });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super_clear"),
+    async (_req, res) => {
+      try {
+        const next = await aiControlStore.clearSuperMode();
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to clear super mode settings." });
+      }
+    }
+  );
+
   app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     if (!message) {
@@ -1294,6 +1422,41 @@ const bootstrap = async () => {
         published.products.social.length +
         (published.healthPage?.products.gadgets.length ?? 0) +
         (published.healthPage?.products.supplements.length ?? 0);
+
+      try {
+        const superReply = await callSuperModeChat({
+          message,
+          context: {
+            siteUpdatedAt: siteMeta.updatedAt,
+            totalProducts: productTotal,
+            subscribers: emailSummary.totals.subscribers,
+            analyticsEvents: analyticsSummary.totalEvents,
+            hasDraft: siteMeta.hasDraft
+          }
+        });
+        if (superReply) {
+          res.status(200).json({
+            mode: "super",
+            answer: superReply.answer,
+            suggestions: [
+              "Ask: convert this into a weekly action checklist",
+              "Ask: search online sources to verify this plan"
+            ],
+            sources: []
+          });
+          return;
+        }
+      } catch (superError) {
+        await aiControlStore.logAudit({
+          action: "ai.super_mode_fallback",
+          status: "denied",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "unknown").toString(),
+          authSource: (res.locals.authSource ?? "none").toString(),
+          path: req.originalUrl,
+          ip: req.ip ?? "",
+          metadata: { reason: superError instanceof Error ? superError.message : "super mode failed" }
+        });
+      }
 
       let answer = "";
       const suggestions: string[] = [];
