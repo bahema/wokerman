@@ -24,6 +24,7 @@ import {
   EMAIL_EVENT_TYPES,
   EMAIL_SUBSCRIBER_STATUS
 } from "./db/schema.js";
+import { defaultPublishedContent } from "./db/defaultPublishedContent.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -1134,9 +1135,136 @@ const bootstrap = async () => {
       target: { section, path: targetPath },
       productDraft,
       nextStep:
-        "Phase 2a only prepares this draft. No write action is executed. Approve to move to next phase where execute endpoint will be added."
+        "Draft prepared. In Phase 2b you may execute only for gadgets section by confirming with text EXECUTE."
     });
   });
+
+  app.post(
+    "/api/ai/control/execute-action",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.execute_add_product_gadgets"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const confirmText = typeof payload.confirmText === "string" ? payload.confirmText.trim() : "";
+      const target = typeof payload.target === "object" && payload.target !== null ? (payload.target as Record<string, unknown>) : {};
+      const draft =
+        typeof payload.productDraft === "object" && payload.productDraft !== null
+          ? (payload.productDraft as Record<string, unknown>)
+          : {};
+
+      if (confirmText !== "EXECUTE") {
+        res.status(400).json({ error: "Confirm text must be exactly 'EXECUTE'." });
+        return;
+      }
+
+      const section = typeof target.section === "string" ? target.section.trim().toLowerCase() : "";
+      // Phase 2b scope lock: only one section is allowed for controlled rollout.
+      if (section !== "gadgets") {
+        res.status(400).json({ error: "Phase 2b allows execution only for 'gadgets' section." });
+        return;
+      }
+
+      const title = typeof draft.title === "string" ? draft.title.trim() : "";
+      const shortDescription = typeof draft.shortDescription === "string" ? draft.shortDescription.trim() : "";
+      const longDescription = typeof draft.longDescription === "string" ? draft.longDescription.trim() : "";
+      const imageUrl = typeof draft.imageUrl === "string" ? draft.imageUrl.trim() : "";
+      const checkoutLink = typeof draft.checkoutLink === "string" ? draft.checkoutLink.trim() : "";
+      const features =
+        Array.isArray(draft.features) && draft.features.length
+          ? draft.features.map((item) => String(item).trim()).filter(Boolean).slice(0, 8)
+          : [];
+      const ratingRaw = Number(draft.rating ?? 4.6);
+      const rating = Number.isFinite(ratingRaw) ? Math.min(5, Math.max(1, ratingRaw)) : 4.6;
+      const isNew = draft.isNew !== false;
+
+      if (!title || !shortDescription || !longDescription) {
+        res.status(400).json({ error: "title, shortDescription, and longDescription are required." });
+        return;
+      }
+      if (!checkoutLink || !/^https?:\/\//i.test(checkoutLink)) {
+        res.status(400).json({ error: "checkoutLink must be a valid http(s) URL." });
+        return;
+      }
+      if (!features.length) {
+        res.status(400).json({ error: "At least one feature is required." });
+        return;
+      }
+      if (imageUrl && !imageUrl.includes("/uploads/")) {
+        res.status(400).json({ error: "For now, imageUrl must come from uploads path." });
+        return;
+      }
+
+      try {
+        const published = await siteStore.getPublished();
+        const healthFallback: NonNullable<SiteContent["healthPage"]> = {
+          hero2: {
+            eyebrow: "Health",
+            headline: "Health Picks",
+            subtext: "Curated gadgets and supplements",
+            ctaPrimary: { label: "Explore", target: "/health" },
+            ctaSecondary: { label: "Learn more", target: "/health" },
+            imageUrl: "",
+            imageAlt: "Health section image",
+            imageLink: ""
+          },
+          sections: {
+            gadgets: { title: "Healthy Gadgets", description: "Top device picks for wellness routines." },
+            supplements: { title: "Healthy Supplements", description: "Top supplement picks for daily support." }
+          },
+          products: {
+            gadgets: [],
+            supplements: []
+          },
+          upcoming: {
+            title: "Upcoming",
+            subtitle: "Upcoming health drops",
+            items: []
+          }
+        };
+        const currentHealth = published.healthPage ?? defaultPublishedContent.healthPage ?? healthFallback;
+        const healthPage: NonNullable<SiteContent["healthPage"]> = {
+          ...currentHealth,
+          products: {
+            gadgets: [...currentHealth.products.gadgets],
+            supplements: [...currentHealth.products.supplements]
+          }
+        };
+
+        const nextPosition = healthPage.products.gadgets.length + 1;
+        healthPage.products.gadgets.push({
+          id: `health-gadget-${randomUUID().slice(0, 8)}`,
+          position: nextPosition,
+          title,
+          shortDescription,
+          longDescription,
+          features,
+          rating,
+          isNew,
+          category: "Gadgets",
+          imageUrl,
+          checkoutLink
+        });
+
+        const nextContent: SiteContent = {
+          ...published,
+          healthPage
+        };
+
+        await siteStore.saveDraft(nextContent);
+        const content = await siteStore.publish(nextContent);
+        res.status(200).json({
+          ok: true,
+          mode: "execute",
+          section: "gadgets",
+          insertedTitle: title,
+          productsInSection: content.healthPage?.products.gadgets.length ?? 0
+        });
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to execute add product action." });
+      }
+    }
+  );
 
   app.get("/api/traffic-ai/plan/latest", requireAdminAuth, async (_req, res) => {
     try {

@@ -60,6 +60,14 @@ type PreparedActionResponse = {
   nextStep: string;
 };
 
+type ExecuteActionResponse = {
+  ok: true;
+  mode: "execute";
+  section: "gadgets";
+  insertedTitle: string;
+  productsInSection: number;
+};
+
 type ChatItem = {
   id: string;
   role: "user" | "assistant";
@@ -74,6 +82,7 @@ const AiControlCenterEditor = () => {
   const [actionMessage, setActionMessage] = useState("");
   const [actionImageUrl, setActionImageUrl] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [preparedAction, setPreparedAction] = useState<PreparedActionResponse | null>(null);
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [chat, setChat] = useState<ChatItem[]>([]);
@@ -128,8 +137,39 @@ const AiControlCenterEditor = () => {
         imageUrl: actionImageUrl.trim()
       });
       setPreparedAction(response);
+      setConfirmText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to prepare action.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const executePreparedAction = async () => {
+    if (!preparedAction || actionBusy) return;
+    setActionBusy(true);
+    setError("");
+    try {
+      const result = await apiJson<ExecuteActionResponse>("/api/ai/control/execute-action", "POST", {
+        confirmText: confirmText.trim(),
+        target: preparedAction.target,
+        productDraft: preparedAction.productDraft
+      });
+      setPreparedAction(null);
+      setActionMessage("");
+      setActionImageUrl("");
+      setConfirmText("");
+      setChat((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-exec`,
+          role: "assistant",
+          text: `Executed: inserted "${result.insertedTitle}" into ${result.section}. Total products now: ${result.productsInSection}.`
+        }
+      ]);
+      await loadContext();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to execute action.");
     } finally {
       setActionBusy(false);
     }
@@ -264,11 +304,12 @@ const AiControlCenterEditor = () => {
             </button>
             <button
               type="button"
-              disabled
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:text-slate-400"
-              title="Execution is intentionally disabled in Phase 2a."
+              disabled={!preparedAction || preparedAction.target.section !== "gadgets" || actionBusy || confirmText.trim() !== "EXECUTE"}
+              onClick={() => void executePreparedAction()}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400 dark:border-slate-600 dark:text-slate-100 dark:disabled:text-slate-500"
+              title="Phase 2b: executes only for gadgets and requires confirm text EXECUTE."
             >
-              Confirm & Execute (Locked)
+              Confirm & Execute (gadgets only)
             </button>
           </div>
         </form>
@@ -298,6 +339,20 @@ const AiControlCenterEditor = () => {
               </ul>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{preparedAction.nextStep}</p>
             </article>
+            <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Type EXECUTE to confirm
+              </label>
+              <input
+                value={confirmText}
+                onChange={(event) => setConfirmText(event.target.value)}
+                placeholder="EXECUTE"
+                className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950"
+              />
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Safety gate: only gadgets section can execute in Phase 2b.
+              </p>
+            </div>
           </div>
         ) : null}
       </section>
