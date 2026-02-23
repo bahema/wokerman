@@ -693,6 +693,9 @@ const bootstrap = async () => {
     }
     res.status(400).json({ error: error instanceof Error ? error.message : fallbackMessage });
   };
+  const exposeInternalErrors = !isProduction || process.env.EXPOSE_INTERNAL_ERRORS === "true";
+  const safeServerErrorMessage = (error: unknown, fallbackMessage: string) =>
+    exposeInternalErrors && error instanceof Error && error.message.trim() ? error.message : fallbackMessage;
 
   const parseCampaignInput = (body: unknown) => {
     const payload = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
@@ -1020,18 +1023,22 @@ const bootstrap = async () => {
   };
 
   app.get("/api/health", (_req, res) => {
-    res.status(200).json({
+    const payload: Record<string, unknown> = {
       ok: true,
       service: "autohub-backend",
-      env: {
+      timestamp: new Date().toISOString(),
+      uptimeSec: Math.floor(process.uptime())
+    };
+    if (!isProduction || process.env.HEALTH_INCLUDE_DETAILS === "true") {
+      payload.env = {
         persistenceMode: PERSISTENCE_MODE,
         port: PORT,
         corsOrigins: CORS_ORIGINS,
         dbUrlProvided: Boolean(DB_URL),
         mediaDir: MEDIA_DIR
-      },
-      timestamp: new Date().toISOString()
-    });
+      };
+    }
+    res.status(200).json(payload);
   });
 
   app.get("/api/auth/status", async (_req, res) => {
@@ -1479,7 +1486,7 @@ const bootstrap = async () => {
         )
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to build AI control context." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to build AI control context.") });
     }
   });
 
@@ -1488,7 +1495,7 @@ const bootstrap = async () => {
       const summary = await aiControlStore.getSafetySummary();
       res.status(200).json(summary);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI safety summary." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load AI safety summary.") });
     }
   });
 
@@ -1497,7 +1504,7 @@ const bootstrap = async () => {
       const settings = await aiControlStore.getSettings();
       res.status(200).json(settings);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI settings." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load AI settings.") });
     }
   });
 
@@ -2476,7 +2483,7 @@ const bootstrap = async () => {
         sources
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to process AI chat request." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to process AI chat request.") });
     }
     }
   );
@@ -2502,7 +2509,7 @@ const bootstrap = async () => {
       const results = await searchWeb(query);
       res.status(200).json({ query, results });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Web search failed." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Web search failed.") });
     }
     }
   );
@@ -2628,7 +2635,7 @@ const bootstrap = async () => {
           }
         });
       } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate AI email draft." });
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate AI email draft.") });
       }
     }
   );
@@ -2718,7 +2725,7 @@ const bootstrap = async () => {
           sizeBytes: buffer.byteLength
         });
       } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate export file." });
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate export file.") });
       }
     }
   );
@@ -3100,7 +3107,7 @@ const bootstrap = async () => {
           rollbackId: rollback.id
         });
       } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to execute add product action." });
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to execute add product action.") });
       }
     }
   );
@@ -3110,7 +3117,7 @@ const bootstrap = async () => {
       const latest = await trafficAiStore.getLatestPlan();
       res.status(200).json({ plan: latest });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load traffic AI plan." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load traffic AI plan.") });
     }
   });
 
@@ -3119,7 +3126,7 @@ const bootstrap = async () => {
       const plans = await trafficAiStore.listPlans();
       res.status(200).json({ items: plans, total: plans.length });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load traffic AI plan history." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load traffic AI plan history.") });
     }
   });
 
@@ -3141,7 +3148,7 @@ const bootstrap = async () => {
         const saved = await trafficAiStore.addPlan(nextPlan);
         res.status(201).json({ plan: saved });
       } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate traffic AI plan." });
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate traffic AI plan.") });
       }
     }
   );
@@ -3193,7 +3200,7 @@ const bootstrap = async () => {
         }
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save cookie consent." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save cookie consent.") });
     }
   });
 
@@ -3221,7 +3228,7 @@ const bootstrap = async () => {
         }
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to read cookie consent." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to read cookie consent.") });
     }
   });
 
@@ -3371,7 +3378,7 @@ const bootstrap = async () => {
         });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to subscribe.") });
     }
   });
 
@@ -3444,7 +3451,7 @@ const bootstrap = async () => {
         });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to resend confirmation email.") });
     }
   });
 
@@ -3463,7 +3470,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, deletedId: deleted.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to delete subscriber." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to delete subscriber.") });
     }
   });
 
@@ -3686,7 +3693,7 @@ const bootstrap = async () => {
       const result = await emailStore.listSubscribers({ status, q, page, pageSize });
       res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list subscribers." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to list subscribers.") });
     }
   });
 
@@ -3700,7 +3707,7 @@ const bootstrap = async () => {
       const result = await emailStore.listCampaigns({ page, pageSize });
       res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list campaigns." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to list campaigns.") });
     }
   });
 
@@ -3737,7 +3744,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, campaign });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save draft campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save draft campaign.") });
     }
     }
   );
@@ -3782,7 +3789,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, queuedTo: email });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to queue test email." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to queue test email.") });
     }
     }
   );
@@ -3834,7 +3841,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, campaign });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to schedule campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to schedule campaign.") });
     }
     }
   );
@@ -3927,7 +3934,7 @@ const bootstrap = async () => {
         res.status(500).json({ error: error.code, message: error.message });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to send campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to send campaign.") });
     }
   });
 
@@ -3936,7 +3943,7 @@ const bootstrap = async () => {
       const template = await emailStore.getConfirmationTemplate();
       res.status(200).json({ template });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load confirmation template." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load confirmation template.") });
     }
   });
 
@@ -3974,7 +3981,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ template });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save confirmation template." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save confirmation template.") });
     }
   });
 
@@ -3983,7 +3990,7 @@ const bootstrap = async () => {
       const profile = await emailStore.getSenderProfile();
       res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load sender profile." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load sender profile.") });
     }
   });
 
@@ -4052,7 +4059,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save sender profile." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save sender profile.") });
     }
   });
 
@@ -4061,7 +4068,7 @@ const bootstrap = async () => {
       const summary = await emailStore.getAnalyticsSummary();
       res.status(200).json(summary);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load email analytics summary." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load email analytics summary.") });
     }
   });
 
@@ -4124,3 +4131,4 @@ const bootstrap = async () => {
 };
 
 void bootstrap();
+
