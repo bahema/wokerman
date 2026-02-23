@@ -31,6 +31,7 @@ import { defaultPublishedContent } from "./db/defaultPublishedContent.js";
 
 const app = express();
 app.disable("x-powered-by");
+let processFailureHandlersInstalled = false;
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN_RAW =
@@ -314,6 +315,23 @@ const assertProductionSecurityConfig = () => {
     throw new Error("Invalid production configuration: CORS_ORIGIN must not contain '*'.");
   }
 
+};
+const installProcessFailureHandlers = () => {
+  if (processFailureHandlersInstalled) return;
+  processFailureHandlersInstalled = true;
+  process.on("unhandledRejection", (reason) => {
+    const message = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
+    // eslint-disable-next-line no-console
+    console.error(`[fatal] unhandledRejection ${message}`);
+  });
+  process.on("uncaughtException", (error) => {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    // eslint-disable-next-line no-console
+    console.error(`[fatal] uncaughtException ${message}`);
+    setTimeout(() => {
+      process.exit(1);
+    }, 50);
+  });
 };
 
 const bootstrap = async () => {
@@ -4276,5 +4294,6 @@ const bootstrap = async () => {
   });
 };
 
+installProcessFailureHandlers();
 void bootstrap();
 
