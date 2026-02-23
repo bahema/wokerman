@@ -1538,9 +1538,43 @@ const bootstrap = async () => {
           "Action execution is disabled in Phase 1 (read-only). I can prepare recommended steps, but I will not write/publish/send automatically yet.";
         suggestions.push("Ask: prepare add-product checklist");
         suggestions.push("Ask: prepare email campaign draft plan");
+      } else if (/^(what is|who is|how to|why|when|where)\b/i.test(lower) || lower.endsWith("?")) {
+        try {
+          const results = await searchWeb(userMessage);
+          if (results.length > 0) {
+            sources = results.slice(0, 5);
+            const top = sources.slice(0, 3);
+            answer = [
+              "## Global Answer",
+              top[0]?.snippet || `Here is what I found about "${userMessage}":`,
+              "",
+              "### Quick points",
+              ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
+              "",
+              "### Sources",
+              ...sources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)
+            ].join("\n");
+            suggestions.push("Ask: explain this in simple terms");
+            suggestions.push("Ask: compare the top 2 sources");
+          } else {
+            answer = `I could not find strong web sources for "${userMessage}" right now. Try rephrasing with more detail.`;
+            suggestions.push("Ask: search online <topic> latest");
+          }
+        } catch (error) {
+          answer = `I could not fetch global sources right now. ${error instanceof Error ? error.message : "Unknown error."}`;
+          suggestions.push("Ask: try again with a shorter question");
+        }
       } else {
-        answer =
-          "I can answer local system status, traffic opportunities, email/subscriber health, and compliance signals. Try asking: 'what happened on my page today?'";
+        answer = [
+          "I can answer both:",
+          "- Global questions (definitions, concepts, comparisons)",
+          "- Your local admin/site analytics and traffic system questions",
+          "",
+          `For global answers, ask naturally (example: "what is ai?").`,
+          `For local answers, ask things like "what changed on my site today?".`
+        ].join("\n");
+        suggestions.push("Ask: what is ai?");
+        suggestions.push("Ask: what changed on my site today?");
       }
 
       res.status(200).json({
