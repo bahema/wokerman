@@ -93,6 +93,7 @@ const EMAIL_TOKEN_MAX_CHARS = Number(process.env.EMAIL_TOKEN_MAX_CHARS ?? 256);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
+const SUPER_MODE_BASE_URL_MAX_CHARS = Number(process.env.SUPER_MODE_BASE_URL_MAX_CHARS ?? 240);
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
   if (!raw) return false;
@@ -134,6 +135,48 @@ const parseOrigin = (value: string) => {
   } catch {
     return "";
   }
+};
+const isPrivateIpv4Host = (hostname: string) => {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return false;
+  const values = parts.map((item) => Number(item));
+  if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
+  const [a, b] = values;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+};
+const isBlockedSuperModeHostname = (hostname: string) => {
+  const host = hostname.trim().toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host === "[::1]") return true;
+  if (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return true;
+  if (/^[\d.]+$/.test(host) && isPrivateIpv4Host(host)) return true;
+  return false;
+};
+const validateSuperModeBaseUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "Super mode baseUrl is required.";
+  if (trimmed.length > SUPER_MODE_BASE_URL_MAX_CHARS) {
+    return `Super mode baseUrl is too long (max ${SUPER_MODE_BASE_URL_MAX_CHARS} chars).`;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return "Super mode baseUrl must be a valid URL.";
+  }
+  if (parsed.protocol !== "https:") return "Super mode baseUrl must use https.";
+  if (parsed.username || parsed.password) return "Super mode baseUrl must not contain embedded credentials.";
+  if (isBlockedSuperModeHostname(parsed.hostname)) {
+    return "Super mode baseUrl host is not allowed.";
+  }
+  return null;
 };
 type AuthCookieSameSite = "strict" | "lax" | "none";
 const parseAuthCookieSameSite = (value: string): AuthCookieSameSite | null => {
@@ -1372,6 +1415,10 @@ const bootstrap = async () => {
   }) => {
     const runtime = await aiControlStore.getRuntimeSettings();
     if (runtime.mode !== "super" || !runtime.superMode) return null;
+    const baseUrlValidationError = validateSuperModeBaseUrl(runtime.superMode.baseUrl);
+    if (baseUrlValidationError) {
+      throw new Error(`Super mode base URL is invalid. ${baseUrlValidationError}`);
+    }
 
     const endpoint = `${runtime.superMode.baseUrl.replace(/\/+$/, "")}/chat/completions`;
     const systemPrompt =
@@ -1550,6 +1597,11 @@ const bootstrap = async () => {
       const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl : undefined;
       const model = typeof payload.model === "string" ? payload.model : undefined;
       const provider = typeof payload.provider === "string" ? payload.provider : undefined;
+      const baseUrlError = validateSuperModeBaseUrl(baseUrl ?? "");
+      if (baseUrlError) {
+        res.status(400).json({ error: baseUrlError });
+        return;
+      }
       try {
         const next = await aiControlStore.upsertSuperMode({ apiKey, baseUrl, model, provider });
         res.status(200).json(next);
