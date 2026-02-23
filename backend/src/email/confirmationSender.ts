@@ -75,6 +75,15 @@ const toHtmlFromRich = (value: string) => {
 const asFrom = (name: string, email: string) => `${name} <${email}>`;
 const mailingAddress = (process.env.MAILING_ADDRESS ?? "").trim();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const maskEmail = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 1) return "***";
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (!domain) return `${local[0]}***`;
+  return `${local[0]}***@${domain}`;
+};
 const extractEmail = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -155,9 +164,9 @@ const createSmtpTransport = (input: {
   const rejectUnauthorized = process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false";
   // eslint-disable-next-line no-console
   console.log(
-    `[email] smtp transport host=${input.smtpHost} port=${String(input.smtpPort)} secure=${String(input.smtpSecure)} tlsRejectUnauthorized=${String(
-      rejectUnauthorized
-    )}`
+    `[email] smtp transport configured hostSet=${String(Boolean(input.smtpHost.trim()))} port=${String(input.smtpPort)} secure=${String(
+      input.smtpSecure
+    )} tlsRejectUnauthorized=${String(rejectUnauthorized)}`
   );
   return nodemailer.createTransport({
     host: input.smtpHost,
@@ -212,7 +221,7 @@ export const sendConfirmationEmail = async (input: ConfirmationInput): Promise<C
     const effectiveFromEmail = resolveEffectiveFromEmail(input.fromEmail, input.smtpUser);
     if (effectiveFromEmail !== input.fromEmail) {
       // eslint-disable-next-line no-console
-      console.log(`[email] sender adjusted from=${input.fromEmail} to=${effectiveFromEmail} for smtpUser=${input.smtpUser}`);
+      console.log(`[email] sender adjusted from=${maskEmail(input.fromEmail)} to=${maskEmail(effectiveFromEmail)}`);
     }
     const transport = createSmtpTransport({
       smtpHost: input.smtpHost,
@@ -239,9 +248,9 @@ export const sendConfirmationEmail = async (input: ConfirmationInput): Promise<C
     const summary = summarizeInfo(info);
     // eslint-disable-next-line no-console
     console.log(
-      `CONFIRMATION_SENT messageId=${summary.messageId} to=${input.toEmail} accepted=${summary.accepted.join(";") || "(none)"} rejected=${
-        summary.rejected.join(";") || "(none)"
-      }`
+      `CONFIRMATION_SENT messageId=${summary.messageId} to=${maskEmail(input.toEmail)} accepted=${
+        summary.accepted.map(maskEmail).join(";") || "(none)"
+      } rejected=${summary.rejected.map(maskEmail).join(";") || "(none)"}`
     );
     return {
       ok: true,
@@ -309,9 +318,9 @@ export const sendSmtpTestEmail = async (input: {
     const summary = summarizeInfo(info);
     // eslint-disable-next-line no-console
     console.log(
-      `SMTP_TEST_SENT messageId=${summary.messageId} to=${input.toEmail} accepted=${summary.accepted.join(";") || "(none)"} rejected=${
-        summary.rejected.join(";") || "(none)"
-      }`
+      `SMTP_TEST_SENT messageId=${summary.messageId} to=${maskEmail(input.toEmail)} accepted=${
+        summary.accepted.map(maskEmail).join(";") || "(none)"
+      } rejected=${summary.rejected.map(maskEmail).join(";") || "(none)"}`
     );
     return {
       ok: true,
@@ -382,9 +391,9 @@ export const sendAdminAlertEmail = async (input: {
     const summary = summarizeInfo(info);
     // eslint-disable-next-line no-console
     console.log(
-      `ADMIN_ALERT_SENT messageId=${summary.messageId} to=${input.toEmail} accepted=${summary.accepted.join(";") || "(none)"} rejected=${
-        summary.rejected.join(";") || "(none)"
-      }`
+      `ADMIN_ALERT_SENT messageId=${summary.messageId} to=${maskEmail(input.toEmail)} accepted=${
+        summary.accepted.map(maskEmail).join(";") || "(none)"
+      } rejected=${summary.rejected.map(maskEmail).join(";") || "(none)"}`
     );
     return {
       ok: true,

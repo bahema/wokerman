@@ -51,6 +51,15 @@ const asFrom = (name: string, email: string) => `${name} <${email}>`;
 const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
 const mailingAddress = (process.env.MAILING_ADDRESS ?? "").trim();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const maskEmail = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 1) return "***";
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (!domain) return `${local[0]}***`;
+  return `${local[0]}***@${domain}`;
+};
 const extractEmail = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -112,7 +121,7 @@ export const sendCampaignEmails = async (input: CampaignSendInput) => {
   const effectiveFromEmail = resolveEffectiveFromEmail(input.fromEmail, input.smtpUser);
   if (effectiveFromEmail !== input.fromEmail) {
     // eslint-disable-next-line no-console
-    console.log(`[email] campaign sender adjusted from=${input.fromEmail} to=${effectiveFromEmail} for smtpUser=${input.smtpUser}`);
+    console.log(`[email] campaign sender adjusted from=${maskEmail(input.fromEmail)} to=${maskEmail(effectiveFromEmail)}`);
   }
   const transport = nodemailer.createTransport({
     host: input.smtpHost,

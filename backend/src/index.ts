@@ -186,6 +186,15 @@ const parseAuthCookieSameSite = (value: string): AuthCookieSameSite | null => {
 };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const hashEmailForAudit = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+const maskEmailForLog = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 1) return "***";
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (!domain) return `${local[0]}***`;
+  return `${local[0]}***@${domain}`;
+};
 const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
   if (smtpPort === 465) return true;
   if (smtpPort === 587) return false;
@@ -985,7 +994,7 @@ const bootstrap = async () => {
 
   const deliverConfirmationEmail = async (input: { name: string; email: string; confirmToken: string; unsubscribeToken: string }) => {
     // eslint-disable-next-line no-console
-    console.log(`[email] confirmation send requested email=${input.email}`);
+    console.log(`[email] confirmation send requested email=${maskEmailForLog(input.email)}`);
     const [template, senderProfile] = await Promise.all([emailStore.getConfirmationTemplate(), emailStore.getSenderProfile()]);
     const { confirmUrl, unsubscribeUrl } = buildConfirmationLinks({
       confirmToken: input.confirmToken,
@@ -1014,7 +1023,7 @@ const bootstrap = async () => {
     });
     // eslint-disable-next-line no-console
     console.log(
-      `[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider} messageId=${
+      `[email] confirmation send result email=${maskEmailForLog(input.email)} delivered=${String(result.delivered)} provider=${result.provider} messageId=${
         result.messageId
       }`
     );
@@ -1072,7 +1081,7 @@ const bootstrap = async () => {
         });
         // eslint-disable-next-line no-console
         console.error(
-          `[email] confirmation async send failed source=${input.source} email=${input.email} code=${detailCode} message=${message}`
+          `[email] confirmation async send failed source=${input.source} email=${maskEmailForLog(input.email)} code=${detailCode} message=${message}`
         );
       }
     })();
@@ -4218,12 +4227,14 @@ const bootstrap = async () => {
     console.log(`API running on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(
-      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRM_MODE} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRM_MODE} smtp startup ready=${String(startupSmtpReady)} hostSet=${String(
+        Boolean(startupSenderProfile.smtpHost.trim())
+      )} port=${String(
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())
       )} tlsRejectUnauthorized=${String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false")} authCookieSameSite=${authCookieSameSite} authCookieSecure=${String(authCookieSecure)} fromEmail=${
-        startupSenderProfile.fromEmail || "(empty)"
+        startupSenderProfile.fromEmail ? maskEmailForLog(startupSenderProfile.fromEmail) : "(empty)"
       } missing=${startupMissingFields.length ? startupMissingFields.join(",") : "none"}`
     );
   });
