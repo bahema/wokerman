@@ -1565,16 +1565,38 @@ const bootstrap = async () => {
           suggestions.push("Ask: try again with a shorter question");
         }
       } else {
-        answer = [
-          "I can answer both:",
-          "- Global questions (definitions, concepts, comparisons)",
-          "- Your local admin/site analytics and traffic system questions",
-          "",
-          `For global answers, ask naturally (example: "what is ai?").`,
-          `For local answers, ask things like "what changed on my site today?".`
-        ].join("\n");
-        suggestions.push("Ask: what is ai?");
-        suggestions.push("Ask: what changed on my site today?");
+        try {
+          const results = await searchWeb(userMessage);
+          if (results.length > 0) {
+            sources = results.slice(0, 5);
+            const top = sources.slice(0, 3);
+            answer = [
+              "## Detailed Answer",
+              top[0]?.snippet || `Here is what I found for "${userMessage}":`,
+              "",
+              "### Key points",
+              ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
+              "",
+              "### Sources",
+              ...sources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)
+            ].join("\n");
+            suggestions.push("Ask: explain this in simple words");
+            suggestions.push("Ask: compare source 1 and source 2");
+          } else {
+            answer = [
+              "I could not find enough external sources for that exact prompt yet.",
+              "Try rephrasing with more context, for example:",
+              `- "Explain ${userMessage} with examples"`,
+              `- "Latest best practices for ${userMessage}"`
+            ].join("\n");
+            suggestions.push("Ask: explain with examples");
+            suggestions.push("Ask: latest best practices");
+          }
+        } catch (error) {
+          answer = `I could not fetch external sources right now. ${error instanceof Error ? error.message : "Unknown error."}`;
+          suggestions.push("Ask: try again");
+          suggestions.push("Ask: summarize from local context");
+        }
       }
 
       res.status(200).json({
