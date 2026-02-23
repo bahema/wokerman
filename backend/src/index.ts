@@ -66,6 +66,10 @@ const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
 const EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS ?? 60_000);
 const EMAIL_LINK_ACTION_IP_RATE_MAX = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_MAX ?? 40);
+const ANALYTICS_IP_RATE_WINDOW_MS = Number(process.env.ANALYTICS_IP_RATE_WINDOW_MS ?? 60_000);
+const ANALYTICS_IP_RATE_MAX = Number(process.env.ANALYTICS_IP_RATE_MAX ?? 120);
+const COOKIE_CONSENT_IP_RATE_WINDOW_MS = Number(process.env.COOKIE_CONSENT_IP_RATE_WINDOW_MS ?? 60_000);
+const COOKIE_CONSENT_IP_RATE_MAX = Number(process.env.COOKIE_CONSENT_IP_RATE_MAX ?? 60);
 const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_WINDOW_MS ?? 60_000);
 const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
 const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
@@ -90,6 +94,8 @@ const SUBSCRIBE_NAME_MAX_CHARS = Number(process.env.SUBSCRIBE_NAME_MAX_CHARS ?? 
 const SUBSCRIBE_EMAIL_MAX_CHARS = Number(process.env.SUBSCRIBE_EMAIL_MAX_CHARS ?? 254);
 const SUBSCRIBE_PHONE_MAX_CHARS = Number(process.env.SUBSCRIBE_PHONE_MAX_CHARS ?? 32);
 const EMAIL_TOKEN_MAX_CHARS = Number(process.env.EMAIL_TOKEN_MAX_CHARS ?? 256);
+const ANALYTICS_EVENT_NAME_MAX_CHARS = Number(process.env.ANALYTICS_EVENT_NAME_MAX_CHARS ?? 80);
+const ANALYTICS_PAYLOAD_MAX_CHARS = Number(process.env.ANALYTICS_PAYLOAD_MAX_CHARS ?? 8_000);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
@@ -696,6 +702,17 @@ const bootstrap = async () => {
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+  const analyticsIpLimiter = createIpRateLimiter("analytics", {
+    windowMs: Number.isFinite(ANALYTICS_IP_RATE_WINDOW_MS) && ANALYTICS_IP_RATE_WINDOW_MS > 0 ? ANALYTICS_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(ANALYTICS_IP_RATE_MAX) && ANALYTICS_IP_RATE_MAX > 0 ? ANALYTICS_IP_RATE_MAX : 120
+  });
+  const cookieConsentIpLimiter = createIpRateLimiter("cookie_consent", {
+    windowMs:
+      Number.isFinite(COOKIE_CONSENT_IP_RATE_WINDOW_MS) && COOKIE_CONSENT_IP_RATE_WINDOW_MS > 0
+        ? COOKIE_CONSENT_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(COOKIE_CONSENT_IP_RATE_MAX) && COOKIE_CONSENT_IP_RATE_MAX > 0 ? COOKIE_CONSENT_IP_RATE_MAX : 60
   });
   const emailLinkActionIpLimiter = createIpRateLimiter("email_link_action", {
     windowMs:
@@ -3227,7 +3244,7 @@ const bootstrap = async () => {
     }
   );
 
-  app.post("/api/analytics/events", async (req, res) => {
+  app.post("/api/analytics/events", analyticsIpLimiter, async (req, res) => {
     const eventName = typeof req.body?.eventName === "string" ? req.body.eventName.trim() : "";
     const payload = typeof req.body?.payload === "object" && req.body.payload !== null ? (req.body.payload as Record<string, unknown>) : {};
 
@@ -3235,12 +3252,31 @@ const bootstrap = async () => {
       res.status(400).json({ error: "eventName is required." });
       return;
     }
+    if (eventName.length > ANALYTICS_EVENT_NAME_MAX_CHARS) {
+      res.status(400).json({ error: `eventName is too long (max ${ANALYTICS_EVENT_NAME_MAX_CHARS} chars).` });
+      return;
+    }
+    if (!/^[a-zA-Z0-9._:-]+$/.test(eventName)) {
+      res.status(400).json({ error: "eventName contains unsupported characters." });
+      return;
+    }
+    let payloadSize = 0;
+    try {
+      payloadSize = JSON.stringify(payload).length;
+    } catch {
+      res.status(400).json({ error: "payload must be JSON-serializable." });
+      return;
+    }
+    if (payloadSize > ANALYTICS_PAYLOAD_MAX_CHARS) {
+      res.status(400).json({ error: `payload is too large (max ${ANALYTICS_PAYLOAD_MAX_CHARS} chars).` });
+      return;
+    }
 
     const created = await analyticsStore.add(eventName, payload);
     res.status(201).json({ item: created });
   });
 
-  app.post("/api/cookies/consent", async (req, res) => {
+  app.post("/api/cookies/consent", cookieConsentIpLimiter, async (req, res) => {
     const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
     const consentId = typeof payload.consentId === "string" ? payload.consentId.trim().toLowerCase() : "";
     const versionRaw = typeof payload.version === "number" ? payload.version : Number(payload.version ?? 1);
