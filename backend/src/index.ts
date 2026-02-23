@@ -62,8 +62,18 @@ const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_0
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
+const AI_CHAT_IP_RATE_MAX = Number(process.env.AI_CHAT_IP_RATE_MAX ?? 40);
+const AI_WEB_SEARCH_IP_RATE_WINDOW_MS = Number(process.env.AI_WEB_SEARCH_IP_RATE_WINDOW_MS ?? 60_000);
+const AI_WEB_SEARCH_IP_RATE_MAX = Number(process.env.AI_WEB_SEARCH_IP_RATE_MAX ?? 20);
 const RATE_LIMIT_BUCKET_LIMIT = Number(process.env.RATE_LIMIT_BUCKET_LIMIT ?? 10_000);
 const TRUSTED_DEVICE_TTL_MS = Number(process.env.TRUSTED_DEVICE_TTL_MS ?? 30 * 24 * 60 * 60 * 1000);
+const AI_CHAT_MAX_SESSION_ID_CHARS = Number(process.env.AI_CHAT_MAX_SESSION_ID_CHARS ?? 128);
+const AI_CHAT_MAX_MESSAGE_CHARS = Number(process.env.AI_CHAT_MAX_MESSAGE_CHARS ?? 6_000);
+const AI_CHAT_MAX_HISTORY_ITEM_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEM_CHARS ?? 2_000);
+const AI_CHAT_MAX_HISTORY_TOTAL_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_TOTAL_CHARS ?? 20_000);
+const AI_CHAT_MAX_HISTORY_ITEMS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEMS ?? 20);
+const AI_WEB_SEARCH_MAX_QUERY_CHARS = Number(process.env.AI_WEB_SEARCH_MAX_QUERY_CHARS ?? 240);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
@@ -594,6 +604,17 @@ const bootstrap = async () => {
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+  const aiChatIpLimiter = createIpRateLimiter("ai_chat", {
+    windowMs: Number.isFinite(AI_CHAT_IP_RATE_WINDOW_MS) && AI_CHAT_IP_RATE_WINDOW_MS > 0 ? AI_CHAT_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(AI_CHAT_IP_RATE_MAX) && AI_CHAT_IP_RATE_MAX > 0 ? AI_CHAT_IP_RATE_MAX : 40
+  });
+  const aiWebSearchIpLimiter = createIpRateLimiter("ai_web_search", {
+    windowMs:
+      Number.isFinite(AI_WEB_SEARCH_IP_RATE_WINDOW_MS) && AI_WEB_SEARCH_IP_RATE_WINDOW_MS > 0
+        ? AI_WEB_SEARCH_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(AI_WEB_SEARCH_IP_RATE_MAX) && AI_WEB_SEARCH_IP_RATE_MAX > 0 ? AI_WEB_SEARCH_IP_RATE_MAX : 20
   });
 
   const auditAdminAction = (action: string) => {
@@ -1420,24 +1441,46 @@ const bootstrap = async () => {
     }
   );
 
-  app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
+  app.post(
+    "/api/ai/control/chat",
+    requireAdminAuth,
+    aiChatIpLimiter,
+    requireAiCapability("ai.chat.ask"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.chat"),
+    async (req, res) => {
     const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : "";
     const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
     const formattingMarkdown = req.body?.formatting?.markdown === true;
     type HistoryMessage = { role: "user" | "assistant"; content: string };
+    if (sessionId.length > AI_CHAT_MAX_SESSION_ID_CHARS) {
+      res.status(400).json({ error: `sessionId is too long (max ${AI_CHAT_MAX_SESSION_ID_CHARS} chars).` });
+      return;
+    }
+    if (rawMessage.length > AI_CHAT_MAX_MESSAGE_CHARS || message.length > AI_CHAT_MAX_MESSAGE_CHARS) {
+      res.status(400).json({ error: `message is too long (max ${AI_CHAT_MAX_MESSAGE_CHARS} chars).` });
+      return;
+    }
+
     const incomingMessages: unknown[] = Array.isArray(req.body?.messages) ? req.body.messages : [];
     const historyMessages = incomingMessages
+      .slice(-AI_CHAT_MAX_HISTORY_ITEMS)
       .map((item: unknown) => {
         const asRecord = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
         const role = typeof asRecord.role === "string" ? asRecord.role.toLowerCase() : "";
-        const content = typeof asRecord.content === "string" ? asRecord.content.trim() : "";
+        const contentRaw = typeof asRecord.content === "string" ? asRecord.content.trim() : "";
+        const content = contentRaw.slice(0, AI_CHAT_MAX_HISTORY_ITEM_CHARS);
         if (!content || (role !== "user" && role !== "assistant")) return null;
         return { role: role as "user" | "assistant", content } satisfies HistoryMessage;
       })
-      .filter((item: HistoryMessage | null): item is HistoryMessage => Boolean(item))
-      .slice(-20);
+      .filter((item: HistoryMessage | null): item is HistoryMessage => Boolean(item));
+    const totalHistoryChars = historyMessages.reduce((sum, item) => sum + item.content.length, 0);
+    if (totalHistoryChars > AI_CHAT_MAX_HISTORY_TOTAL_CHARS) {
+      res.status(400).json({ error: `messages payload is too large (max ${AI_CHAT_MAX_HISTORY_TOTAL_CHARS} chars).` });
+      return;
+    }
     const clientContextPayload = typeof req.body?.clientContext === "object" && req.body.clientContext !== null
       ? (req.body.clientContext as Record<string, unknown>)
       : {};
@@ -2321,17 +2364,24 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to process AI chat request." });
     }
-  });
+    }
+  );
 
   app.post(
     "/api/ai/control/web-search",
     requireAdminAuth,
+    aiWebSearchIpLimiter,
     requireAiCapability("ai.web.search"),
+    requireCsrfForCookieAuth,
     auditAdminAction("ai_control.web_search"),
     async (req, res) => {
     const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
     if (!query) {
       res.status(400).json({ error: "query is required." });
+      return;
+    }
+    if (query.length > AI_WEB_SEARCH_MAX_QUERY_CHARS) {
+      res.status(400).json({ error: `query is too long (max ${AI_WEB_SEARCH_MAX_QUERY_CHARS} chars).` });
       return;
     }
     try {
