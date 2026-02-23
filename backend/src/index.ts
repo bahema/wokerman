@@ -1468,6 +1468,13 @@ const bootstrap = async () => {
         /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(lower) ||
         /\bhow are you\b/i.test(lower) ||
         /\bwho are you\b/i.test(lower);
+      const isEmailGenerationRequest =
+        /\b(html email|email html|email template|generate email|campaign email|newsletter)\b/i.test(lower);
+      const isCodeRequest =
+        /\b(code|snippet|example code|write code|function|script|typescript|javascript|python|sql|css|html)\b/i.test(lower);
+      const isClientEditRequest =
+        /\b(add|edit|update|create|insert)\b.*\b(item|product|section|card|slider|client side|client page)\b/i.test(lower) ||
+        /\b(client side)\b.*\b(add|edit|update)\b/i.test(lower);
       const isSearchPrompt =
         lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
       if (isGreeting) {
@@ -1489,6 +1496,86 @@ const bootstrap = async () => {
         ].join("\n");
         suggestions.push("Ask: what changed on my site today?");
         suggestions.push("Ask: top 5 SEO opportunities this week");
+      } else if (isEmailGenerationRequest) {
+        const objective = userMessage.replace(/\b(generate|create|make)\b/gi, "").trim() || "promote featured products";
+        const emailHtml = [
+          "<!doctype html>",
+          '<html lang="en">',
+          "  <head>",
+          '    <meta charset="utf-8" />',
+          '    <meta name="viewport" content="width=device-width,initial-scale=1" />',
+          "    <title>Campaign Email</title>",
+          "  </head>",
+          '  <body style="margin:0;padding:0;background:#0f172a;color:#e2e8f0;font-family:Arial,sans-serif;">',
+          '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f172a;padding:24px 0;">',
+          "      <tr>",
+          '        <td align="center">',
+          '          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#111827;border:1px solid #334155;border-radius:14px;overflow:hidden;">',
+          "            <tr>",
+          '              <td style="padding:24px;">',
+          '                <h1 style="margin:0 0 12px;font-size:24px;color:#ffffff;">New Highlights This Week</h1>',
+          `                <p style="margin:0 0 16px;line-height:1.6;color:#cbd5e1;">${objective}</p>`,
+          '                <p style="margin:0 0 16px;line-height:1.6;color:#cbd5e1;">Explore our latest picks curated for performance and value.</p>',
+          '                <a href="https://bahema.github.io/wokerman/" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;">View Picks</a>',
+          '                <p style="margin:18px 0 0;font-size:12px;color:#94a3b8;">Affiliate disclosure: we may earn a commission from qualifying purchases.</p>',
+          "              </td>",
+          "            </tr>",
+          "          </table>",
+          "        </td>",
+          "      </tr>",
+          "    </table>",
+          "  </body>",
+          "</html>"
+        ].join("\n");
+        answer = [
+          "## HTML Email Draft",
+          "Generated a reusable campaign HTML draft below.",
+          "",
+          "```html",
+          emailHtml,
+          "```"
+        ].join("\n");
+        suggestions.push("Ask: generate a plain-text version");
+        suggestions.push("Ask: rewrite with urgent tone");
+      } else if (isCodeRequest) {
+        answer = [
+          "## Code Example",
+          "Here is a practical TypeScript helper you can reuse for product add/update flows:",
+          "",
+          "```ts",
+          "type ProductInput = { title: string; shortDescription: string; checkoutLink: string; imageUrl?: string };",
+          "type Product = ProductInput & { id: string; updatedAt: string };",
+          "",
+          "export const upsertProduct = (items: Product[], input: ProductInput): Product[] => {",
+          "  const normalizedTitle = input.title.trim().toLowerCase();",
+          "  const nowIso = new Date().toISOString();",
+          "  const existing = items.find((item) => item.title.trim().toLowerCase() === normalizedTitle);",
+          "  if (existing) {",
+          "    return items.map((item) =>",
+          "      item.id === existing.id ? { ...item, ...input, updatedAt: nowIso } : item",
+          "    );",
+          "  }",
+          "  const next: Product = { id: `p-${Date.now()}`, updatedAt: nowIso, ...input };",
+          "  return [next, ...items];",
+          "};",
+          "```"
+        ].join("\n");
+        suggestions.push("Ask: convert this to backend route code");
+        suggestions.push("Ask: add validation and duplicate checks");
+      } else if (isClientEditRequest) {
+        answer = [
+          "## Client-Side Edit/Add Plan",
+          "I can guide and prepare these actions safely:",
+          "",
+          "1. Identify target section (forex, betting, software, social, gadgets, supplements, upcoming).",
+          "2. Prepare item payload (title, descriptions, image, link, compliance warning).",
+          "3. Run duplicate checks (title/link/image) before insert.",
+          "4. Save draft, then publish after review.",
+          "",
+          "Use the **Ads/Product Tool** in AI panel to prepare and execute the item safely with approval phrase."
+        ].join("\n");
+        suggestions.push("Ask: prepare add product to gadgets");
+        suggestions.push("Ask: prepare edit item in supplements");
       } else if (isSearchPrompt) {
         const query = userMessage
           .replace(/search online/gi, "")
