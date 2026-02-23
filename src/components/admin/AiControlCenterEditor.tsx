@@ -68,6 +68,16 @@ type ExecuteActionResponse = {
   productsInSection: number;
 };
 
+type WebSearchResponse = {
+  query: string;
+  results: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    source: string;
+  }>;
+};
+
 type ChatItem = {
   id: string;
   role: "user" | "assistant";
@@ -84,6 +94,9 @@ const AiControlCenterEditor = () => {
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [preparedAction, setPreparedAction] = useState<PreparedActionResponse | null>(null);
+  const [webQuery, setWebQuery] = useState("");
+  const [webBusy, setWebBusy] = useState(false);
+  const [webResults, setWebResults] = useState<WebSearchResponse["results"]>([]);
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [chat, setChat] = useState<ChatItem[]>([]);
 
@@ -172,6 +185,33 @@ const AiControlCenterEditor = () => {
       setError(err instanceof Error ? err.message : "Failed to execute action.");
     } finally {
       setActionBusy(false);
+    }
+  };
+
+  const runWebSearch = async (event: FormEvent) => {
+    event.preventDefault();
+    const query = webQuery.trim();
+    if (!query || webBusy) return;
+    setWebBusy(true);
+    setError("");
+    try {
+      const response = await apiJson<WebSearchResponse>("/api/ai/control/web-search", "POST", { query });
+      setWebResults(response.results ?? []);
+      setChat((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-web`,
+          role: "assistant",
+          text:
+            response.results.length > 0
+              ? `Found ${response.results.length} web results for "${query}".`
+              : `No web results found for "${query}".`
+        }
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Web search failed.");
+    } finally {
+      setWebBusy(false);
     }
   };
 
@@ -272,6 +312,42 @@ const AiControlCenterEditor = () => {
               </article>
             ))
           )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
+        <h4 className="mb-3 text-base font-bold">Web Search</h4>
+        <form onSubmit={runWebSearch} className="space-y-3">
+          <input
+            value={webQuery}
+            onChange={(event) => setWebQuery(event.target.value)}
+            placeholder="Search online: affiliate disclosure rules for ecommerce..."
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950"
+          />
+          <button
+            type="submit"
+            disabled={webBusy}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-100"
+          >
+            {webBusy ? "Searching..." : "Search Web"}
+          </button>
+        </form>
+        <div className="mt-3 space-y-2">
+          {webResults.map((item) => (
+            <article key={item.url} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="font-semibold text-blue-700 hover:underline dark:text-blue-300"
+              >
+                {item.title}
+              </a>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{item.snippet}</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{item.url}</p>
+            </article>
+          ))}
+          {webResults.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">No web results yet.</p> : null}
         </div>
       </section>
 

@@ -16,6 +16,7 @@ import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmt
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
 import { createTrafficAiStore } from "./traffic/store.js";
 import { generateTrafficAiPlan } from "./traffic/engine.js";
+import { searchWeb } from "./traffic/webSearch.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
   EMAIL_CAMPAIGN_BODY_MODE,
@@ -1030,7 +1031,33 @@ const bootstrap = async () => {
 
       let answer = "";
       const suggestions: string[] = [];
-      if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
+      const isSearchPrompt =
+        lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
+      if (isSearchPrompt) {
+        const query = message
+          .replace(/search online/gi, "")
+          .replace(/find online/gi, "")
+          .replace(/where to find/gi, "")
+          .replace(/^search\s+/i, "")
+          .trim();
+        if (!query) {
+          answer = "Provide a search query, for example: search online affiliate disclosure rules for supplements.";
+        } else {
+          try {
+            const results = await searchWeb(query);
+            if (!results.length) {
+              answer = `No online results found for "${query}". Try a broader phrase.`;
+            } else {
+              const lines = results.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} - ${item.url}`);
+              answer = `I found these online sources for "${query}":\n${lines.join("\n")}`;
+              suggestions.push("Ask: summarize result 1");
+              suggestions.push("Ask: prepare action plan from these links");
+            }
+          } catch (error) {
+            answer = `Online search failed for "${query}". ${error instanceof Error ? error.message : "Unknown error."}`;
+          }
+        }
+      } else if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
         answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${productTotal}. Subscribers: ${emailSummary.totals.subscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${analyticsSummary.totalEvents}.`;
         suggestions.push("Ask: show weakest section by product count");
         suggestions.push("Ask: traffic opportunities overview");
@@ -1066,6 +1093,20 @@ const bootstrap = async () => {
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to process AI chat request." });
+    }
+  });
+
+  app.post("/api/ai/control/web-search", requireAdminAuth, async (req, res) => {
+    const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+    if (!query) {
+      res.status(400).json({ error: "query is required." });
+      return;
+    }
+    try {
+      const results = await searchWeb(query);
+      res.status(200).json({ query, results });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Web search failed." });
     }
   });
 
