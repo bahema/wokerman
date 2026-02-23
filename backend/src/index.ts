@@ -102,6 +102,9 @@ const CAMPAIGN_SUBJECT_MAX_CHARS = Number(process.env.CAMPAIGN_SUBJECT_MAX_CHARS
 const CAMPAIGN_PREVIEW_MAX_CHARS = Number(process.env.CAMPAIGN_PREVIEW_MAX_CHARS ?? 240);
 const CAMPAIGN_BODY_MAX_CHARS = Number(process.env.CAMPAIGN_BODY_MAX_CHARS ?? 120_000);
 const CAMPAIGN_LIST_ITEM_MAX = Number(process.env.CAMPAIGN_LIST_ITEM_MAX ?? 50);
+const LIST_QUERY_TEXT_MAX_CHARS = Number(process.env.LIST_QUERY_TEXT_MAX_CHARS ?? 160);
+const LIST_PAGE_MAX = Number(process.env.LIST_PAGE_MAX ?? 10_000);
+const LIST_PAGE_SIZE_MAX = Number(process.env.LIST_PAGE_SIZE_MAX ?? 100);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
@@ -887,6 +890,19 @@ const bootstrap = async () => {
       return `email body is too large (max ${CAMPAIGN_BODY_MAX_CHARS} chars per format).`;
     }
     return "";
+  };
+  const parsePagination = (query: express.Request["query"]) => {
+    const pageRaw = typeof query?.page === "string" ? Number(query.page) : NaN;
+    const pageSizeRaw = typeof query?.pageSize === "string" ? Number(query.pageSize) : NaN;
+    const page = Number.isFinite(pageRaw) ? Math.floor(pageRaw) : 1;
+    const pageSize = Number.isFinite(pageSizeRaw) ? Math.floor(pageSizeRaw) : 25;
+    if (page < 1 || page > LIST_PAGE_MAX) {
+      return { error: `page must be between 1 and ${LIST_PAGE_MAX}.` };
+    }
+    if (pageSize < 1 || pageSize > LIST_PAGE_SIZE_MAX) {
+      return { error: `pageSize must be between 1 and ${LIST_PAGE_SIZE_MAX}.` };
+    }
+    return { page, pageSize };
   };
   const languageLabel = (value: string) => {
     const map: Record<string, string> = { en: "English", fr: "French", es: "Spanish", de: "German", ar: "Arabic", pt: "Portuguese" };
@@ -3848,10 +3864,16 @@ const bootstrap = async () => {
     }
 
     const q = typeof req.query?.q === "string" ? req.query.q : "";
-    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
-    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
-    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
-    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+    if (q.length > LIST_QUERY_TEXT_MAX_CHARS) {
+      res.status(400).json({ error: `q is too long (max ${LIST_QUERY_TEXT_MAX_CHARS} chars).` });
+      return;
+    }
+    const pagination = parsePagination(req.query);
+    if ("error" in pagination) {
+      res.status(400).json({ error: pagination.error });
+      return;
+    }
+    const { page, pageSize } = pagination;
 
     try {
       const result = await emailStore.listSubscribers({ status, q, page, pageSize });
@@ -3862,10 +3884,12 @@ const bootstrap = async () => {
   });
 
   app.get("/api/email/campaigns", requireAdminAuth, async (req, res) => {
-    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
-    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
-    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
-    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+    const pagination = parsePagination(req.query);
+    if ("error" in pagination) {
+      res.status(400).json({ error: pagination.error });
+      return;
+    }
+    const { page, pageSize } = pagination;
 
     try {
       const result = await emailStore.listCampaigns({ page, pageSize });
