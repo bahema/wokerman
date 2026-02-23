@@ -17,6 +17,8 @@ import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSende
 import { createTrafficAiStore } from "./traffic/store.js";
 import { generateTrafficAiPlan } from "./traffic/engine.js";
 import { searchWeb } from "./traffic/webSearch.js";
+import { createAiControlStore, hashAiPayload } from "./ai/store.js";
+import { hasAiCapability, listCapabilitiesForRole, resolveAiAdminRole, type AiCapability } from "./ai/governance.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
   EMAIL_CAMPAIGN_BODY_MODE,
@@ -237,6 +239,7 @@ const bootstrap = async () => {
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
   const trafficAiStore = await createTrafficAiStore(MEDIA_DIR);
+  const aiControlStore = await createAiControlStore(MEDIA_DIR);
   const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
     ...profile,
     smtpPass: "",
@@ -486,8 +489,22 @@ const bootstrap = async () => {
       attachCsrfHeaderFromRequest(req, res);
     }
     res.locals.authSource = source;
-    (req as express.Request & { authSource?: "cookie" | "bearer" | "none"; authToken?: string }).authSource = source;
-    (req as express.Request & { authSource?: "cookie" | "bearer" | "none"; authToken?: string }).authToken = token;
+    const requestWithAuth = req as express.Request & {
+      authSource?: "cookie" | "bearer" | "none";
+      authToken?: string;
+      adminRole?: "viewer" | "editor" | "publisher" | "owner";
+    };
+    requestWithAuth.authSource = source;
+    requestWithAuth.authToken = token;
+    try {
+      const account = await authStore.getAccountSettings();
+      const adminRole = resolveAiAdminRole(account.role);
+      requestWithAuth.adminRole = adminRole;
+      res.locals.adminRole = adminRole;
+    } catch {
+      requestWithAuth.adminRole = "owner";
+      res.locals.adminRole = "owner";
+    }
     next();
   };
 
@@ -503,6 +520,29 @@ const bootstrap = async () => {
 
   const resolveRequestIp = (req: express.Request) => {
     return req.ip || req.socket.remoteAddress || "unknown";
+  };
+
+  const requireAiCapability = (capability: AiCapability) => {
+    return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const role =
+        ((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ??
+          res.locals.adminRole ??
+          "viewer") as "viewer" | "editor" | "publisher" | "owner";
+      if (hasAiCapability(role, capability)) {
+        next();
+        return;
+      }
+      await aiControlStore.logAudit({
+        action: capability,
+        status: "denied",
+        role,
+        authSource: ((req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource ?? "unknown") as string,
+        path: req.originalUrl,
+        ip: resolveRequestIp(req),
+        metadata: { reason: "missing_capability" }
+      });
+      res.status(403).json({ error: "Forbidden: capability not granted for this role." });
+    };
   };
 
   const createIpRateLimiter = (keyPrefix: string, options: { windowMs: number; max: number }) => {
@@ -637,6 +677,174 @@ const bootstrap = async () => {
   };
 
   const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const normalizeLanguage = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (["en", "fr", "es", "de", "ar", "pt"].includes(normalized)) return normalized;
+    return "en";
+  };
+  const languageLabel = (value: string) => {
+    const map: Record<string, string> = { en: "English", fr: "French", es: "Spanish", de: "German", ar: "Arabic", pt: "Portuguese" };
+    return map[value] ?? "English";
+  };
+  const toneLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (["professional", "friendly", "urgent", "educational"].includes(normalized)) return normalized;
+    return "professional";
+  };
+  const toEmoji = (section: string) => {
+    const map: Record<string, string> = {
+      health: "🌿",
+      gadgets: "📱",
+      supplements: "💊",
+      upcoming: "🚀",
+      forex: "📈",
+      betting: "🎯",
+      software: "💻",
+      social: "📣"
+    };
+    return map[section] ?? "✨";
+  };
+  const buildAiEmailHtml = (input: {
+    headline: string;
+    intro: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    productBullets: string[];
+    disclaimer: string;
+    language: string;
+  }) => {
+    const bullets = input.productBullets.map((item) => `<li style="margin:0 0 8px 0;">${escapeHtml(item)}</li>`).join("");
+    return `<!doctype html>
+<html lang="${escapeHtml(input.language)}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${escapeHtml(input.headline)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f8ff;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8ff;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #dbe4ff;">
+            <tr>
+              <td style="padding:28px 24px;background:#0f172a;color:#ffffff;">
+                <h1 style="margin:0;font-size:26px;line-height:1.2;">${escapeHtml(input.headline)}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;color:#0f172a;">
+                <p style="margin:0 0 14px 0;font-size:16px;line-height:1.6;">${escapeHtml(input.intro)}</p>
+                <ul style="padding-left:20px;margin:0 0 18px 0;font-size:15px;line-height:1.5;color:#1e293b;">
+                  ${bullets}
+                </ul>
+                <p style="margin:0 0 18px 0;">
+                  <a href="${escapeHtml(input.ctaUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;">
+                    ${escapeHtml(input.ctaLabel)}
+                  </a>
+                </p>
+                <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:#475569;">${escapeHtml(input.disclaimer)}</p>
+                <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b;">
+                  Unsubscribe: <a href="{{unsubscribe_link}}" style="color:#2563eb;">{{unsubscribe_link}}</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  };
+  const buildAiEmailRich = (input: {
+    headline: string;
+    intro: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    productBullets: string[];
+    disclaimer: string;
+  }) =>
+    [
+      input.headline,
+      "",
+      input.intro,
+      "",
+      ...input.productBullets.map((item, index) => `${index + 1}. ${item}`),
+      "",
+      `${input.ctaLabel}: ${input.ctaUrl}`,
+      "",
+      input.disclaimer,
+      "",
+      "Unsubscribe: {{unsubscribe_link}}"
+    ].join("\n");
+  const sanitizeFileSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "ai-export";
+  const toExportLines = (input: {
+    question: string;
+    generatedAt: string;
+    site: { products: number; industries: number; subscribers: number; events: number };
+    suggestions: string[];
+  }) => [
+    `Question: ${input.question}`,
+    `Generated at: ${input.generatedAt}`,
+    `Total products: ${input.site.products}`,
+    `Industries: ${input.site.industries}`,
+    `Subscribers: ${input.site.subscribers}`,
+    `Analytics events: ${input.site.events}`,
+    "",
+    "Suggested actions:",
+    ...input.suggestions.map((item, idx) => `${idx + 1}. ${item}`)
+  ];
+  const escapePdfText = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const buildSimplePdf = (lines: string[]) => {
+    const rendered = lines
+      .slice(0, 40)
+      .map((line, idx) => {
+        const y = 780 - idx * 18;
+        return `BT /F1 11 Tf 50 ${y} Td (${escapePdfText(line.slice(0, 110))}) Tj ET`;
+      })
+      .join("\n");
+    const stream = `${rendered}\n`;
+    const objects = [
+      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj",
+      `4 0 obj << /Length ${Buffer.byteLength(stream, "utf8")} >> stream\n${stream}endstream endobj`,
+      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj"
+    ];
+    let body = "";
+    const offsets = [0];
+    for (const obj of objects) {
+      offsets.push(Buffer.byteLength(body, "utf8"));
+      body += `${obj}\n`;
+    }
+    const xrefStart = Buffer.byteLength(body, "utf8");
+    const xrefRows = offsets
+      .map((offset, idx) => (idx === 0 ? "0000000000 65535 f " : `${String(offset).padStart(10, "0")} 00000 n `))
+      .join("\n");
+    const pdf = `%PDF-1.4\n${body}xref\n0 ${offsets.length}\n${xrefRows}\ntrailer << /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+    return Buffer.from(pdf, "utf8");
+  };
+  const buildDocHtml = (title: string, lines: string[]) =>
+    `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><h2>${escapeHtml(
+      title
+    )}</h2>${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</body></html>`;
+  const buildExcelHtml = (title: string, lines: string[]) => {
+    const rows = lines.map((line, idx) => `<tr><td>${idx + 1}</td><td>${escapeHtml(line)}</td></tr>`).join("");
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+      title
+    )}</title></head><body><table border="1"><thead><tr><th>#</th><th>Content</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  };
 
   const buildConfirmationLinks = (input: { confirmToken: string; unsubscribeToken: string }) => {
     const confirmUrl = `${API_PUBLIC_BASE_URL}/api/email/confirm?token=${encodeURIComponent(input.confirmToken)}`;
@@ -954,7 +1162,46 @@ const bootstrap = async () => {
     res.status(200).json({ published: next.published, draft: next.draft });
   });
 
-  app.get("/api/ai/control/context", requireAdminAuth, async (_req, res) => {
+  const normalizeForCompare = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const hasHealthRiskClaims = (value: string) => /(cure|guaranteed|100%|no risk|instant results|instant)/i.test(value);
+  const hasAffiliateDisclosureSignal = (warnings: string[], shortDescription: string, longDescription: string) => {
+    const merged = [...warnings, shortDescription, longDescription].join(" ");
+    return /(affiliate|commission|disclosure)/i.test(merged);
+  };
+
+  const getSectionDuplicateReasons = (
+    published: SiteContent,
+    section: "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming",
+    candidate: { title: string; checkoutLink: string; imageUrl: string }
+  ) => {
+    const titleKey = normalizeForCompare(candidate.title);
+    const linkKey = normalizeForCompare(candidate.checkoutLink);
+    const imageKey = normalizeForCompare(candidate.imageUrl);
+    const reasons: string[] = [];
+
+    if (section === "upcoming") {
+      const items = published.healthPage?.upcoming.items ?? [];
+      const titleDuplicate = items.some((item) => normalizeForCompare(item.title) === titleKey);
+      const imageDuplicate = imageKey ? items.some((item) => normalizeForCompare(item.imageUrl ?? "") === imageKey) : false;
+      if (titleDuplicate) reasons.push("Duplicate title exists in upcoming.");
+      if (imageDuplicate) reasons.push("Duplicate image exists in upcoming.");
+      return reasons;
+    }
+
+    const items =
+      section === "gadgets" || section === "supplements"
+        ? published.healthPage?.products[section] ?? []
+        : published.products[section];
+    const titleDuplicate = items.some((item) => normalizeForCompare(item.title) === titleKey);
+    const linkDuplicate = linkKey ? items.some((item) => normalizeForCompare(item.checkoutLink ?? "") === linkKey) : false;
+    const imageDuplicate = imageKey ? items.some((item) => normalizeForCompare(item.imageUrl ?? "") === imageKey) : false;
+    if (titleDuplicate) reasons.push("Duplicate title exists in target section.");
+    if (linkDuplicate) reasons.push("Duplicate checkout link exists in target section.");
+    if (imageDuplicate) reasons.push("Duplicate image exists in target section.");
+    return reasons;
+  };
+
+  app.get("/api/ai/control/context", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (req, res) => {
     try {
       const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
         siteStore.getMeta(),
@@ -999,14 +1246,33 @@ const bootstrap = async () => {
               opportunities: latestTrafficPlan.summary.opportunities,
               avgScore: latestTrafficPlan.summary.avgCompositeScore
             }
-          : null
+          : null,
+        role:
+          ((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ?? "viewer") as
+            | "viewer"
+            | "editor"
+            | "publisher"
+            | "owner",
+        capabilities: listCapabilitiesForRole(
+          (((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ??
+            "viewer") as "viewer" | "editor" | "publisher" | "owner")
+        )
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to build AI control context." });
     }
   });
 
-  app.post("/api/ai/control/chat", requireAdminAuth, async (req, res) => {
+  app.get("/api/ai/control/safety-summary", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (_req, res) => {
+    try {
+      const summary = await aiControlStore.getSafetySummary();
+      res.status(200).json(summary);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI safety summary." });
+    }
+  });
+
+  app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     if (!message) {
       res.status(400).json({ error: "message is required." });
@@ -1031,6 +1297,7 @@ const bootstrap = async () => {
 
       let answer = "";
       const suggestions: string[] = [];
+      let sources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
       const isSearchPrompt =
         lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
       if (isSearchPrompt) {
@@ -1049,6 +1316,7 @@ const bootstrap = async () => {
               answer = `No online results found for "${query}". Try a broader phrase.`;
             } else {
               const lines = results.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} - ${item.url}`);
+              sources = results.slice(0, 5);
               answer = `I found these online sources for "${query}":\n${lines.join("\n")}`;
               suggestions.push("Ask: summarize result 1");
               suggestions.push("Ask: prepare action plan from these links");
@@ -1089,14 +1357,20 @@ const bootstrap = async () => {
       res.status(200).json({
         mode: "read-only",
         answer,
-        suggestions
+        suggestions,
+        sources
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to process AI chat request." });
     }
   });
 
-  app.post("/api/ai/control/web-search", requireAdminAuth, async (req, res) => {
+  app.post(
+    "/api/ai/control/web-search",
+    requireAdminAuth,
+    requireAiCapability("ai.web.search"),
+    auditAdminAction("ai_control.web_search"),
+    async (req, res) => {
     const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
     if (!query) {
       res.status(400).json({ error: "query is required." });
@@ -1108,9 +1382,231 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Web search failed." });
     }
-  });
+    }
+  );
 
-  app.post("/api/ai/control/prepare-action", requireAdminAuth, async (req, res) => {
+  app.post(
+    "/api/ai/control/email/generate",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.email_generate"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const objective = typeof payload.objective === "string" ? payload.objective.trim() : "";
+      const sectionRaw = typeof payload.section === "string" ? payload.section.trim().toLowerCase() : "health";
+      const language = normalizeLanguage(typeof payload.language === "string" ? payload.language : "en");
+      const tone = toneLabel(typeof payload.tone === "string" ? payload.tone : "professional");
+      const includeEmojis = payload.includeEmojis === true;
+      const saveDraft = payload.saveDraft !== false;
+
+      if (!objective) {
+        res.status(400).json({ error: "objective is required." });
+        return;
+      }
+
+      try {
+        const published = await siteStore.getPublished();
+        const sectionMap: Record<string, { title: string; products: Array<{ title: string; shortDescription: string; checkoutLink: string }> }> = {
+          forex: { title: "Forex", products: published.products.forex },
+          betting: { title: "Betting", products: published.products.betting },
+          software: { title: "Software", products: published.products.software },
+          social: { title: "Social", products: published.products.social },
+          gadgets: { title: "Health Gadgets", products: published.healthPage?.products.gadgets ?? [] },
+          supplements: { title: "Health Supplements", products: published.healthPage?.products.supplements ?? [] },
+          health: {
+            title: "Health",
+            products: [...(published.healthPage?.products.gadgets ?? []), ...(published.healthPage?.products.supplements ?? [])]
+          },
+          upcoming: {
+            title: "Upcoming",
+            products: (published.healthPage?.upcoming.items ?? []).map((item) => ({
+              title: item.title,
+              shortDescription: item.shortDescription,
+              checkoutLink: "#"
+            }))
+          }
+        };
+        const selectedSection = sectionMap[sectionRaw] ? sectionRaw : "health";
+        const selected = sectionMap[selectedSection];
+        const featured = selected.products.slice(0, 3);
+        const bullets =
+          featured.length > 0
+            ? featured.map((item) => `${item.title}: ${item.shortDescription}`)
+            : [`New curated ${selected.title.toLowerCase()} offers are now available.`];
+        const firstLink = featured.find((item) => /^https?:\/\//i.test(item.checkoutLink))?.checkoutLink ?? "https://example.com";
+        const affiliateDisclosure =
+          published.homeUi?.productCardAffiliateDisclosure?.trim() ||
+          "Affiliate disclosure: we may earn a commission if you buy through our links.";
+
+        const emoji = includeEmojis ? `${toEmoji(selectedSection)} ` : "";
+        const subject = `${emoji}[${selected.title}] ${objective.slice(0, 70)}`;
+        const previewText = `${languageLabel(language)} ${tone} update: ${objective.slice(0, 110)}`;
+        const headline = `${emoji}${selected.title} Picks: ${objective}`;
+        const intro = `This is a ${tone} ${languageLabel(language).toLowerCase()} campaign draft prepared by AI for ${selected.title}.`;
+        const ctaLabel = selectedSection === "upcoming" ? "Notify Me" : "Explore Offers";
+        const emojiBullets = includeEmojis ? bullets.map((item) => `${toEmoji(selectedSection)} ${item}`) : bullets;
+        const bodyHtml = buildAiEmailHtml({
+          headline,
+          intro,
+          ctaLabel,
+          ctaUrl: firstLink,
+          productBullets: emojiBullets,
+          disclaimer: affiliateDisclosure,
+          language
+        });
+        const bodyRich = buildAiEmailRich({
+          headline,
+          intro,
+          ctaLabel,
+          ctaUrl: firstLink,
+          productBullets: emojiBullets,
+          disclaimer: affiliateDisclosure
+        });
+
+        let campaign: Awaited<ReturnType<typeof emailStore.saveCampaign>> | null = null;
+        if (saveDraft) {
+          campaign = await emailStore.saveCampaign({
+            name: `AI ${selected.title} ${new Date().toISOString().slice(0, 10)}`,
+            subject,
+            previewText,
+            bodyMode: EMAIL_CAMPAIGN_BODY_MODE.html,
+            bodyRich,
+            bodyHtml,
+            audienceMode: EMAIL_CAMPAIGN_AUDIENCE_MODE.all,
+            segments: [],
+            exclusions: [],
+            sendMode: EMAIL_CAMPAIGN_SEND_MODE.now,
+            scheduleAt: null,
+            timezone: "UTC",
+            status: EMAIL_CAMPAIGN_STATUS.draft,
+            estimatedRecipients: 0
+          });
+          await emailStore.addEvent({
+            eventType: EMAIL_EVENT_TYPES.campaignSaved,
+            campaignId: campaign.id,
+            meta: { source: "ai_control.email_generate", section: selectedSection, language, tone, objective, includeEmojis }
+          });
+        }
+
+        res.status(200).json({
+          ok: true,
+          mode: "email_generate",
+          language,
+          tone,
+          includeEmojis,
+          section: selectedSection,
+          campaignId: campaign?.id ?? null,
+          draftSaved: Boolean(campaign),
+          email: {
+            subject,
+            previewText,
+            bodyHtml,
+            bodyRich
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate AI email draft." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/export",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.export_generate"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const question = typeof payload.question === "string" ? payload.question.trim() : "";
+      const formatRaw = typeof payload.format === "string" ? payload.format.trim().toLowerCase() : "pdf";
+      const format = formatRaw === "doc" || formatRaw === "excel" || formatRaw === "pdf" ? formatRaw : "pdf";
+      if (!question) {
+        res.status(400).json({ error: "question is required." });
+        return;
+      }
+
+      try {
+        const [published, emailSummary, analyticsSummary] = await Promise.all([
+          siteStore.getPublished(),
+          emailStore.getAnalyticsSummary(),
+          analyticsStore.summary()
+        ]);
+        const lines = toExportLines({
+          question,
+          generatedAt: new Date().toISOString(),
+          site: {
+            products:
+              published.products.forex.length +
+              published.products.betting.length +
+              published.products.software.length +
+              published.products.social.length +
+              (published.healthPage?.products.gadgets.length ?? 0) +
+              (published.healthPage?.products.supplements.length ?? 0),
+            industries: published.industries.length,
+            subscribers: emailSummary.totals.subscribers,
+            events: analyticsSummary.totalEvents
+          },
+          suggestions: [
+            "Prioritize sections with low product count but high intent.",
+            "Keep affiliate disclosures visible near CTA buttons.",
+            "Run weekly email campaigns with localized offers.",
+            "Track click outcomes and rotate low-performing creatives."
+          ]
+        });
+
+        const slug = sanitizeFileSlug(question);
+        const baseName = `${Date.now()}-${slug}`;
+        let buffer: Buffer;
+        let ext = "";
+        let mime = "";
+        if (format === "pdf") {
+          buffer = buildSimplePdf(lines);
+          ext = ".pdf";
+          mime = "application/pdf";
+        } else if (format === "doc") {
+          buffer = Buffer.from(buildDocHtml("AI Export Report", lines), "utf8");
+          ext = ".doc";
+          mime = "application/msword";
+        } else {
+          buffer = Buffer.from(buildExcelHtml("AI Export Report", lines), "utf8");
+          ext = ".xls";
+          mime = "application/vnd.ms-excel";
+        }
+
+        const fileName = `${baseName}${ext}`;
+        const fullPath = path.join(mediaStore.uploadsDir, fileName);
+        await fs.writeFile(fullPath, buffer);
+        const url = `${API_PUBLIC_BASE_URL}/uploads/${fileName}`;
+        await mediaStore.add({
+          name: `AI Export ${format.toUpperCase()} - ${question.slice(0, 80)}`,
+          fileName,
+          url,
+          mime,
+          sizeBytes: buffer.byteLength
+        });
+
+        res.status(200).json({
+          ok: true,
+          mode: "export_generate",
+          format,
+          fileName,
+          url,
+          sizeBytes: buffer.byteLength
+        });
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate export file." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/prepare-action",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    auditAdminAction("ai_control.prepare_action"),
+    async (req, res) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const imageUrlRaw = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
     if (!message) {
@@ -1120,25 +1616,32 @@ const bootstrap = async () => {
 
     const lower = message.toLowerCase();
     const section =
-      lower.includes("supplement")
-        ? "supplements"
-        : lower.includes("gadget")
-          ? "gadgets"
-          : lower.includes("forex")
-            ? "forex"
-            : lower.includes("betting")
-              ? "betting"
-              : lower.includes("software")
-                ? "software"
-                : lower.includes("social")
-                  ? "social"
-                  : "gadgets";
-    const targetPath = section === "supplements" || section === "gadgets" ? "/health" : `/${section}`;
+      lower.includes("upcoming")
+        ? "upcoming"
+        : lower.includes("supplement")
+          ? "supplements"
+          : lower.includes("gadget")
+            ? "gadgets"
+            : lower.includes("forex")
+              ? "forex"
+              : lower.includes("betting")
+                ? "betting"
+                : lower.includes("software")
+                  ? "software"
+                  : lower.includes("social")
+                    ? "social"
+                    : "gadgets";
+    const targetPath =
+      section === "supplements" || section === "gadgets" || section === "upcoming"
+        ? "/health"
+        : `/${section}`;
 
     const safeImageUrl =
       imageUrlRaw && imageUrlRaw.includes("/uploads/") && imageUrlRaw.startsWith("http") ? imageUrlRaw : "";
     const titleBase =
-      section === "supplements"
+      section === "upcoming"
+        ? "Upcoming Health Product"
+        : section === "supplements"
         ? "Smart Wellness Supplement"
         : section === "gadgets"
           ? "Smart Health Gadget"
@@ -1168,41 +1671,59 @@ const bootstrap = async () => {
       ]
     };
 
+    const approval = await aiControlStore.createApproval({
+      actionType: "add_product",
+      targetSection: section,
+      payloadHash: hashAiPayload({ target: { section, path: targetPath }, productDraft })
+    });
+    await aiControlStore.logAudit({
+      action: "ai.action.prepare",
+      status: "allowed",
+      role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+      authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+      path: req.originalUrl,
+      ip: resolveRequestIp(req),
+      metadata: { section, approvalId: approval.id }
+    });
+
     res.status(200).json({
       mode: "preview-only",
       actionType: "add_product",
-      executeAvailable: false,
+      executeAvailable: true,
       confirmationRequired: true,
       target: { section, path: targetPath },
       productDraft,
+      approval: {
+        id: approval.id,
+        confirmPhrase: approval.confirmPhrase,
+        expiresAt: approval.expiresAt
+      },
       nextStep:
-        "Draft prepared. In Phase 2b you may execute only for gadgets section by confirming with text EXECUTE."
+        "Draft prepared. You can execute this target section by using exact approval phrase before expiry."
     });
-  });
+    }
+  );
 
   app.post(
     "/api/ai/control/execute-action",
     requireAdminAuth,
+    requireAiCapability("ai.action.execute"),
     requireCsrfForCookieAuth,
-    auditAdminAction("ai_control.execute_add_product_gadgets"),
+    auditAdminAction("ai_control.execute_add_product"),
     async (req, res) => {
       const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
       const confirmText = typeof payload.confirmText === "string" ? payload.confirmText.trim() : "";
+      const approvalId = typeof payload.approvalId === "string" ? payload.approvalId.trim() : "";
       const target = typeof payload.target === "object" && payload.target !== null ? (payload.target as Record<string, unknown>) : {};
       const draft =
         typeof payload.productDraft === "object" && payload.productDraft !== null
           ? (payload.productDraft as Record<string, unknown>)
           : {};
 
-      if (confirmText !== "EXECUTE") {
-        res.status(400).json({ error: "Confirm text must be exactly 'EXECUTE'." });
-        return;
-      }
-
       const section = typeof target.section === "string" ? target.section.trim().toLowerCase() : "";
-      // Phase 2b scope lock: only one section is allowed for controlled rollout.
-      if (section !== "gadgets") {
-        res.status(400).json({ error: "Phase 2b allows execution only for 'gadgets' section." });
+      const allowedSections = new Set(["forex", "betting", "software", "social", "gadgets", "supplements", "upcoming"]);
+      if (!allowedSections.has(section)) {
+        res.status(400).json({ error: "Invalid target section." });
         return;
       }
 
@@ -1218,6 +1739,10 @@ const bootstrap = async () => {
       const ratingRaw = Number(draft.rating ?? 4.6);
       const rating = Number.isFinite(ratingRaw) ? Math.min(5, Math.max(1, ratingRaw)) : 4.6;
       const isNew = draft.isNew !== false;
+      const complianceWarnings =
+        Array.isArray(draft.complianceWarnings) && draft.complianceWarnings.length
+          ? draft.complianceWarnings.map((item) => String(item).trim()).filter(Boolean)
+          : [];
 
       if (!title || !shortDescription || !longDescription) {
         res.status(400).json({ error: "title, shortDescription, and longDescription are required." });
@@ -1227,7 +1752,7 @@ const bootstrap = async () => {
         res.status(400).json({ error: "checkoutLink must be a valid http(s) URL." });
         return;
       }
-      if (!features.length) {
+      if (section !== "upcoming" && !features.length) {
         res.status(400).json({ error: "At least one feature is required." });
         return;
       }
@@ -1236,8 +1761,85 @@ const bootstrap = async () => {
         return;
       }
 
+      const preparedPayloadHash = hashAiPayload({
+        target: { section, path: typeof target.path === "string" ? target.path : "" },
+        productDraft: {
+          title,
+          shortDescription,
+          longDescription,
+          features,
+          rating,
+          isNew,
+          imageUrl,
+          checkoutLink,
+          complianceWarnings
+        }
+      });
+      const approvalCheck = await aiControlStore.verifyAndConsumeApproval({
+        approvalId,
+        confirmText,
+        payloadHash: preparedPayloadHash
+      });
+      if (!approvalCheck.ok) {
+        await aiControlStore.logAudit({
+          action: "ai.action.execute",
+          status: "denied",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          path: req.originalUrl,
+          ip: resolveRequestIp(req),
+          metadata: { reason: approvalCheck.error, approvalId }
+        });
+        res.status(400).json({ error: approvalCheck.error });
+        return;
+      }
+
       try {
         const published = await siteStore.getPublished();
+        const globalDisclosure = (published.homeUi?.productCardAffiliateDisclosure ?? "").trim();
+        if (!globalDisclosure) {
+          res.status(400).json({
+            error: "Global affiliate disclosure is missing. Set Home UI productCardAffiliateDisclosure before AI execute."
+          });
+          return;
+        }
+        if (!hasAffiliateDisclosureSignal(complianceWarnings, shortDescription, longDescription)) {
+          res.status(400).json({
+            error:
+              "Compliance warning must include affiliate disclosure signal (affiliate/commission/disclosure) in copy or warnings."
+          });
+          return;
+        }
+        if ((section === "gadgets" || section === "supplements" || section === "upcoming") && hasHealthRiskClaims(`${shortDescription} ${longDescription}`)) {
+          res.status(400).json({
+            error: "Health category copy contains restricted claims (e.g., guaranteed/cure/instant). Revise copy first."
+          });
+          return;
+        }
+        const duplicateReasons = getSectionDuplicateReasons(published, section as "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming", {
+          title,
+          checkoutLink,
+          imageUrl
+        });
+        if (duplicateReasons.length) {
+          await aiControlStore.logAudit({
+            action: "ai.action.execute",
+            status: "denied",
+            role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+            authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+            path: req.originalUrl,
+            ip: resolveRequestIp(req),
+            metadata: { reason: "duplicate_detected", duplicateReasons, section, title }
+          });
+          res.status(409).json({ error: "Duplicate detected in target section.", duplicateReasons });
+          return;
+        }
+        const rollback = await aiControlStore.captureRollbackSnapshot({
+          reason: "ai_execute_add_product",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          content: published
+        });
         const healthFallback: NonNullable<SiteContent["healthPage"]> = {
           hero2: {
             eyebrow: "Health",
@@ -1272,34 +1874,105 @@ const bootstrap = async () => {
           }
         };
 
-        const nextPosition = healthPage.products.gadgets.length + 1;
-        healthPage.products.gadgets.push({
-          id: `health-gadget-${randomUUID().slice(0, 8)}`,
-          position: nextPosition,
-          title,
-          shortDescription,
-          longDescription,
-          features,
-          rating,
-          isNew,
-          category: "Gadgets",
-          imageUrl,
-          checkoutLink
-        });
-
-        const nextContent: SiteContent = {
-          ...published,
-          healthPage
-        };
+        let insertedSection = section;
+        let productsInSection = 0;
+        let nextContent: SiteContent = published;
+        if (section === "gadgets" || section === "supplements") {
+          const nextPosition = healthPage.products[section].length + 1;
+          const category = section === "gadgets" ? "Gadgets" : "Supplements";
+          healthPage.products[section].push({
+            id: `health-${section}-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            longDescription,
+            features,
+            rating,
+            isNew,
+            category,
+            imageUrl,
+            checkoutLink
+          });
+          productsInSection = healthPage.products[section].length;
+          nextContent = {
+            ...published,
+            healthPage
+          };
+        } else if (section === "upcoming") {
+          const nextPosition = healthPage.upcoming.items.length + 1;
+          healthPage.upcoming.items.push({
+            id: `health-upcoming-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            imageUrl,
+            active: true,
+            notifyLabel: "Notify me"
+          });
+          productsInSection = healthPage.upcoming.items.length;
+          nextContent = {
+            ...published,
+            healthPage
+          };
+        } else {
+          const categoryMap = {
+            forex: "Forex",
+            betting: "Betting",
+            software: "Software",
+            social: "Social"
+          } as const;
+          const nextPosition = published.products[section as "forex" | "betting" | "software" | "social"].length + 1;
+          const nextProduct = {
+            id: `${section}-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            longDescription,
+            features,
+            rating,
+            isNew,
+            category: categoryMap[section as "forex" | "betting" | "software" | "social"],
+            imageUrl,
+            checkoutLink
+          };
+          const nextSectionProducts = [...published.products[section as "forex" | "betting" | "software" | "social"], nextProduct];
+          productsInSection = nextSectionProducts.length;
+          nextContent = {
+            ...published,
+            products: {
+              ...published.products,
+              [section]: nextSectionProducts
+            }
+          };
+        }
 
         await siteStore.saveDraft(nextContent);
         const content = await siteStore.publish(nextContent);
+        await aiControlStore.logAudit({
+          action: "ai.action.execute",
+          status: "executed",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          path: req.originalUrl,
+          ip: resolveRequestIp(req),
+          metadata: { section: insertedSection, insertedTitle: title, rollbackId: rollback.id }
+        });
+        const sectionCounts: Record<string, number> = {
+          forex: content.products.forex.length,
+          betting: content.products.betting.length,
+          software: content.products.software.length,
+          social: content.products.social.length,
+          gadgets: content.healthPage?.products.gadgets.length ?? 0,
+          supplements: content.healthPage?.products.supplements.length ?? 0,
+          upcoming: content.healthPage?.upcoming.items.length ?? 0
+        };
         res.status(200).json({
           ok: true,
           mode: "execute",
-          section: "gadgets",
+          section: insertedSection,
           insertedTitle: title,
-          productsInSection: content.healthPage?.products.gadgets.length ?? 0
+          productsInSection: sectionCounts[insertedSection] ?? productsInSection,
+          rollbackId: rollback.id
         });
       } catch (error) {
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to execute add product action." });
