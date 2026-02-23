@@ -64,6 +64,10 @@ const AUTH_SENSITIVE_IP_RATE_WINDOW_MS = Number(process.env.AUTH_SENSITIVE_IP_RA
 const AUTH_SENSITIVE_IP_RATE_MAX = Number(process.env.AUTH_SENSITIVE_IP_RATE_MAX ?? 12);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_WINDOW_MS ?? 60_000);
+const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
+const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
+const MEDIA_UPLOAD_MAX_FILES = Number(process.env.MEDIA_UPLOAD_MAX_FILES ?? 20);
 const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
 const AI_CHAT_IP_RATE_MAX = Number(process.env.AI_CHAT_IP_RATE_MAX ?? 40);
 const AI_WEB_SEARCH_IP_RATE_WINDOW_MS = Number(process.env.AI_WEB_SEARCH_IP_RATE_WINDOW_MS ?? 60_000);
@@ -79,6 +83,8 @@ const AI_WEB_SEARCH_MAX_QUERY_CHARS = Number(process.env.AI_WEB_SEARCH_MAX_QUERY
 const LOGIN_EMAIL_MAX_CHARS = Number(process.env.LOGIN_EMAIL_MAX_CHARS ?? 254);
 const LOGIN_PASSWORD_MAX_CHARS = Number(process.env.LOGIN_PASSWORD_MAX_CHARS ?? 256);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
+const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
   if (!raw) return false;
@@ -280,9 +286,24 @@ const bootstrap = async () => {
       cb(null, `${Date.now()}-${randomUUID()}${ext}`);
     }
   });
+  const maxUploadFileBytes =
+    Number.isFinite(MEDIA_UPLOAD_MAX_FILE_BYTES) && MEDIA_UPLOAD_MAX_FILE_BYTES > 0 ? MEDIA_UPLOAD_MAX_FILE_BYTES : 10 * 1024 * 1024;
+  const maxUploadFiles = Number.isFinite(MEDIA_UPLOAD_MAX_FILES) && MEDIA_UPLOAD_MAX_FILES > 0 ? Math.floor(MEDIA_UPLOAD_MAX_FILES) : 20;
   const upload = multer({
     storage,
-    limits: { fileSize: 10 * 1024 * 1024 }
+    limits: {
+      fileSize: maxUploadFileBytes,
+      files: maxUploadFiles
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = (file.mimetype || "").toLowerCase();
+      if (!ALLOWED_UPLOAD_MIME_TYPES.has(mime) || !ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+        cb(new Error("Unsupported file type. Allowed: JPG, PNG, WEBP, GIF, AVIF."));
+        return;
+      }
+      cb(null, true);
+    }
   });
 
   app.use(
@@ -615,6 +636,13 @@ const bootstrap = async () => {
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+  const mediaUploadIpLimiter = createIpRateLimiter("media_upload", {
+    windowMs:
+      Number.isFinite(MEDIA_UPLOAD_IP_RATE_WINDOW_MS) && MEDIA_UPLOAD_IP_RATE_WINDOW_MS > 0
+        ? MEDIA_UPLOAD_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(MEDIA_UPLOAD_IP_RATE_MAX) && MEDIA_UPLOAD_IP_RATE_MAX > 0 ? MEDIA_UPLOAD_IP_RATE_MAX : 20
   });
   const aiChatIpLimiter = createIpRateLimiter("ai_chat", {
     windowMs: Number.isFinite(AI_CHAT_IP_RATE_WINDOW_MS) && AI_CHAT_IP_RATE_WINDOW_MS > 0 ? AI_CHAT_IP_RATE_WINDOW_MS : 60_000,
@@ -1152,12 +1180,19 @@ const bootstrap = async () => {
     }
   );
 
-  app.get("/api/media", async (_req, res) => {
+  app.get("/api/media", requireAdminAuth, async (_req, res) => {
     const items = await mediaStore.list();
     res.status(200).json({ items });
   });
 
-  app.post("/api/media", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.upload"), upload.array("files", 20), async (req, res) => {
+  app.post(
+    "/api/media",
+    requireAdminAuth,
+    mediaUploadIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("media.upload"),
+    upload.array("files", maxUploadFiles),
+    async (req, res) => {
     const files = (req.files as Express.Multer.File[]) ?? [];
     if (!files.length) {
       res.status(400).json({ error: "No files uploaded. Use form-data field 'files'." });
@@ -1178,7 +1213,8 @@ const bootstrap = async () => {
     }
 
     res.status(201).json({ items: created });
-  });
+    }
+  );
 
   app.delete("/api/media/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.delete"), async (req, res) => {
     const mediaId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -3972,6 +4008,26 @@ const bootstrap = async () => {
   app.get("/api/analytics/summary", requireAdminAuth, async (_req, res) => {
     const summary = await analyticsStore.summary();
     res.status(200).json(summary);
+  });
+
+  app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: `File too large. Max size is ${Math.floor(maxUploadFileBytes / (1024 * 1024))}MB.` });
+        return;
+      }
+      if (error.code === "LIMIT_FILE_COUNT") {
+        res.status(400).json({ error: `Too many files. Max files per request is ${maxUploadFiles}.` });
+        return;
+      }
+      res.status(400).json({ error: error.message || "Invalid upload payload." });
+      return;
+    }
+    if (error instanceof Error && /Unsupported file type/i.test(error.message)) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    next(error);
   });
 
   const startupSenderProfile = await emailStore.getSenderProfile();
