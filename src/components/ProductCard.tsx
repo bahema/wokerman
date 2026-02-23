@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Product } from "../data/siteData";
+import type { PricingConfig } from "../../shared/siteTypes";
+import { formatPriceBadge } from "../utils/pricing";
 
 type ProductCardProps = {
   product: Product;
@@ -13,6 +15,7 @@ type ProductCardProps = {
     moreInfoLabel: string;
     affiliateDisclosure: string;
   };
+  pricing?: PricingConfig;
 };
 
 const gradientByCategory: Record<Product["category"], string> = {
@@ -48,31 +51,31 @@ const priceBadgeShadowByCategory: Record<Product["category"], string> = {
   Supplements: "shadow-[0_10px_20px_-10px_rgba(16,185,129,0.9)]"
 };
 
-const fallbackPriceBadgeByCategory: Record<Product["category"], string> = {
-  Forex: "$79",
-  Betting: "$69",
-  Software: "$99",
-  Social: "$59",
-  Gadgets: "$79",
-  Supplements: "$39"
+const fallbackPriceByCategory: Record<Product["category"], number> = {
+  Forex: 79,
+  Betting: 69,
+  Software: 99,
+  Social: 59,
+  Gadgets: 79,
+  Supplements: 39
 };
 
 const normalizePriceLabel = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  if (/^[\d]/.test(trimmed) && !/^[\$€£¥]/.test(trimmed)) return `$${trimmed}`;
   return trimmed;
 };
 
-const ProductCard = ({ product, onCheckout, onMoreInfo, labels }: ProductCardProps) => {
+const ProductCard = ({ product, onCheckout, onMoreInfo, labels, pricing }: ProductCardProps) => {
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
   const trustLabel = product.isNew ? (labels?.newReleaseLabel ?? "New release") : `${product.features.length} ${labels?.keyFeaturesSuffix ?? "key features"}`;
   const normalizedPriceLabel = typeof product.priceLabel === "string" ? normalizePriceLabel(product.priceLabel) : "";
+  const fallbackNumericPrice = fallbackPriceByCategory[product.category] ?? 49;
   const priceBadgeText =
     (typeof product.price === "number" && Number.isFinite(product.price) && product.price >= 0
-      ? `$${product.price.toFixed(0)}`
-      : normalizedPriceLabel || fallbackPriceBadgeByCategory[product.category] || "$49");
+      ? formatPriceBadge(product.price, pricing)
+      : normalizedPriceLabel || formatPriceBadge(fallbackNumericPrice, pricing));
 
   useEffect(() => {
     setImageFailed(false);

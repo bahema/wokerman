@@ -53,6 +53,7 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
   const testimonials = value.testimonials;
   const homeUi = value.homeUi;
   const products = value.products;
+  const pricing = value.pricing;
   const productSections = value.productSections;
   const industries = value.industries;
   const footer = value.footer;
@@ -201,6 +202,26 @@ export const validateSiteContent = (value: unknown): { ok: true; content: SiteCo
     for (let i = 0; i < entries.length; i += 1) {
       const productError = validateProduct(entries[i], group.label, i);
       if (productError) return { ok: false, error: productError };
+    }
+  }
+
+  if (pricing !== undefined) {
+    if (!isObject(pricing)) return { ok: false, error: "pricing must be an object when provided." };
+    if (pricing.mode !== "auto" && pricing.mode !== "manual") {
+      return { ok: false, error: "pricing.mode must be 'auto' or 'manual'." };
+    }
+    if (!asNonEmptyString(pricing.defaultCurrency)) {
+      return { ok: false, error: "pricing.defaultCurrency is required." };
+    }
+    if (!asNonEmptyString(pricing.fallbackLocale)) {
+      return { ok: false, error: "pricing.fallbackLocale is required." };
+    }
+    if (
+      pricing.manualCurrency !== undefined &&
+      pricing.manualCurrency !== null &&
+      !asNonEmptyString(pricing.manualCurrency)
+    ) {
+      return { ok: false, error: "pricing.manualCurrency must be a non-empty string when provided." };
     }
   }
 

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
+import PricingEditor from "../components/admin/PricingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AiControlCenterEditor from "../components/admin/AiControlCenterEditor";
@@ -322,13 +323,29 @@ const Admin = () => {
       case "branding":
         return (
           <EditorShell title="Branding & Theme" description="Manage logo text, accent color and default theme.">
-            <BrandingEditor
-              value={content.branding}
-              onChange={(next) => {
-                const nextContent = { ...content, branding: next };
-                queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
-              }}
-            />
+            <div className="space-y-4">
+              <BrandingEditor
+                value={content.branding}
+                onChange={(next) => {
+                  const nextContent = { ...content, branding: next };
+                  queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
+                }}
+              />
+              <PricingEditor
+                value={
+                  content.pricing ?? {
+                    mode: "auto",
+                    defaultCurrency: "USD",
+                    fallbackLocale: "en-US",
+                    manualCurrency: "USD"
+                  }
+                }
+                onChange={(nextPricing) => {
+                  const nextContent = { ...content, pricing: nextPricing };
+                  queueAutoPublish(nextContent, "Pricing settings updated and published.", "Failed to publish pricing settings.");
+                }}
+              />
+            </div>
           </EditorShell>
         );
       case "social-links":
@@ -932,6 +949,7 @@ const Admin = () => {
           {content.products.forex[0] ? (
             <ProductCard
               product={content.products.forex[0]}
+              pricing={content.pricing}
               onCheckout={() => {
                 // preview only
               }}

@@ -17,6 +17,7 @@ import { withBasePath } from "../utils/basePath";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { useI18n } from "../i18n/provider";
+import { formatPriceBadge, resolveCurrencyContext } from "../utils/pricing";
 
 type HomeProps = {
   initialSection?: "forex" | "betting" | "software" | "social";
@@ -89,6 +90,12 @@ const fallbackSiteContent: SiteContent = {
   homeUi: fallbackHomeUi,
   testimonials: [],
   products: { forex: [], betting: [], software: [], social: [] },
+  pricing: {
+    mode: "auto",
+    defaultCurrency: "USD",
+    fallbackLocale: "en-US",
+    manualCurrency: "USD"
+  },
   productSections: fallbackProductSections,
   industries: [],
   footer: { note: "Premium product discovery for automation-first digital operators.", copyright: `© ${new Date().getFullYear()} AutoHub. All rights reserved.` }
@@ -100,11 +107,11 @@ const loadDefaultSiteContent = async () => {
 };
 
 type AdSectionBox = NonNullable<SiteContent["homeUi"]>["adsectionMan"]["gadgets"];
-const resolveAdSectionPriceBadge = (section: AdSectionBox) => {
+const resolveAdSectionPriceBadge = (section: AdSectionBox, pricing: SiteContent["pricing"]) => {
   const custom = (section.priceBadge ?? "").trim();
   if (custom) return custom;
   if (typeof section.price === "number" && Number.isFinite(section.price) && section.price > 0) {
-    return `$${Math.round(section.price)}`;
+    return formatPriceBadge(section.price, pricing);
   }
   return "";
 };
@@ -147,6 +154,7 @@ const Home = (_props: HomeProps) => {
       }
     }
   };
+  const pricingContext = resolveCurrencyContext(content.pricing);
 
   useEffect(() => {
     updateTheme(theme);
@@ -325,7 +333,7 @@ const Home = (_props: HomeProps) => {
             offers: {
               "@type": "Offer",
               url: new URL(`${withBasePath(`/${list.id}`)}?product=${encodeURIComponent(item.id)}`, `${origin}/`).toString(),
-              priceCurrency: "USD",
+              priceCurrency: pricingContext.currency,
               availability: "https://schema.org/InStock"
             },
             aggregateRating: {
@@ -340,7 +348,7 @@ const Home = (_props: HomeProps) => {
 
     setStructuredData("site-graph", graph);
     return () => removeStructuredData("site-graph");
-  }, [content]);
+  }, [content, pricingContext.currency]);
 
   const runTarget = (target: string) => {
     if (target.startsWith("http")) {
@@ -375,6 +383,7 @@ const Home = (_props: HomeProps) => {
       <ProductCard
         key={product.id}
         product={product}
+        pricing={content.pricing}
         labels={{
           newBadgeLabel: homeUi.productCardNewBadgeLabel,
           newReleaseLabel: homeUi.productCardNewReleaseLabel,
@@ -502,9 +511,9 @@ const Home = (_props: HomeProps) => {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.gadgets.sectionTitle}</h3>
-                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets) ? (
+                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets, content.pricing) ? (
                       <span className="shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
-                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets)}
+                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.gadgets, content.pricing)}
                       </span>
                     ) : null}
                   </div>
@@ -555,9 +564,9 @@ const Home = (_props: HomeProps) => {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{homeUi.adsectionMan.ai.sectionTitle}</h3>
-                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai) ? (
+                    {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai, content.pricing) ? (
                       <span className="shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
-                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai)}
+                        {resolveAdSectionPriceBadge(homeUi.adsectionMan.ai, content.pricing)}
                       </span>
                     ) : null}
                   </div>

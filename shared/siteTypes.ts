@@ -1,6 +1,7 @@
 export type ProductCategory = "Forex" | "Betting" | "Software" | "Social" | "Gadgets" | "Supplements";
 export type AdminThemePreference = "system" | "light" | "dark";
 export type SiteEventTheme = "none" | "christmas" | "new-year" | "valentine" | "easter" | "ramadan" | "eid";
+export type PricingMode = "auto" | "manual";
 export type ProductSectionKey = "forex" | "betting" | "software" | "social";
 export type HealthCatalogSectionKey = "gadgets" | "supplements";
 
@@ -37,6 +38,13 @@ export type Product = {
   category: ProductCategory;
   imageUrl?: string;
   checkoutLink: string;
+};
+
+export type PricingConfig = {
+  mode: PricingMode;
+  defaultCurrency: string;
+  fallbackLocale: string;
+  manualCurrency?: string;
 };
 
 export type SiteContent = {
@@ -126,6 +134,7 @@ export type SiteContent = {
     software: Product[];
     social: Product[];
   };
+  pricing?: PricingConfig;
   productSections?: ProductSections;
   industries: Array<{ id: string; label: string; icon?: string; imageUrl?: string; link?: string }>;
   footer: { note: string; copyright: string };

@@ -16,6 +16,7 @@ import { withBasePath } from "../utils/basePath";
 import { useI18n } from "../i18n/provider";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
+import { resolveCurrencyContext } from "../utils/pricing";
 
 const Health = () => {
   const { t } = useI18n();
@@ -221,6 +222,7 @@ const Health = () => {
   const eventTheme = content.branding.eventTheme ?? "none";
   const eventThemeActive = eventTheme !== "none";
   const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
+  const pricingContext = resolveCurrencyContext(content.pricing);
 
   useEffect(() => {
     const origin = window.location.origin;
@@ -252,7 +254,7 @@ const Health = () => {
                 offers: {
                   "@type": "Offer",
                   url: item.checkoutLink,
-                  priceCurrency: "USD",
+                  priceCurrency: pricingContext.currency,
                   availability: "https://schema.org/InStock"
                 }
               }
@@ -263,7 +265,13 @@ const Health = () => {
     };
     setStructuredData("health-graph", graph);
     return () => removeStructuredData("health-graph");
-  }, [healthPage.products.gadgets, healthPage.products.supplements, healthPage.sections.gadgets.title, healthPage.sections.supplements.title]);
+  }, [
+    healthPage.products.gadgets,
+    healthPage.products.supplements,
+    healthPage.sections.gadgets.title,
+    healthPage.sections.supplements.title,
+    pricingContext.currency
+  ]);
 
   const renderProductGrid = (products: Product[], sourceCount: number, emptyMessage: string) => {
     if (sourceCount === 0) {
@@ -286,6 +294,7 @@ const Health = () => {
       <ProductCard
         key={product.id}
         product={product}
+        pricing={content.pricing}
         labels={{
           newBadgeLabel: homeUi.productCardNewBadgeLabel,
           newReleaseLabel: homeUi.productCardNewReleaseLabel,

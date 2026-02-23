@@ -582,6 +582,12 @@ export const defaultSiteContent: SiteContent = {
     software: softwareProducts,
     social: socialProducts
   },
+  pricing: {
+    mode: "auto",
+    defaultCurrency: "USD",
+    fallbackLocale: "en-US",
+    manualCurrency: "USD"
+  },
   productSections: defaultProductSections,
   industries: [
     { id: "ind-1", label: "Finance", icon: "💹" },

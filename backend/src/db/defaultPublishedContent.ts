@@ -68,6 +68,12 @@ export const defaultPublishedContent: SiteContent = {
     software: [],
     social: []
   },
+  pricing: {
+    mode: "auto",
+    defaultCurrency: "USD",
+    fallbackLocale: "en-US",
+    manualCurrency: "USD"
+  },
   productSections: {
     forex: {
       title: "Forex New Items",
