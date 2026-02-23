@@ -60,6 +60,8 @@ const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
 const AI_SUPER_MODE_ENCRYPTION_SECRET = (process.env.AI_SUPER_MODE_ENCRYPTION_SECRET ?? AUTH_COOKIE_SIGNING_KEY).trim();
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
+const AUTH_SENSITIVE_IP_RATE_WINDOW_MS = Number(process.env.AUTH_SENSITIVE_IP_RATE_WINDOW_MS ?? 60_000);
+const AUTH_SENSITIVE_IP_RATE_MAX = Number(process.env.AUTH_SENSITIVE_IP_RATE_MAX ?? 12);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
 const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
@@ -74,6 +76,8 @@ const AI_CHAT_MAX_HISTORY_ITEM_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_IT
 const AI_CHAT_MAX_HISTORY_TOTAL_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_TOTAL_CHARS ?? 20_000);
 const AI_CHAT_MAX_HISTORY_ITEMS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEMS ?? 20);
 const AI_WEB_SEARCH_MAX_QUERY_CHARS = Number(process.env.AI_WEB_SEARCH_MAX_QUERY_CHARS ?? 240);
+const LOGIN_EMAIL_MAX_CHARS = Number(process.env.LOGIN_EMAIL_MAX_CHARS ?? 254);
+const LOGIN_PASSWORD_MAX_CHARS = Number(process.env.LOGIN_PASSWORD_MAX_CHARS ?? 256);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
@@ -601,6 +605,13 @@ const bootstrap = async () => {
     windowMs: Number.isFinite(AUTH_IP_RATE_WINDOW_MS) && AUTH_IP_RATE_WINDOW_MS > 0 ? AUTH_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(AUTH_IP_RATE_MAX) && AUTH_IP_RATE_MAX > 0 ? AUTH_IP_RATE_MAX : 30
   });
+  const authSensitiveIpLimiter = createIpRateLimiter("auth_sensitive", {
+    windowMs:
+      Number.isFinite(AUTH_SENSITIVE_IP_RATE_WINDOW_MS) && AUTH_SENSITIVE_IP_RATE_WINDOW_MS > 0
+        ? AUTH_SENSITIVE_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(AUTH_SENSITIVE_IP_RATE_MAX) && AUTH_SENSITIVE_IP_RATE_MAX > 0 ? AUTH_SENSITIVE_IP_RATE_MAX : 12
+  });
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
@@ -992,9 +1003,21 @@ const bootstrap = async () => {
   });
 
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const trustDevice = req.body?.trustDevice === true;
+    if (!email || !password) {
+      res.status(400).json({ error: "Email and password are required." });
+      return;
+    }
+    if (email.length > LOGIN_EMAIL_MAX_CHARS) {
+      res.status(400).json({ error: `Email is too long (max ${LOGIN_EMAIL_MAX_CHARS} chars).` });
+      return;
+    }
+    if (password.length > LOGIN_PASSWORD_MAX_CHARS) {
+      res.status(400).json({ error: `Password is too long (max ${LOGIN_PASSWORD_MAX_CHARS} chars).` });
+      return;
+    }
     try {
       let trustedDeviceToken = "";
       let trustedDeviceTokenHash = "";
@@ -1052,7 +1075,7 @@ const bootstrap = async () => {
     res.status(200).json({ valid });
   });
 
-  app.post("/api/auth/logout", async (req, res) => {
+  app.post("/api/auth/logout", authSensitiveIpLimiter, requireCsrfForCookieAuth, async (req, res) => {
     const token = getAuthToken(req);
     if (token) {
       await authStore.logout(token);
@@ -1061,13 +1084,20 @@ const bootstrap = async () => {
     res.status(200).json({ ok: true });
   });
 
-  app.post("/api/auth/logout-all", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.logout_all"), async (req, res) => {
+  app.post(
+    "/api/auth/logout-all",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.logout_all"),
+    async (req, res) => {
     const token = getAuthToken(req);
     const keepCurrent = Boolean(req.body?.keepCurrent);
     await authStore.logoutAll(keepCurrent ? token : undefined);
     if (!keepCurrent) clearAuthCookie(res);
     res.status(200).json({ ok: true, keepCurrent });
-  });
+    }
+  );
 
   app.get("/api/auth/account", requireAdminAuth, async (_req, res) => {
     try {
@@ -1078,7 +1108,13 @@ const bootstrap = async () => {
     }
   });
 
-  app.put("/api/auth/account", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.update_account"), async (req, res) => {
+  app.put(
+    "/api/auth/account",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.update_account"),
+    async (req, res) => {
     try {
       const fullName = typeof req.body?.fullName === "string" ? req.body.fullName : "";
       const timezone = typeof req.body?.timezone === "string" ? req.body.timezone : "UTC";
@@ -1087,13 +1123,24 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save account settings." });
     }
-  });
+    }
+  );
 
-  app.put("/api/auth/password", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.change_password"), async (req, res) => {
+  app.put(
+    "/api/auth/password",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.change_password"),
+    async (req, res) => {
     try {
       const token = getAuthToken(req);
       const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+      if (currentPassword.length > LOGIN_PASSWORD_MAX_CHARS || newPassword.length > LOGIN_PASSWORD_MAX_CHARS) {
+        res.status(400).json({ error: `Password is too long (max ${LOGIN_PASSWORD_MAX_CHARS} chars).` });
+        return;
+      }
       const session = await authStore.changePassword(currentPassword, newPassword, token);
       await authStore.clearTrustedDevices();
       setAuthCookie(res, session.token, session.expiresAt);
@@ -1102,7 +1149,8 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update password." });
     }
-  });
+    }
+  );
 
   app.get("/api/media", async (_req, res) => {
     const items = await mediaStore.list();
