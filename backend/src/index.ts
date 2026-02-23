@@ -1401,8 +1401,11 @@ const bootstrap = async () => {
   );
 
   app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
+    const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-    if (!message) {
+    const userMessage = rawMessage || message;
+    const providerMessage = message || userMessage;
+    if (!userMessage) {
       res.status(400).json({ error: "message is required." });
       return;
     }
@@ -1414,7 +1417,7 @@ const bootstrap = async () => {
         analyticsStore.summary(),
         trafficAiStore.getLatestPlan()
       ]);
-      const lower = message.toLowerCase();
+      const lower = userMessage.toLowerCase();
       const productTotal =
         published.products.forex.length +
         published.products.betting.length +
@@ -1425,7 +1428,7 @@ const bootstrap = async () => {
 
       try {
         const superReply = await callSuperModeChat({
-          message,
+          message: providerMessage,
           context: {
             siteUpdatedAt: siteMeta.updatedAt,
             totalProducts: productTotal,
@@ -1487,7 +1490,7 @@ const bootstrap = async () => {
         suggestions.push("Ask: what changed on my site today?");
         suggestions.push("Ask: top 5 SEO opportunities this week");
       } else if (isSearchPrompt) {
-        const query = message
+        const query = userMessage
           .replace(/search online/gi, "")
           .replace(/find online/gi, "")
           .replace(/where to find/gi, "")

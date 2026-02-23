@@ -561,7 +561,10 @@ const AiControlCenterEditor = () => {
 
     try {
       const enrichedMessage = shouldUseAnalysisContext(trimmed) ? buildAnalysisPrompt(trimmed, context) : trimmed;
-      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", { message: enrichedMessage });
+      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", {
+        message: enrichedMessage,
+        rawMessage: trimmed
+      });
       if (response.mode === "super") {
         setAiMode("super");
       }
