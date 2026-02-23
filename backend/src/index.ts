@@ -64,6 +64,8 @@ const AUTH_SENSITIVE_IP_RATE_WINDOW_MS = Number(process.env.AUTH_SENSITIVE_IP_RA
 const AUTH_SENSITIVE_IP_RATE_MAX = Number(process.env.AUTH_SENSITIVE_IP_RATE_MAX ?? 12);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS ?? 60_000);
+const EMAIL_LINK_ACTION_IP_RATE_MAX = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_MAX ?? 40);
 const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_WINDOW_MS ?? 60_000);
 const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
 const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
@@ -84,6 +86,10 @@ const AI_CHAT_MAX_HISTORY_ITEMS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEMS ?
 const AI_WEB_SEARCH_MAX_QUERY_CHARS = Number(process.env.AI_WEB_SEARCH_MAX_QUERY_CHARS ?? 240);
 const LOGIN_EMAIL_MAX_CHARS = Number(process.env.LOGIN_EMAIL_MAX_CHARS ?? 254);
 const LOGIN_PASSWORD_MAX_CHARS = Number(process.env.LOGIN_PASSWORD_MAX_CHARS ?? 256);
+const SUBSCRIBE_NAME_MAX_CHARS = Number(process.env.SUBSCRIBE_NAME_MAX_CHARS ?? 120);
+const SUBSCRIBE_EMAIL_MAX_CHARS = Number(process.env.SUBSCRIBE_EMAIL_MAX_CHARS ?? 254);
+const SUBSCRIBE_PHONE_MAX_CHARS = Number(process.env.SUBSCRIBE_PHONE_MAX_CHARS ?? 32);
+const EMAIL_TOKEN_MAX_CHARS = Number(process.env.EMAIL_TOKEN_MAX_CHARS ?? 256);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
@@ -638,6 +644,13 @@ const bootstrap = async () => {
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+  const emailLinkActionIpLimiter = createIpRateLimiter("email_link_action", {
+    windowMs:
+      Number.isFinite(EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS) && EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS > 0
+        ? EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(EMAIL_LINK_ACTION_IP_RATE_MAX) && EMAIL_LINK_ACTION_IP_RATE_MAX > 0 ? EMAIL_LINK_ACTION_IP_RATE_MAX : 40
   });
   const mediaUploadIpLimiter = createIpRateLimiter("media_upload", {
     windowMs:
@@ -3265,6 +3278,18 @@ const bootstrap = async () => {
       res.status(400).json({ error: "email must be valid." });
       return;
     }
+    if (name.length > SUBSCRIBE_NAME_MAX_CHARS) {
+      res.status(400).json({ error: `name is too long (max ${SUBSCRIBE_NAME_MAX_CHARS} chars).` });
+      return;
+    }
+    if (email.length > SUBSCRIBE_EMAIL_MAX_CHARS) {
+      res.status(400).json({ error: `email is too long (max ${SUBSCRIBE_EMAIL_MAX_CHARS} chars).` });
+      return;
+    }
+    if (phone.length > SUBSCRIBE_PHONE_MAX_CHARS) {
+      res.status(400).json({ error: `phone is too long (max ${SUBSCRIBE_PHONE_MAX_CHARS} chars).` });
+      return;
+    }
 
     try {
       const senderProfile = await emailStore.getSenderProfile();
@@ -3474,7 +3499,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.get("/api/email/confirm", async (req, res) => {
+  app.get("/api/email/confirm", emailLinkActionIpLimiter, async (req, res) => {
     const redirectToConfirm = (status: "success" | "error", reason?: "invalid" | "failed") => {
       const query = new URLSearchParams({ status });
       if (reason) query.set("reason", reason);
@@ -3482,7 +3507,7 @@ const bootstrap = async () => {
     };
 
     const token = typeof req.query?.token === "string" ? req.query.token : "";
-    if (!token.trim()) {
+    if (!token.trim() || token.length > EMAIL_TOKEN_MAX_CHARS) {
       res.redirect(303, redirectToConfirm("error", "invalid"));
       return;
     }
@@ -3503,7 +3528,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.get("/api/email/unsubscribe", async (req, res) => {
+  app.get("/api/email/unsubscribe", emailLinkActionIpLimiter, async (req, res) => {
     const redirectToUnsubscribe = (status: "success" | "error", reason?: "invalid" | "failed") => {
       const query = new URLSearchParams({ status });
       if (reason) query.set("reason", reason);
@@ -3511,7 +3536,7 @@ const bootstrap = async () => {
     };
 
     const token = typeof req.query?.token === "string" ? req.query.token : "";
-    if (!token.trim()) {
+    if (!token.trim() || token.length > EMAIL_TOKEN_MAX_CHARS) {
       res.redirect(303, redirectToUnsubscribe("error", "invalid"));
       return;
     }
