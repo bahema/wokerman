@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiJson } from "../../api/client";
+import { apiForm, apiGet, apiJson } from "../../api/client";
 
 type AiContextResponse = {
   snapshotAt: string;
@@ -177,6 +177,14 @@ type AiSettingsResponse = {
     apiKeyMask: string;
     updatedAt: string;
   };
+};
+
+type MediaUploadResponse = {
+  items: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
 };
 
 const truncateTitle = (value: string, max = 52) => {
@@ -401,6 +409,9 @@ const AiControlCenterEditor = () => {
   const [webQuery, setWebQuery] = useState("");
   const [webBusy, setWebBusy] = useState(false);
   const [webResults, setWebResults] = useState<SourceItem[]>([]);
+  const [chatImageUrl, setChatImageUrl] = useState("");
+  const [chatImageName, setChatImageName] = useState("");
+  const [chatImageBusy, setChatImageBusy] = useState(false);
 
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>(() =>
@@ -413,6 +424,7 @@ const AiControlCenterEditor = () => {
     parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const [followLatest, setFollowLatest] = useState(true);
 
   const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt), [sessions]);
@@ -546,24 +558,28 @@ const AiControlCenterEditor = () => {
 
   const sendPrompt = async (prompt: string) => {
     const trimmed = prompt.trim();
-    if (!trimmed || busy) return;
+    const normalizedPrompt = trimmed || (chatImageUrl ? "Analyze this uploaded image and generate ad copy." : "");
+    if (!normalizedPrompt || busy) return;
     const sessionId = ensureActiveSession();
 
     setBusy(true);
     setError("");
     setMessage("");
 
-    const userItem = createUserMessage(sessionId, trimmed, "sending");
-    appendMessage(sessionId, userItem, trimmed);
+    const userItem = createUserMessage(sessionId, normalizedPrompt, "sending");
+    appendMessage(sessionId, userItem, normalizedPrompt);
     replaceMessage(sessionId, userItem.id, { status: "complete" });
     const placeholder = createAssistantMessage(sessionId, "Thinking...", "streaming");
     appendMessage(sessionId, placeholder);
 
     try {
-      const enrichedMessage = shouldUseAnalysisContext(trimmed) ? buildAnalysisPrompt(trimmed, context) : trimmed;
+      const enrichedMessage = shouldUseAnalysisContext(normalizedPrompt)
+        ? buildAnalysisPrompt(normalizedPrompt, context)
+        : normalizedPrompt;
       const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", {
         message: enrichedMessage,
-        rawMessage: trimmed
+        rawMessage: normalizedPrompt,
+        imageUrl: chatImageUrl || undefined
       });
       if (response.mode === "super") {
         setAiMode("super");
@@ -615,6 +631,28 @@ const AiControlCenterEditor = () => {
       setError(err instanceof Error ? err.message : "Failed to save AI mode.");
     } finally {
       setSettingsBusy(false);
+    }
+  };
+
+  const uploadChatImage = async (file: File) => {
+    setChatImageBusy(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+      const response = await apiForm<MediaUploadResponse>("/api/media", formData);
+      const first = response.items?.[0];
+      if (!first?.url) {
+        throw new Error("Upload succeeded but no media URL returned.");
+      }
+      setChatImageUrl(first.url);
+      setChatImageName(first.name || file.name);
+      setToast("Image attached");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setChatImageBusy(false);
+      if (chatImageInputRef.current) chatImageInputRef.current.value = "";
     }
   };
 
@@ -1187,6 +1225,21 @@ const AiControlCenterEditor = () => {
           <footer className="sticky bottom-0 shrink-0 border-t border-slate-800/90 bg-slate-950/90 px-4 py-4 backdrop-blur md:px-6">
             <div className="mx-auto w-full max-w-3xl">
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3">
+              {chatImageUrl ? (
+                <div className="mb-2 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200">
+                  <span className="truncate pr-2">Attached image: {chatImageName || chatImageUrl}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChatImageUrl("");
+                      setChatImageName("");
+                    }}
+                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : null}
               <textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
@@ -1195,6 +1248,25 @@ const AiControlCenterEditor = () => {
                 className="w-full resize-none border-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-400 outline-none"
               />
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  ref={chatImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    void uploadChatImage(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={chatImageBusy}
+                  onClick={() => chatImageInputRef.current?.click()}
+                  className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
+                >
+                  {chatImageBusy ? "Uploading..." : "Upload Image"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setToolPanel((prev) => (prev === "web" ? "none" : "web"))}

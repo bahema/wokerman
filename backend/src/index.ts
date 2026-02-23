@@ -1206,6 +1206,7 @@ const bootstrap = async () => {
 
   const callSuperModeChat = async (input: {
     message: string;
+    imageUrl?: string;
     context: {
       siteUpdatedAt: string;
       totalProducts: number;
@@ -1234,15 +1235,34 @@ const bootstrap = async () => {
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: [
-              `User request: ${input.message}`,
-              "Current snapshot:",
-              `- Site updated at: ${input.context.siteUpdatedAt}`,
-              `- Total products: ${input.context.totalProducts}`,
-              `- Subscribers: ${input.context.subscribers}`,
-              `- Analytics events: ${input.context.analyticsEvents}`,
-              `- Has draft: ${String(input.context.hasDraft)}`
-            ].join("\n")
+            content: input.imageUrl
+              ? [
+                  {
+                    type: "text",
+                    text: [
+                      `User request: ${input.message}`,
+                      "Current snapshot:",
+                      `- Site updated at: ${input.context.siteUpdatedAt}`,
+                      `- Total products: ${input.context.totalProducts}`,
+                      `- Subscribers: ${input.context.subscribers}`,
+                      `- Analytics events: ${input.context.analyticsEvents}`,
+                      `- Has draft: ${String(input.context.hasDraft)}`
+                    ].join("\n")
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: input.imageUrl }
+                  }
+                ]
+              : [
+                  `User request: ${input.message}`,
+                  "Current snapshot:",
+                  `- Site updated at: ${input.context.siteUpdatedAt}`,
+                  `- Total products: ${input.context.totalProducts}`,
+                  `- Subscribers: ${input.context.subscribers}`,
+                  `- Analytics events: ${input.context.analyticsEvents}`,
+                  `- Has draft: ${String(input.context.hasDraft)}`
+                ].join("\n")
           }
         ]
       })
@@ -1403,6 +1423,7 @@ const bootstrap = async () => {
   app.post("/api/ai/control/chat", requireAdminAuth, requireAiCapability("ai.chat.ask"), auditAdminAction("ai_control.chat"), async (req, res) => {
     const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
     const userMessage = rawMessage || message;
     const providerMessage = message || userMessage;
     if (!userMessage) {
@@ -1429,6 +1450,7 @@ const bootstrap = async () => {
       try {
         const superReply = await callSuperModeChat({
           message: providerMessage,
+          imageUrl: imageUrl || undefined,
           context: {
             siteUpdatedAt: siteMeta.updatedAt,
             totalProducts: productTotal,
@@ -1477,6 +1499,9 @@ const bootstrap = async () => {
         /\b(client side)\b.*\b(add|edit|update)\b/i.test(lower);
       const isSearchPrompt =
         lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
+      const isImageAdRequest =
+        Boolean(imageUrl) &&
+        (/\b(ad|advert|campaign|copy|message|caption|headline|cta|analy|analyze|analyse)\b/i.test(lower) || !userMessage.trim());
       if (isGreeting) {
         answer = [
           "## Hello",
@@ -1496,6 +1521,36 @@ const bootstrap = async () => {
         ].join("\n");
         suggestions.push("Ask: what changed on my site today?");
         suggestions.push("Ask: top 5 SEO opportunities this week");
+      } else if (isImageAdRequest) {
+        const imageHint = decodeURIComponent(imageUrl.split("/").pop() ?? "uploaded-image")
+          .replace(/\.[a-z0-9]+$/i, "")
+          .replace(/[-_]+/g, " ")
+          .trim();
+        answer = [
+          "## Image-Based Ad Copy Pack",
+          `Image reference: ${imageHint || "uploaded visual asset"}`,
+          "",
+          "### Primary angle",
+          `Position this visual as a high-impact solution focused on clarity, trust, and a direct user benefit.`,
+          "",
+          "### Headlines",
+          `- Discover the smarter way with ${imageHint || "this featured product"}`,
+          "- Built for performance, designed for confidence",
+          "- Upgrade your results with one clear next step",
+          "",
+          "### Body copy",
+          `This visual supports a premium campaign message: highlight the core benefit, show social proof, and keep one clear CTA. Use concise value language and avoid unverified claims.`,
+          "",
+          "### CTA options",
+          "- Get Started",
+          "- See How It Works",
+          "- Claim Your Offer",
+          "",
+          "### Compliance line",
+          "Affiliate disclosure: we may earn a commission from qualifying purchases."
+        ].join("\n");
+        suggestions.push("Ask: generate 5 short social captions from this image");
+        suggestions.push("Ask: generate HTML ad email from this image");
       } else if (isEmailGenerationRequest) {
         const objective = userMessage.replace(/\b(generate|create|make)\b/gi, "").trim() || "promote featured products";
         const emailHtml = [
