@@ -952,6 +952,122 @@ const bootstrap = async () => {
     res.status(200).json({ published: next.published, draft: next.draft });
   });
 
+  app.get("/api/ai/control/context", requireAdminAuth, async (_req, res) => {
+    try {
+      const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
+        siteStore.getMeta(),
+        siteStore.getPublished(),
+        emailStore.getAnalyticsSummary(),
+        analyticsStore.summary(),
+        trafficAiStore.getLatestPlan()
+      ]);
+
+      const sectionCounts = {
+        forex: published.products.forex.length,
+        betting: published.products.betting.length,
+        software: published.products.software.length,
+        social: published.products.social.length,
+        healthGadgets: published.healthPage?.products.gadgets.length ?? 0,
+        healthSupplements: published.healthPage?.products.supplements.length ?? 0,
+        healthUpcoming: published.healthPage?.upcoming.items.length ?? 0
+      };
+      const totalProducts = Object.values(sectionCounts).reduce((acc, value) => acc + value, 0);
+
+      res.status(200).json({
+        snapshotAt: new Date().toISOString(),
+        site: {
+          updatedAt: siteMeta.updatedAt,
+          hasDraft: siteMeta.hasDraft,
+          industries: published.industries.length,
+          testimonials: published.testimonials.length,
+          sectionCounts,
+          totalProducts
+        },
+        email: emailSummary.totals,
+        analytics: {
+          totalEvents: analyticsSummary.totalEvents,
+          topEvents: Object.entries(analyticsSummary.byEvent)
+            .map(([eventName, count]) => ({ eventName, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+        },
+        trafficAi: latestTrafficPlan
+          ? {
+              latestPlanAt: latestTrafficPlan.createdAt,
+              opportunities: latestTrafficPlan.summary.opportunities,
+              avgScore: latestTrafficPlan.summary.avgCompositeScore
+            }
+          : null
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to build AI control context." });
+    }
+  });
+
+  app.post("/api/ai/control/chat", requireAdminAuth, async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+    try {
+      const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
+        siteStore.getMeta(),
+        siteStore.getPublished(),
+        emailStore.getAnalyticsSummary(),
+        analyticsStore.summary(),
+        trafficAiStore.getLatestPlan()
+      ]);
+      const lower = message.toLowerCase();
+      const productTotal =
+        published.products.forex.length +
+        published.products.betting.length +
+        published.products.software.length +
+        published.products.social.length +
+        (published.healthPage?.products.gadgets.length ?? 0) +
+        (published.healthPage?.products.supplements.length ?? 0);
+
+      let answer = "";
+      const suggestions: string[] = [];
+      if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
+        answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${productTotal}. Subscribers: ${emailSummary.totals.subscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${analyticsSummary.totalEvents}.`;
+        suggestions.push("Ask: show weakest section by product count");
+        suggestions.push("Ask: traffic opportunities overview");
+      } else if (lower.includes("expire") || lower.includes("expir")) {
+        const staleCampaigns = emailSummary.recentCampaigns.filter((item) => {
+          const updatedMs = Date.parse(item.updatedAt);
+          if (!Number.isFinite(updatedMs)) return false;
+          return Date.now() - updatedMs > 14 * 24 * 60 * 60 * 1000;
+        }).length;
+        answer = `No hard expiry registry exists yet. Current proxy signals: stale campaigns older than 14 days = ${staleCampaigns}.`;
+        suggestions.push("Next step: add explicit expiry fields for products and links");
+      } else if (lower.includes("traffic") || lower.includes("seo")) {
+        if (latestTrafficPlan) {
+          answer = `Latest local Traffic AI plan generated at ${latestTrafficPlan.createdAt} with ${latestTrafficPlan.summary.opportunities} opportunities (avg score ${latestTrafficPlan.summary.avgCompositeScore}).`;
+          suggestions.push("Ask: show top 3 transactional opportunities");
+        } else {
+          answer = "No traffic plan generated yet. Open Traffic AI page and click Generate Weekly Plan.";
+        }
+      } else if (lower.includes("add product") || lower.includes("send email") || lower.includes("publish")) {
+        answer =
+          "Action execution is disabled in Phase 1 (read-only). I can prepare recommended steps, but I will not write/publish/send automatically yet.";
+        suggestions.push("Ask: prepare add-product checklist");
+        suggestions.push("Ask: prepare email campaign draft plan");
+      } else {
+        answer =
+          "I can answer local system status, traffic opportunities, email/subscriber health, and compliance signals. Try asking: 'what happened on my page today?'";
+      }
+
+      res.status(200).json({
+        mode: "read-only",
+        answer,
+        suggestions
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to process AI chat request." });
+    }
+  });
+
   app.get("/api/traffic-ai/plan/latest", requireAdminAuth, async (_req, res) => {
     try {
       const latest = await trafficAiStore.getLatestPlan();

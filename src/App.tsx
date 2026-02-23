@@ -88,6 +88,12 @@ const categorySectionByPath: Record<PublicCategoryPath, "forex" | "betting" | "s
   "/social": "social"
 };
 
+const isLocalDevBypassEnabled = () => {
+  const host = window.location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") return false;
+  return new URLSearchParams(window.location.search).get("devBypass") === "1";
+};
+
 function App() {
   const { t, ogLocale } = useI18n();
   const [path, setPath] = useState(toAppPath(window.location.pathname));
@@ -121,6 +127,13 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     if (normalizedPath !== "/login" && normalizedPath !== "/admin") return;
+    if (isLocalDevBypassEnabled()) {
+      if (normalizedPath === "/login") {
+        window.history.replaceState({}, "", toBrowserPath("/admin?devBypass=1"));
+        setPath(toAppPath(window.location.pathname));
+      }
+      return;
+    }
     setCheckingAuth(true);
     void (async () => {
       const ok = await hasAdminAccess();

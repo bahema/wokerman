@@ -3,6 +3,7 @@ import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
+import AiControlCenterEditor from "../components/admin/AiControlCenterEditor";
 import AnalyticsEditor from "../components/admin/AnalyticsEditor";
 import AdsectionManEditor from "../components/admin/AdsectionManEditor";
 import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
@@ -41,6 +42,7 @@ import { withBasePath } from "../utils/basePath";
 const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/pre-deploy-checklist": "pre-deploy-checklist",
   "/boss/system-health": "system-health",
+  "/boss/ai-control": "ai-control",
   "/boss/traffic-ai": "traffic-ai",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
@@ -55,6 +57,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
 const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "pre-deploy-checklist": "/boss/pre-deploy-checklist",
   "system-health": "/boss/system-health",
+  "ai-control": "/boss/ai-control",
   "traffic-ai": "/boss/traffic-ai",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
@@ -260,6 +263,15 @@ const Admin = () => {
         return (
           <EditorShell title="System Health" description="Run quick local checks to ensure frontend and backend are ready.">
             <SystemHealthEditor />
+          </EditorShell>
+        );
+      case "ai-control":
+        return (
+          <EditorShell
+            title="AI Control Center"
+            description="Global read-only assistant for site status, email health, traffic context, and safe suggestions."
+          >
+            <AiControlCenterEditor />
           </EditorShell>
         );
       case "traffic-ai":
