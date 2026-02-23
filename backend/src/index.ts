@@ -1701,7 +1701,7 @@ const bootstrap = async () => {
         [...historyMessages]
           .reverse()
           .find((item) => item.role === "user" && item.content.toLowerCase() !== normalizedUserMessage.toLowerCase())?.content ?? "";
-      const followsPreviousContext = /\b(that|those|it|same|previous|above|earlier|q1|follow up)\b/i.test(lower);
+      const followsPreviousContext = /\b(that|those|it|same|previous|above|earlier|q1|follow up|step\s*\d+|now make|expand)\b/i.test(lower);
       if (understanding.isVague && !isGreeting && !followsPreviousContext) {
         const followUpQuestion =
           understanding.clarifyingQuestion ??
@@ -1749,6 +1749,11 @@ const bootstrap = async () => {
         return "GENERAL_QA";
       };
       const intent = classifyIntent(effectiveUserMessage);
+      const followUpStepMatch = effectiveUserMessage.match(/\bstep\s*(\d+)\b/i);
+      const followUpStep = followUpStepMatch ? Number.parseInt(followUpStepMatch[1] ?? "", 10) : Number.NaN;
+      const isDetailedFollowUpRequest =
+        followsPreviousContext &&
+        /\b(more detail|more detailed|expand|break down|elaborate|deepen)\b/i.test(effectiveUserMessage);
       const adminRole = ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer").toString();
       const roleCapabilities = listCapabilitiesForRole(
         (adminRole as "viewer" | "editor" | "publisher" | "owner") === "viewer" ||
@@ -1923,14 +1928,37 @@ const bootstrap = async () => {
           routedSuggestions.push("Value proposition draft", "Persona-fit messaging", "Feature-to-benefit rewrite");
           break;
         default:
-          routedAnswer = [
-            ...ownerRules,
-            "",
-            "### Direct Answer",
-            "- I can provide a concise, actionable plan based on your current context.",
-            "- If you want deeper output, specify section + platform + target outcome."
-          ].join("\n");
-          routedSuggestions.push("Summarize next actions", "Focus on one section", "Ask for checklist output");
+          if (isDetailedFollowUpRequest) {
+            const stepLabel = Number.isFinite(followUpStep) ? `Step ${followUpStep}` : "the requested step";
+            routedAnswer = [
+              ...ownerRules,
+              "",
+              "### Follow-up Expansion",
+              `- Expanding ${stepLabel} for ${sessionContext.category} on ${sessionContext.platform}.`,
+              "- Objective: turn this step into a measurable execution block this week.",
+              "",
+              "#### Execution Breakdown",
+              "1. Define one target metric and baseline (for example CTR, CVR, or sign-up rate).",
+              "2. Build 2 focused variants (headline/CTA/layout) and keep one variable per variant.",
+              "3. Run a short test window and collect enough signal before deciding a winner.",
+              "4. Roll out winner and document learnings for the next iteration.",
+              "",
+              "#### Owner Checklist",
+              "- Assign owner + deadline for each task.",
+              "- Add pass/fail threshold before launch.",
+              "- Schedule a quick review after initial results."
+            ].join("\n");
+            routedSuggestions.push("Turn this into a 7-day task list", "Add KPI targets per task", "Draft implementation brief for editor");
+          } else {
+            routedAnswer = [
+              ...ownerRules,
+              "",
+              "### Direct Answer",
+              "- I can provide a concise, actionable plan based on your current context.",
+              "- If you want deeper output, specify section + platform + target outcome."
+            ].join("\n");
+            routedSuggestions.push("Summarize next actions", "Focus on one section", "Ask for checklist output");
+          }
           break;
       }
 
