@@ -22,6 +22,8 @@ const resolveApiBaseUrls = () => {
 
 const API_BASE_URLS = resolveApiBaseUrls();
 let activeApiBaseUrl = API_BASE_URLS[0] ?? "";
+const API_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS ?? 15_000);
+const API_NETWORK_RETRY_COUNT = Number(import.meta.env.VITE_API_NETWORK_RETRY_COUNT ?? 1);
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
 const CSRF_STORAGE_KEY = "autohub_admin_csrf_header_token";
 const AUTH_TOKEN_STORAGE_KEY = "autohub_admin_auth_token";
@@ -88,6 +90,38 @@ const parseError = async (response: Response) => {
   }
 };
 
+const isAbortError = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  "name" in error &&
+  typeof (error as { name?: unknown }).name === "string" &&
+  (error as { name: string }).name === "AbortError";
+
+const fetchWithTimeout = async (url: string, init: RequestInit) => {
+  const controller = new AbortController();
+  const timeoutMs = Number.isFinite(API_REQUEST_TIMEOUT_MS) && API_REQUEST_TIMEOUT_MS > 0 ? API_REQUEST_TIMEOUT_MS : 15_000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = init.signal;
+  const abortFromExternal = () => controller.abort();
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+    }
+  }
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+    if (externalSignal) {
+      externalSignal.removeEventListener("abort", abortFromExternal);
+    }
+  }
+};
+
 export const apiGet = async <T>(path: string): Promise<T> => {
   const response = await fetchWithFallback(path, { credentials: "include" });
   if (!response.ok) throw new Error(await parseError(response));
@@ -127,39 +161,44 @@ const fetchWithFallback = async (path: string, init: RequestInit) => {
     if (tried.has(base)) continue;
     tried.add(base);
     const url = `${base}${normalizedPath}`;
-    try {
-      const headers = new Headers(init.headers ?? {});
-      if (authTokenCache && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${authTokenCache}`);
-      }
-      const response = await fetch(url, { ...init, headers });
-      cacheCsrfToken(response.headers.get("x-csrf-token") ?? "");
-      const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-      if (response.ok) {
-        // Static hosts may return index.html (200 text/html) for unknown /api/* paths.
-        // Treat non-JSON API responses as wrong-origin hits and fall back to next base URL.
-        if (normalizedPath.startsWith("/api/") && !contentType.includes("application/json")) {
-          lastResponse = response;
-          continue;
+    const retries = Number.isFinite(API_NETWORK_RETRY_COUNT) && API_NETWORK_RETRY_COUNT >= 0 ? Math.floor(API_NETWORK_RETRY_COUNT) : 1;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const headers = new Headers(init.headers ?? {});
+        if (authTokenCache && !headers.has("Authorization")) {
+          headers.set("Authorization", `Bearer ${authTokenCache}`);
         }
+        const response = await fetchWithTimeout(url, { ...init, headers });
+        cacheCsrfToken(response.headers.get("x-csrf-token") ?? "");
+        const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+        if (response.ok) {
+          // Static hosts may return index.html (200 text/html) for unknown /api/* paths.
+          // Treat non-JSON API responses as wrong-origin hits and fall back to next base URL.
+          if (normalizedPath.startsWith("/api/") && !contentType.includes("application/json")) {
+            lastResponse = response;
+            break;
+          }
+          activeApiBaseUrl = base;
+          return response;
+        }
+
+        // If frontend origin is wrong for API (common on static hosts), try next base.
+        if (normalizedPath.startsWith("/api/") && (response.status === 404 || response.status === 405 || response.status === 501)) {
+          lastResponse = response;
+          break;
+        }
+
+        if (response.status === 401) {
+          clearAuthToken();
+        }
+
         activeApiBaseUrl = base;
         return response;
+      } catch (error) {
+        const retriable = isAbortError(error) || error instanceof TypeError;
+        if (retriable && attempt < retries) continue;
+        lastError = error;
       }
-
-      // If frontend origin is wrong for API (common on static hosts), try next base.
-      if (normalizedPath.startsWith("/api/") && (response.status === 404 || response.status === 405 || response.status === 501)) {
-        lastResponse = response;
-        continue;
-      }
-
-      if (response.status === 401) {
-        clearAuthToken();
-      }
-
-      activeApiBaseUrl = base;
-      return response;
-    } catch (error) {
-      lastError = error;
     }
   }
 
