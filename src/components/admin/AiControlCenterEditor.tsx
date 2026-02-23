@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { apiForm, apiGet, apiJson } from "../../api/client";
+import { apiGet, apiJson } from "../../api/client";
+import { getMediaLibrary, type MediaItem } from "../../utils/mediaLibrary";
 
 type AiContextResponse = {
   snapshotAt: string;
@@ -103,6 +104,8 @@ type ChatMessage = {
   sessionId: string;
   role: "user" | "assistant";
   content: string;
+  imageUrl?: string;
+  imageName?: string;
   createdAt: number;
   status: MessageStatus;
   suggestions?: string[];
@@ -177,14 +180,6 @@ type AiSettingsResponse = {
     apiKeyMask: string;
     updatedAt: string;
   };
-};
-
-type MediaUploadResponse = {
-  items: Array<{
-    id: string;
-    name: string;
-    url: string;
-  }>;
 };
 
 const truncateTitle = (value: string, max = 52) => {
@@ -411,7 +406,11 @@ const AiControlCenterEditor = () => {
   const [webResults, setWebResults] = useState<SourceItem[]>([]);
   const [chatImageUrl, setChatImageUrl] = useState("");
   const [chatImageName, setChatImageName] = useState("");
-  const [chatImageBusy, setChatImageBusy] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [imageSearch, setImageSearch] = useState("");
+  const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState("");
 
   const [context, setContext] = useState<AiContextResponse | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>(() =>
@@ -424,7 +423,6 @@ const AiControlCenterEditor = () => {
     parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const [followLatest, setFollowLatest] = useState(true);
 
   const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt), [sessions]);
@@ -433,6 +431,10 @@ const AiControlCenterEditor = () => {
     if (!activeSessionId) return [];
     return messagesBySession[activeSessionId] ?? [];
   }, [activeSessionId, messagesBySession]);
+  const filteredMedia = useMemo(
+    () => mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase())),
+    [imageSearch, mediaLibrary]
+  );
 
   const latestTitle = useMemo(() => {
     if (!activeSessionId) return "AI Assistant Control";
@@ -556,6 +558,26 @@ const AiControlCenterEditor = () => {
     setFollowLatest(true);
   }, [activeSessionId]);
 
+  useEffect(() => {
+    if (!imagePickerOpen) return;
+    let cancelled = false;
+    void (async () => {
+      setMediaLoading(true);
+      setMediaError("");
+      try {
+        const media = await getMediaLibrary();
+        if (!cancelled) setMediaLibrary(media);
+      } catch (err) {
+        if (!cancelled) setMediaError(err instanceof Error ? err.message : "Unable to load uploaded images.");
+      } finally {
+        if (!cancelled) setMediaLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [imagePickerOpen]);
+
   const sendPrompt = async (prompt: string) => {
     const trimmed = prompt.trim();
     const normalizedPrompt = trimmed || (chatImageUrl ? "Analyze this uploaded image and generate ad copy." : "");
@@ -567,6 +589,10 @@ const AiControlCenterEditor = () => {
     setMessage("");
 
     const userItem = createUserMessage(sessionId, normalizedPrompt, "sending");
+    if (chatImageUrl) {
+      userItem.imageUrl = chatImageUrl;
+      userItem.imageName = chatImageName;
+    }
     appendMessage(sessionId, userItem, normalizedPrompt);
     replaceMessage(sessionId, userItem.id, { status: "complete" });
     const placeholder = createAssistantMessage(sessionId, "Thinking...", "streaming");
@@ -590,6 +616,8 @@ const AiControlCenterEditor = () => {
         suggestions: response.suggestions,
         sources: response.sources ?? []
       });
+      setChatImageUrl("");
+      setChatImageName("");
       await loadContext();
     } catch (err) {
       replaceMessage(sessionId, placeholder.id, {
@@ -631,28 +659,6 @@ const AiControlCenterEditor = () => {
       setError(err instanceof Error ? err.message : "Failed to save AI mode.");
     } finally {
       setSettingsBusy(false);
-    }
-  };
-
-  const uploadChatImage = async (file: File) => {
-    setChatImageBusy(true);
-    setError("");
-    try {
-      const formData = new FormData();
-      formData.append("files", file);
-      const response = await apiForm<MediaUploadResponse>("/api/media", formData);
-      const first = response.items?.[0];
-      if (!first?.url) {
-        throw new Error("Upload succeeded but no media URL returned.");
-      }
-      setChatImageUrl(first.url);
-      setChatImageName(first.name || file.name);
-      setToast("Image attached");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Image upload failed.");
-    } finally {
-      setChatImageBusy(false);
-      if (chatImageInputRef.current) chatImageInputRef.current.value = "";
     }
   };
 
@@ -989,8 +995,8 @@ const AiControlCenterEditor = () => {
   };
 
   return (
-    <section className="h-dvh min-h-0 overflow-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[250px_1fr]">
+    <section className="h-dvh min-h-0 max-w-full overflow-x-hidden overflow-y-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
         <aside className="hidden border-r border-slate-800/90 bg-slate-900/80 p-4 lg:flex lg:flex-col">
           <button
             type="button"
@@ -1056,7 +1062,7 @@ const AiControlCenterEditor = () => {
           </button>
         </aside>
 
-        <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
+        <div className="flex h-full min-h-0 min-w-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/90 px-4 py-4 md:px-6">
             <div>
               <h3 className="text-lg font-bold md:text-xl">AI Assistant Offers Help</h3>
@@ -1101,9 +1107,9 @@ const AiControlCenterEditor = () => {
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Role</p>
               <p className="text-sm font-semibold capitalize">{context?.role ?? "-"}</p>
             </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
+            <article className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Capabilities</p>
-              <p className="text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
+              <p className="break-words text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
             </article>
           </div>
 
@@ -1157,7 +1163,17 @@ const AiControlCenterEditor = () => {
                             </button>
                           </div>
                         </div>
-                        {item.role === "assistant" ? renderMarkdownMessage(item.content) : <p className="whitespace-pre-wrap text-sm leading-6">{item.content}</p>}
+                        {item.imageUrl ? (
+                          <div className="mb-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/80">
+                            <img src={item.imageUrl} alt={item.imageName || "Attached upload"} className="h-auto max-h-72 w-full object-contain" />
+                            {item.imageName ? <p className="truncate border-t border-slate-700 px-3 py-1.5 text-[11px] text-slate-300">{item.imageName}</p> : null}
+                          </div>
+                        ) : null}
+                        {item.role === "assistant" ? (
+                          <div className="break-words">{renderMarkdownMessage(item.content)}</div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
+                        )}
                         {item.status === "streaming" ? <p className="mt-2 text-xs text-slate-400">Generating...</p> : null}
                         {item.suggestions && item.suggestions.length > 0 ? (
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -1183,8 +1199,8 @@ const AiControlCenterEditor = () => {
                                 rel="noopener noreferrer nofollow"
                                 className="rounded-xl border border-slate-800 bg-slate-950 p-3 hover:bg-slate-800/80"
                               >
-                                <p className="text-sm font-semibold text-blue-300">{source.title}</p>
-                                <p className="mt-1 line-clamp-2 text-xs text-slate-300">{source.snippet}</p>
+                                <p className="break-words text-sm font-semibold text-blue-300">{source.title}</p>
+                                <p className="mt-1 line-clamp-2 break-words text-xs text-slate-300">{source.snippet}</p>
                                 <p className="mt-1 text-[11px] text-slate-500">{source.source}</p>
                               </a>
                             ))}
@@ -1226,18 +1242,21 @@ const AiControlCenterEditor = () => {
             <div className="mx-auto w-full max-w-3xl">
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 shadow-[0_8px_24px_rgba(2,6,23,0.35)]">
               {chatImageUrl ? (
-                <div className="mb-2 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200">
-                  <span className="truncate pr-2">Attached image: {chatImageName || chatImageUrl}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setChatImageUrl("");
-                      setChatImageName("");
-                    }}
-                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
-                  >
-                    Remove
-                  </button>
+                <div className="mb-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70 text-xs text-slate-200">
+                  <img src={chatImageUrl} alt={chatImageName || "Selected upload"} className="h-auto max-h-52 w-full object-contain" />
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-700 px-3 py-2">
+                    <span className="truncate pr-2">{chatImageName || "Attached upload image"}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatImageUrl("");
+                        setChatImageName("");
+                      }}
+                      className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ) : null}
               <textarea
@@ -1248,25 +1267,16 @@ const AiControlCenterEditor = () => {
                 className="w-full resize-none border-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-400 outline-none"
               />
               <div className="mt-2 space-y-2">
-                <input
-                  ref={chatImageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    void uploadChatImage(file);
-                  }}
-                />
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
-                    disabled={chatImageBusy}
-                    onClick={() => chatImageInputRef.current?.click()}
+                    onClick={() => {
+                      setImageSearch("");
+                      setImagePickerOpen(true);
+                    }}
                     className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
                   >
-                    {chatImageBusy ? "Uploading..." : "Upload Image"}
+                    Grab Image
                   </button>
                   <button
                     type="submit"
@@ -1532,6 +1542,59 @@ const AiControlCenterEditor = () => {
           </footer>
         </div>
       </div>
+      {imagePickerOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4" role="presentation" onClick={() => setImagePickerOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select uploaded image for AI chat"
+            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-base font-semibold text-slate-100">Product Media Library</h4>
+              <button type="button" onClick={() => setImagePickerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
+                Close
+              </button>
+            </div>
+            <input
+              value={imageSearch}
+              onChange={(event) => setImageSearch(event.target.value)}
+              placeholder="Search uploaded image..."
+              className="mb-3 h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100"
+            />
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-700 p-2">
+              {mediaLoading ? (
+                <p className="p-2 text-sm text-slate-400">Loading uploaded images...</p>
+              ) : mediaError ? (
+                <p className="rounded-lg border border-rose-800 bg-rose-950/40 p-2 text-sm text-rose-200">{mediaError}</p>
+              ) : filteredMedia.length === 0 ? (
+                <p className="p-2 text-sm text-slate-400">No uploaded images found.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  {filteredMedia.map((media) => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() => {
+                        setChatImageUrl(media.dataUrl);
+                        setChatImageName(media.name);
+                        setImagePickerOpen(false);
+                        setToast("Image attached");
+                      }}
+                      className="overflow-hidden rounded-xl border border-slate-700 text-left transition hover:border-blue-500"
+                    >
+                      <img src={media.dataUrl} alt={media.name} className="h-24 w-full object-cover" />
+                      <p className="truncate px-2 py-1 text-xs text-slate-200">{media.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {settingsOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
           <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
