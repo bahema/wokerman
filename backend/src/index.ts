@@ -97,6 +97,11 @@ const SUBSCRIBE_PHONE_MAX_CHARS = Number(process.env.SUBSCRIBE_PHONE_MAX_CHARS ?
 const EMAIL_TOKEN_MAX_CHARS = Number(process.env.EMAIL_TOKEN_MAX_CHARS ?? 256);
 const ANALYTICS_EVENT_NAME_MAX_CHARS = Number(process.env.ANALYTICS_EVENT_NAME_MAX_CHARS ?? 80);
 const ANALYTICS_PAYLOAD_MAX_CHARS = Number(process.env.ANALYTICS_PAYLOAD_MAX_CHARS ?? 8_000);
+const CAMPAIGN_NAME_MAX_CHARS = Number(process.env.CAMPAIGN_NAME_MAX_CHARS ?? 120);
+const CAMPAIGN_SUBJECT_MAX_CHARS = Number(process.env.CAMPAIGN_SUBJECT_MAX_CHARS ?? 180);
+const CAMPAIGN_PREVIEW_MAX_CHARS = Number(process.env.CAMPAIGN_PREVIEW_MAX_CHARS ?? 240);
+const CAMPAIGN_BODY_MAX_CHARS = Number(process.env.CAMPAIGN_BODY_MAX_CHARS ?? 120_000);
+const CAMPAIGN_LIST_ITEM_MAX = Number(process.env.CAMPAIGN_LIST_ITEM_MAX ?? 50);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
@@ -813,8 +818,12 @@ const bootstrap = async () => {
       payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.segments || payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.all
         ? payload.audienceMode
         : EMAIL_CAMPAIGN_AUDIENCE_MODE.all;
-    const segments = Array.isArray(payload.segments) ? payload.segments.map((item) => String(item).trim()).filter(Boolean) : [];
-    const exclusions = Array.isArray(payload.exclusions) ? payload.exclusions.map((item) => String(item).trim()).filter(Boolean) : [];
+    const segments = Array.isArray(payload.segments)
+      ? payload.segments.map((item) => String(item).trim()).filter(Boolean).slice(0, CAMPAIGN_LIST_ITEM_MAX)
+      : [];
+    const exclusions = Array.isArray(payload.exclusions)
+      ? payload.exclusions.map((item) => String(item).trim()).filter(Boolean).slice(0, CAMPAIGN_LIST_ITEM_MAX)
+      : [];
     const sendMode =
       payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.schedule || payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.now
         ? payload.sendMode
@@ -863,6 +872,21 @@ const bootstrap = async () => {
     const normalized = value.trim().toLowerCase();
     if (["en", "fr", "es", "de", "ar", "pt"].includes(normalized)) return normalized;
     return "en";
+  };
+  const validateCampaignInputLimits = (input: {
+    name: string;
+    subject: string;
+    previewText: string;
+    bodyRich: string;
+    bodyHtml: string;
+  }) => {
+    if (input.name.length > CAMPAIGN_NAME_MAX_CHARS) return `name is too long (max ${CAMPAIGN_NAME_MAX_CHARS} chars).`;
+    if (input.subject.length > CAMPAIGN_SUBJECT_MAX_CHARS) return `subject is too long (max ${CAMPAIGN_SUBJECT_MAX_CHARS} chars).`;
+    if (input.previewText.length > CAMPAIGN_PREVIEW_MAX_CHARS) return `previewText is too long (max ${CAMPAIGN_PREVIEW_MAX_CHARS} chars).`;
+    if (input.bodyRich.length > CAMPAIGN_BODY_MAX_CHARS || input.bodyHtml.length > CAMPAIGN_BODY_MAX_CHARS) {
+      return `email body is too large (max ${CAMPAIGN_BODY_MAX_CHARS} chars per format).`;
+    }
+    return "";
   };
   const languageLabel = (value: string) => {
     const map: Record<string, string> = { en: "English", fr: "French", es: "Spanish", de: "German", ar: "Arabic", pt: "Portuguese" };
@@ -3859,6 +3883,11 @@ const bootstrap = async () => {
     auditAdminAction("email.save_campaign_draft"),
     async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
@@ -3904,6 +3933,17 @@ const bootstrap = async () => {
         : EMAIL_CAMPAIGN_BODY_MODE.rich;
     const bodyRich = typeof req.body?.bodyRich === "string" ? req.body.bodyRich : "";
     const bodyHtml = typeof req.body?.bodyHtml === "string" ? req.body.bodyHtml : "";
+    const sizeError = validateCampaignInputLimits({
+      name: "smtp-test",
+      subject,
+      previewText: "",
+      bodyRich,
+      bodyHtml
+    });
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: "Valid email is required." });
@@ -3942,6 +3982,11 @@ const bootstrap = async () => {
     auditAdminAction("email.schedule_campaign"),
     async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
@@ -3994,6 +4039,11 @@ const bootstrap = async () => {
     auditAdminAction("email.send_campaign"),
     async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
