@@ -371,6 +371,7 @@ const AiControlCenterEditor = () => {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [toolPanel, setToolPanel] = useState<ToolPanel>("none");
+  const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -747,6 +748,7 @@ const AiControlCenterEditor = () => {
         }
       );
       setToolPanel("none");
+      setToolDrawerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Web search failed.");
     } finally {
@@ -802,6 +804,7 @@ const AiControlCenterEditor = () => {
       setActionImageUrl("");
       setConfirmText("");
       setToolPanel("none");
+      setToolDrawerOpen(false);
       appendMessage(
         sessionId,
         createAssistantMessage(
@@ -839,6 +842,7 @@ const AiControlCenterEditor = () => {
     setPreparedAction(null);
     setExecuteIssues([]);
     setToolPanel("none");
+    setToolDrawerOpen(false);
     setWebResults([]);
   };
 
@@ -871,6 +875,7 @@ const AiControlCenterEditor = () => {
       );
       await loadContext();
       setToolPanel("none");
+      setToolDrawerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Email generation failed.");
     } finally {
@@ -902,6 +907,7 @@ const AiControlCenterEditor = () => {
       );
       setDocsQuestion("");
       setToolPanel("none");
+      setToolDrawerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate export.");
     } finally {
@@ -1055,6 +1061,16 @@ const AiControlCenterEditor = () => {
           </div>
           <button
             type="button"
+            onClick={() => {
+              if (toolPanel === "none") setToolPanel("web");
+              setToolDrawerOpen(true);
+            }}
+            className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Open Tools
+          </button>
+          <button
+            type="button"
             onClick={() => setSettingsOpen(true)}
             className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
           >
@@ -1164,9 +1180,9 @@ const AiControlCenterEditor = () => {
                           </div>
                         </div>
                         {item.imageUrl ? (
-                          <div className="mb-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/80">
-                            <img src={item.imageUrl} alt={item.imageName || "Attached upload"} className="h-auto max-h-72 w-full object-contain" />
-                            {item.imageName ? <p className="truncate border-t border-slate-700 px-3 py-1.5 text-[11px] text-slate-300">{item.imageName}</p> : null}
+                          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/80 px-2 py-2">
+                            <img src={item.imageUrl} alt={item.imageName || "Attached upload"} className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                            {item.imageName ? <p className="truncate text-[11px] text-slate-300">{item.imageName}</p> : null}
                           </div>
                         ) : null}
                         {item.role === "assistant" ? (
@@ -1242,21 +1258,21 @@ const AiControlCenterEditor = () => {
             <div className="mx-auto w-full max-w-3xl">
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 shadow-[0_8px_24px_rgba(2,6,23,0.35)]">
               {chatImageUrl ? (
-                <div className="mb-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70 text-xs text-slate-200">
-                  <img src={chatImageUrl} alt={chatImageName || "Selected upload"} className="h-auto max-h-52 w-full object-contain" />
-                  <div className="flex items-center justify-between gap-2 border-t border-slate-700 px-3 py-2">
+                <div className="mb-2 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-2 py-2 text-xs text-slate-200">
+                  <img src={chatImageUrl} alt={chatImageName || "Selected upload"} className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
                     <span className="truncate pr-2">{chatImageName || "Attached upload image"}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setChatImageUrl("");
-                        setChatImageName("");
-                      }}
-                      className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
-                    >
-                      Remove
-                    </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChatImageUrl("");
+                      setChatImageName("");
+                    }}
+                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
+                  >
+                    Remove
+                  </button>
                 </div>
               ) : null}
               <textarea
@@ -1279,6 +1295,16 @@ const AiControlCenterEditor = () => {
                     Grab Image
                   </button>
                   <button
+                    type="button"
+                    onClick={() => {
+                      if (toolPanel === "none") setToolPanel("web");
+                      setToolDrawerOpen(true);
+                    }}
+                    className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    Open Tools
+                  </button>
+                  <button
                     type="submit"
                     disabled={busy}
                     className="shrink-0 rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -1286,43 +1312,113 @@ const AiControlCenterEditor = () => {
                     {busy ? "Thinking..." : "Send"}
                   </button>
                 </div>
-                <div className="overflow-x-auto pb-1">
-                  <div className="flex w-max items-center gap-2 pr-2">
-                    <button
-                      type="button"
-                      onClick={() => setToolPanel((prev) => (prev === "web" ? "none" : "web"))}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "web" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
-                    >
-                      Sources Tool
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setToolPanel((prev) => (prev === "action" ? "none" : "action"))}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "action" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
-                    >
-                      Ads/Product Tool
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setToolPanel((prev) => (prev === "email" ? "none" : "email"))}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "email" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "border-slate-700 text-slate-200"}`}
-                    >
-                      Email Tool
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setToolPanel((prev) => (prev === "docs" ? "none" : "docs"))}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "docs" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
-                    >
-                      Docs Tool
-                    </button>
-                  </div>
-                </div>
               </div>
             </form>
+            </div>
+          </footer>
+        </div>
+      </div>
+      {imagePickerOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4" role="presentation" onClick={() => setImagePickerOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select uploaded image for AI chat"
+            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-base font-semibold text-slate-100">Product Media Library</h4>
+              <button type="button" onClick={() => setImagePickerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
+                Close
+              </button>
+            </div>
+            <input
+              value={imageSearch}
+              onChange={(event) => setImageSearch(event.target.value)}
+              placeholder="Search uploaded image..."
+              className="mb-3 h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100"
+            />
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-700 p-2">
+              {mediaLoading ? (
+                <p className="p-2 text-sm text-slate-400">Loading uploaded images...</p>
+              ) : mediaError ? (
+                <p className="rounded-lg border border-rose-800 bg-rose-950/40 p-2 text-sm text-rose-200">{mediaError}</p>
+              ) : filteredMedia.length === 0 ? (
+                <p className="p-2 text-sm text-slate-400">No uploaded images found.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  {filteredMedia.map((media) => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() => {
+                        setChatImageUrl(media.dataUrl);
+                        setChatImageName(media.name);
+                        setImagePickerOpen(false);
+                        setToast("Image attached");
+                      }}
+                      className="overflow-hidden rounded-xl border border-slate-700 text-left transition hover:border-blue-500"
+                    >
+                      <img src={media.dataUrl} alt={media.name} className="h-24 w-full object-cover" />
+                      <p className="truncate px-2 py-1 text-xs text-slate-200">{media.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toolDrawerOpen ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/75 p-4" role="presentation" onClick={() => setToolDrawerOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI tools"
+            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h4 className="text-base font-semibold text-slate-100">AI Tools</h4>
+              <button type="button" onClick={() => setToolDrawerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
+                Close
+              </button>
+            </div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setToolPanel("web")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "web" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Sources Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("action")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "action" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Ads/Product Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("email")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "email" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Email Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("docs")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "docs" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Docs Tool
+              </button>
+            </div>
 
             {toolPanel === "web" ? (
-              <form onSubmit={runWebSearch} className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+              <form onSubmit={runWebSearch} className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
                 <label className="text-xs uppercase tracking-wide text-slate-400">Web Search Query</label>
                 <input
                   value={webQuery}
@@ -1344,7 +1440,7 @@ const AiControlCenterEditor = () => {
             ) : null}
 
             {toolPanel === "action" ? (
-              <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
                 <form onSubmit={prepareAction} className="space-y-2">
                   <label className="text-xs uppercase tracking-wide text-slate-400">Prepare Product/Ad Draft</label>
                   <textarea
@@ -1423,7 +1519,7 @@ const AiControlCenterEditor = () => {
             ) : null}
 
             {toolPanel === "email" ? (
-              <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
                 <form onSubmit={generateAiEmail} className="space-y-2">
                   <label className="text-xs uppercase tracking-wide text-slate-400">Generate HTML Campaign</label>
                   <textarea
@@ -1492,7 +1588,7 @@ const AiControlCenterEditor = () => {
             ) : null}
 
             {toolPanel === "docs" ? (
-              <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
                 <form onSubmit={generateExport} className="space-y-2">
                   <label className="text-xs uppercase tracking-wide text-slate-400">Generate PDF/DOC/Excel From Question</label>
                   <textarea
@@ -1538,59 +1634,6 @@ const AiControlCenterEditor = () => {
                 ) : null}
               </div>
             ) : null}
-            </div>
-          </footer>
-        </div>
-      </div>
-      {imagePickerOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4" role="presentation" onClick={() => setImagePickerOpen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Select uploaded image for AI chat"
-            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-base font-semibold text-slate-100">Product Media Library</h4>
-              <button type="button" onClick={() => setImagePickerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
-                Close
-              </button>
-            </div>
-            <input
-              value={imageSearch}
-              onChange={(event) => setImageSearch(event.target.value)}
-              placeholder="Search uploaded image..."
-              className="mb-3 h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100"
-            />
-            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-700 p-2">
-              {mediaLoading ? (
-                <p className="p-2 text-sm text-slate-400">Loading uploaded images...</p>
-              ) : mediaError ? (
-                <p className="rounded-lg border border-rose-800 bg-rose-950/40 p-2 text-sm text-rose-200">{mediaError}</p>
-              ) : filteredMedia.length === 0 ? (
-                <p className="p-2 text-sm text-slate-400">No uploaded images found.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                  {filteredMedia.map((media) => (
-                    <button
-                      key={media.id}
-                      type="button"
-                      onClick={() => {
-                        setChatImageUrl(media.dataUrl);
-                        setChatImageName(media.name);
-                        setImagePickerOpen(false);
-                        setToast("Image attached");
-                      }}
-                      className="overflow-hidden rounded-xl border border-slate-700 text-left transition hover:border-blue-500"
-                    >
-                      <img src={media.dataUrl} alt={media.name} className="h-24 w-full object-cover" />
-                      <p className="truncate px-2 py-1 text-xs text-slate-200">{media.name}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       ) : null}
