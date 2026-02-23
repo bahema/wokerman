@@ -430,6 +430,26 @@ const bootstrap = async () => {
     }
     next();
   });
+  app.use((req, res, next) => {
+    const path = req.path;
+    const isSensitiveApiPath =
+      path.startsWith("/api/auth/") ||
+      path.startsWith("/api/ai/control/") ||
+      path === "/api/site/draft" ||
+      path === "/api/site/publish" ||
+      path === "/api/site/reset" ||
+      path.startsWith("/api/media") ||
+      path.startsWith("/api/email/subscribers") ||
+      path.startsWith("/api/email/campaigns") ||
+      path.startsWith("/api/email/settings/") ||
+      path.startsWith("/api/email/templates/");
+    if (isSensitiveApiPath) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+    }
+    next();
+  });
   app.use(express.json({ limit: "2mb" }));
   app.use(
     "/uploads",
