@@ -1461,9 +1461,32 @@ const bootstrap = async () => {
       let answer = "";
       const suggestions: string[] = [];
       let sources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
+      const isGreeting =
+        /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(lower) ||
+        /\bhow are you\b/i.test(lower) ||
+        /\bwho are you\b/i.test(lower);
       const isSearchPrompt =
         lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
-      if (isSearchPrompt) {
+      if (isGreeting) {
+        answer = [
+          "## Hello",
+          "I am your admin AI copilot for this website.",
+          "",
+          "I can help you with:",
+          "- Full site status review (products, subscribers, analytics, drafts)",
+          "- SEO and traffic opportunities with prioritized actions",
+          "- Compliance checks for affiliate/product copy",
+          "- Content action preparation before publishing",
+          "",
+          "If you want, ask me one of these now:",
+          "1. What changed on my site today?",
+          "2. Give me top 5 SEO opportunities this week",
+          "3. Check compliance risks on health products",
+          "4. Build a step-by-step growth action plan"
+        ].join("\n");
+        suggestions.push("Ask: what changed on my site today?");
+        suggestions.push("Ask: top 5 SEO opportunities this week");
+      } else if (isSearchPrompt) {
         const query = message
           .replace(/search online/gi, "")
           .replace(/find online/gi, "")

@@ -228,6 +228,14 @@ Current snapshot:
 `;
 };
 
+const shouldUseAnalysisContext = (message: string) => {
+  const lower = message.trim().toLowerCase();
+  if (!lower) return false;
+  if (lower === "hi" || lower === "hello" || lower === "hey") return false;
+  if (lower.startsWith("how are you") || lower.startsWith("who are you")) return false;
+  return /(status|summary|traffic|seo|analytics|report|analy|audit|opportunit|search|compare|plan)/i.test(lower);
+};
+
 const improveSearchQuery = (query: string) => {
   const base = query.trim();
   if (!base) return "";
@@ -543,7 +551,7 @@ const AiControlCenterEditor = () => {
     appendMessage(sessionId, placeholder);
 
     try {
-      const enrichedMessage = buildAnalysisPrompt(trimmed, context);
+      const enrichedMessage = shouldUseAnalysisContext(trimmed) ? buildAnalysisPrompt(trimmed, context) : trimmed;
       const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", { message: enrichedMessage });
       if (response.mode === "super") {
         setAiMode("super");
@@ -931,8 +939,8 @@ const AiControlCenterEditor = () => {
   };
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
-      <div className="grid min-h-[80vh] grid-cols-1 lg:grid-cols-[250px_1fr]">
+    <section className="h-[82vh] overflow-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[250px_1fr]">
         <aside className="hidden border-r border-slate-800/90 bg-slate-900/80 p-4 lg:flex lg:flex-col">
           <button
             type="button"
@@ -998,7 +1006,7 @@ const AiControlCenterEditor = () => {
           </button>
         </aside>
 
-        <div className="flex min-h-[80vh] flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
+        <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/90 px-4 py-3 md:px-6">
             <div>
               <h3 className="text-lg font-bold md:text-xl">AI Assistant Offers Help</h3>
@@ -1056,7 +1064,7 @@ const AiControlCenterEditor = () => {
           ) : null}
           {toast ? <div className="px-4 pt-3 text-xs text-emerald-300 md:px-6">{toast}</div> : null}
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
               {activeSessionId ? (
                 activeMessages.length > 0 ? (
