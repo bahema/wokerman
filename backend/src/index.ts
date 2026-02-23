@@ -1424,6 +1424,15 @@ const bootstrap = async () => {
     const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+    const normalizedApiBase = normalizePublicBaseUrl(API_PUBLIC_BASE_URL);
+    const isUploadsImageUrl =
+      !imageUrl ||
+      imageUrl.startsWith("/uploads/") ||
+      (normalizedApiBase && imageUrl.startsWith(`${normalizedApiBase}/uploads/`));
+    if (!isUploadsImageUrl) {
+      res.status(400).json({ error: "For AI image analysis, image must come from uploads path only." });
+      return;
+    }
     const userMessage = rawMessage || message;
     const providerMessage = message || userMessage;
     if (!userMessage) {

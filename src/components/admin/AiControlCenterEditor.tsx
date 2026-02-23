@@ -1002,7 +1002,7 @@ const AiControlCenterEditor = () => {
           <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Current Session</p>
           <div className="rounded-xl bg-blue-950/50 px-3 py-2 text-sm text-blue-200">{latestTitle}</div>
           <p className="mb-2 mt-5 text-xs uppercase tracking-wide text-slate-400">Quick Commands</p>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {QUICK_PROMPTS.map((prompt) => (
               <button
                 key={prompt}
@@ -1015,14 +1015,14 @@ const AiControlCenterEditor = () => {
             ))}
           </div>
           <p className="mb-2 mt-5 text-xs uppercase tracking-wide text-slate-400">Asked Sessions</p>
-          <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+          <div className="mt-1 flex-1 space-y-2.5 overflow-y-auto pr-1">
             {sortedSessions.length === 0 ? (
               <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400">
                 No asked sessions yet.
               </p>
             ) : (
               sortedSessions.map((item) => (
-                <div key={item.id} className="rounded-xl border border-slate-700 bg-slate-900/70 px-2 py-2">
+                <div key={item.id} className="rounded-xl border border-slate-700 bg-slate-900/70 px-2.5 py-2.5">
                   <button
                     type="button"
                     onClick={() => setActiveSessionId(item.id)}
@@ -1057,7 +1057,7 @@ const AiControlCenterEditor = () => {
         </aside>
 
         <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/90 px-4 py-3 md:px-6">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/90 px-4 py-4 md:px-6">
             <div>
               <h3 className="text-lg font-bold md:text-xl">AI Assistant Offers Help</h3>
               <p className="text-xs text-slate-400">
@@ -1076,32 +1076,32 @@ const AiControlCenterEditor = () => {
             </button>
           </header>
 
-          <div className="grid grid-cols-2 gap-2 border-b border-slate-800/90 px-4 py-3 sm:grid-cols-4 md:px-6">
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+          <div className="grid grid-cols-2 gap-3 border-b border-slate-800/90 px-4 py-3 sm:grid-cols-4 md:px-6">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Products</p>
               <p className="text-sm font-semibold">{context?.site.totalProducts ?? "-"}</p>
             </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Subscribers</p>
               <p className="text-sm font-semibold">{context?.email.subscribers ?? "-"}</p>
             </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Events</p>
               <p className="text-sm font-semibold">{context?.analytics.totalEvents ?? "-"}</p>
             </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Snapshot</p>
               <p className="text-sm font-semibold">
                 {context ? new Date(context.snapshotAt).toLocaleTimeString() : loading ? "Loading..." : "-"}
               </p>
             </article>
           </div>
-          <div className="grid grid-cols-1 gap-2 border-b border-slate-800/90 px-4 py-2 sm:grid-cols-3 md:px-6">
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+          <div className="grid grid-cols-1 gap-3 border-b border-slate-800/90 px-4 py-2.5 sm:grid-cols-3 md:px-6">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Role</p>
               <p className="text-sm font-semibold capitalize">{context?.role ?? "-"}</p>
             </article>
-            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 sm:col-span-2">
+            <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">Capabilities</p>
               <p className="text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
             </article>
@@ -1123,13 +1123,13 @@ const AiControlCenterEditor = () => {
               }}
               className="min-h-0 h-full overflow-y-auto overscroll-contain"
             >
-            <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-28">
+            <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-5 pb-28">
               {activeSessionId ? (
                 activeMessages.length > 0 ? (
                   activeMessages.map((item) => (
                     <article key={item.id} className={`flex ${item.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div
-                        className={`w-full max-w-[85%] rounded-2xl border px-4 py-3 md:max-w-[75%] ${
+                        className={`w-full max-w-[85%] rounded-2xl border px-4 py-3.5 md:max-w-[75%] ${
                           item.role === "user"
                             ? "border-slate-700 bg-slate-800 text-slate-100"
                             : item.status === "error"
@@ -1224,7 +1224,7 @@ const AiControlCenterEditor = () => {
 
           <footer className="sticky bottom-0 shrink-0 border-t border-slate-800/90 bg-slate-950/90 px-4 py-4 backdrop-blur md:px-6">
             <div className="mx-auto w-full max-w-3xl">
-            <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3">
+            <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 shadow-[0_8px_24px_rgba(2,6,23,0.35)]">
               {chatImageUrl ? (
                 <div className="mb-2 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200">
                   <span className="truncate pr-2">Attached image: {chatImageName || chatImageUrl}</span>
@@ -1259,7 +1259,7 @@ const AiControlCenterEditor = () => {
                     void uploadChatImage(file);
                   }}
                 />
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
                     disabled={chatImageBusy}
