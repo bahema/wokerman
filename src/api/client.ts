@@ -27,8 +27,12 @@ const CSRF_STORAGE_KEY = "autohub_admin_csrf_header_token";
 const AUTH_TOKEN_STORAGE_KEY = "autohub_admin_auth_token";
 let csrfTokenCache =
   typeof window !== "undefined" ? window.sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "" : "";
-let authTokenCache =
-  typeof window !== "undefined" ? window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? "" : "";
+let authTokenCache = "";
+if (typeof window !== "undefined") {
+  // Security hardening: keep bearer fallback token in memory only.
+  // This removes token persistence across refreshes and reduces exposure in storage.
+  window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
 
 const getCookieValue = (name: string) => {
   if (typeof document === "undefined") return "";
@@ -66,13 +70,6 @@ const cacheCsrfToken = (token: string) => {
 export const setAuthToken = (token: string) => {
   const normalized = token.trim();
   authTokenCache = normalized;
-  if (typeof window !== "undefined") {
-    if (normalized) {
-      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, normalized);
-    } else {
-      window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    }
-  }
 };
 
 export const clearAuthToken = () => {
