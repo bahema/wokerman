@@ -68,6 +68,8 @@ const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_W
 const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
 const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
 const MEDIA_UPLOAD_MAX_FILES = Number(process.env.MEDIA_UPLOAD_MAX_FILES ?? 20);
+const ADMIN_MUTATION_IP_RATE_WINDOW_MS = Number(process.env.ADMIN_MUTATION_IP_RATE_WINDOW_MS ?? 60_000);
+const ADMIN_MUTATION_IP_RATE_MAX = Number(process.env.ADMIN_MUTATION_IP_RATE_MAX ?? 60);
 const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
 const AI_CHAT_IP_RATE_MAX = Number(process.env.AI_CHAT_IP_RATE_MAX ?? 40);
 const AI_WEB_SEARCH_IP_RATE_WINDOW_MS = Number(process.env.AI_WEB_SEARCH_IP_RATE_WINDOW_MS ?? 60_000);
@@ -643,6 +645,13 @@ const bootstrap = async () => {
         ? MEDIA_UPLOAD_IP_RATE_WINDOW_MS
         : 60_000,
     max: Number.isFinite(MEDIA_UPLOAD_IP_RATE_MAX) && MEDIA_UPLOAD_IP_RATE_MAX > 0 ? MEDIA_UPLOAD_IP_RATE_MAX : 20
+  });
+  const adminMutationIpLimiter = createIpRateLimiter("admin_mutation", {
+    windowMs:
+      Number.isFinite(ADMIN_MUTATION_IP_RATE_WINDOW_MS) && ADMIN_MUTATION_IP_RATE_WINDOW_MS > 0
+        ? ADMIN_MUTATION_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(ADMIN_MUTATION_IP_RATE_MAX) && ADMIN_MUTATION_IP_RATE_MAX > 0 ? ADMIN_MUTATION_IP_RATE_MAX : 60
   });
   const aiChatIpLimiter = createIpRateLimiter("ai_chat", {
     windowMs: Number.isFinite(AI_CHAT_IP_RATE_WINDOW_MS) && AI_CHAT_IP_RATE_WINDOW_MS > 0 ? AI_CHAT_IP_RATE_WINDOW_MS : 60_000,
@@ -1241,7 +1250,13 @@ const bootstrap = async () => {
     res.status(200).json(meta);
   });
 
-  app.put("/api/site/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.save_draft"), async (req, res) => {
+  app.put(
+    "/api/site/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.save_draft"),
+    async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     if (!payload || typeof payload !== "object") {
       res.status(400).json({ error: "content payload is required." });
@@ -1253,9 +1268,16 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid content payload." });
     }
-  });
+    }
+  );
 
-  app.post("/api/site/publish", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.publish"), async (req, res) => {
+  app.post(
+    "/api/site/publish",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.publish"),
+    async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     try {
       const content = await siteStore.publish(payload);
@@ -1263,12 +1285,20 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid content payload." });
     }
-  });
+    }
+  );
 
-  app.post("/api/site/reset", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.reset"), async (_req, res) => {
+  app.post(
+    "/api/site/reset",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.reset"),
+    async (_req, res) => {
     const next = await siteStore.reset();
     res.status(200).json({ published: next.published, draft: next.draft });
-  });
+    }
+  );
 
   const normalizeForCompare = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
   const hasHealthRiskClaims = (value: string) => /(cure|guaranteed|100%|no risk|instant results|instant)/i.test(value);
@@ -2696,7 +2726,9 @@ const bootstrap = async () => {
   app.post(
     "/api/ai/control/prepare-action",
     requireAdminAuth,
+    adminMutationIpLimiter,
     requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
     auditAdminAction("ai_control.prepare_action"),
     async (req, res) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
@@ -2799,6 +2831,7 @@ const bootstrap = async () => {
   app.post(
     "/api/ai/control/execute-action",
     requireAdminAuth,
+    adminMutationIpLimiter,
     requireAiCapability("ai.action.execute"),
     requireCsrfForCookieAuth,
     auditAdminAction("ai_control.execute_add_product"),
@@ -3671,7 +3704,13 @@ const bootstrap = async () => {
     }
   });
 
-  app.post("/api/email/campaigns/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.save_campaign_draft"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.save_campaign_draft"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -3700,9 +3739,16 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save draft campaign." });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/test", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_test"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/test",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.send_test"),
+    async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
     const bodyMode =
@@ -3738,9 +3784,16 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to queue test email." });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/schedule", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.schedule_campaign"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/schedule",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.schedule_campaign"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -3783,9 +3836,16 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to schedule campaign." });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/send", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_campaign"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/send",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.send_campaign"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
@@ -4008,7 +4068,8 @@ const bootstrap = async () => {
   app.get("/api/analytics/summary", requireAdminAuth, async (_req, res) => {
     const summary = await analyticsStore.summary();
     res.status(200).json(summary);
-  });
+    }
+  );
 
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (error instanceof multer.MulterError) {
