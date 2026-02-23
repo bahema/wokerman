@@ -208,6 +208,9 @@ const createUserMessage = (sessionId: string, content: string, status: MessageSt
   status
 });
 
+const isNearBottom = (el: HTMLElement, threshold = 120) =>
+  el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+
 const buildAnalysisPrompt = (message: string, context: AiContextResponse | null) => {
   const trimmed = message.trim();
   if (!context) return `${trimmed}\n\nRespond with markdown headings, bullets, and concrete next steps.`;
@@ -410,6 +413,7 @@ const AiControlCenterEditor = () => {
     parseJson<Record<string, ChatMessage[]>>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null, {})
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [followLatest, setFollowLatest] = useState(true);
 
   const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt), [sessions]);
 
@@ -532,8 +536,13 @@ const AiControlCenterEditor = () => {
 
   useEffect(() => {
     if (!scrollRef.current) return;
+    if (!followLatest) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [activeMessages, activeSessionId]);
+  }, [activeMessages, activeSessionId, followLatest]);
+
+  useEffect(() => {
+    setFollowLatest(true);
+  }, [activeSessionId]);
 
   const sendPrompt = async (prompt: string) => {
     const trimmed = prompt.trim();
@@ -939,7 +948,7 @@ const AiControlCenterEditor = () => {
   };
 
   return (
-    <section className="h-[82vh] overflow-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
+    <section className="h-dvh min-h-0 overflow-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
       <div className="grid h-full grid-cols-1 lg:grid-cols-[250px_1fr]">
         <aside className="hidden border-r border-slate-800/90 bg-slate-900/80 p-4 lg:flex lg:flex-col">
           <button
@@ -1064,8 +1073,16 @@ const AiControlCenterEditor = () => {
           ) : null}
           {toast ? <div className="px-4 pt-3 text-xs text-emerald-300 md:px-6">{toast}</div> : null}
 
-          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={scrollRef}
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                setFollowLatest(isNearBottom(element));
+              }}
+              className="min-h-0 h-full overflow-y-auto overscroll-contain"
+            >
+            <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-28">
               {activeSessionId ? (
                 activeMessages.length > 0 ? (
                   activeMessages.map((item) => (
@@ -1146,9 +1163,25 @@ const AiControlCenterEditor = () => {
                 </div>
               )}
             </div>
+            </div>
+            {!followLatest ? (
+              <div className="pointer-events-none absolute bottom-4 right-4 z-10 md:right-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!scrollRef.current) return;
+                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                    setFollowLatest(true);
+                  }}
+                  className="pointer-events-auto rounded-full border border-slate-600 bg-slate-900/95 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg hover:bg-slate-800"
+                >
+                  Jump to latest
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          <footer className="border-t border-slate-800/90 bg-slate-950/95 px-4 py-4 md:px-6">
+          <footer className="sticky bottom-0 shrink-0 border-t border-slate-800/90 bg-slate-950/90 px-4 py-4 backdrop-blur md:px-6">
             <div className="mx-auto w-full max-w-3xl">
             <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3">
               <textarea
