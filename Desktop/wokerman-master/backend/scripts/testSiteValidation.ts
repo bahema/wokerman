@@ -1,0 +1,332 @@
+/* eslint-disable no-console */
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes, scryptSync } from "node:crypto";
+
+const HOST = "127.0.0.1";
+const PORT = 4120;
+const BASE = `http://${HOST}:${PORT}`;
+const OWNER_EMAIL = "site-validation-test@example.com";
+const OWNER_PASSWORD = "BossPass123!";
+const CSRF_COOKIE_NAME = "autohub_admin_csrf";
+const AUTH_PASSWORD_PEPPER = (process.env.AUTH_PASSWORD_PEPPER ?? "").trim();
+
+type JsonRecord = Record<string, unknown>;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const hashOwnerPassword = (password: string) => {
+  const salt = randomBytes(16).toString("hex");
+  const input = AUTH_PASSWORD_PEPPER ? `${password}:${AUTH_PASSWORD_PEPPER}` : password;
+  const passwordHash = scryptSync(input, salt, 64, {
+    N: 32768,
+    r: 8,
+    p: 1,
+    maxmem: 96 * 1024 * 1024
+  }).toString("hex");
+  return { passwordHash, passwordSalt: salt };
+};
+
+const seedOwnerAuthState = async (mediaDir: string) => {
+  const authDir = path.join(mediaDir, "auth");
+  await mkdir(authDir, { recursive: true });
+  const { passwordHash, passwordSalt } = hashOwnerPassword(OWNER_PASSWORD);
+  const nowIso = new Date().toISOString();
+  const state = {
+    owner: {
+      email: OWNER_EMAIL.toLowerCase(),
+      fullName: "Site Validation Owner",
+      role: "Owner",
+      timezone: "UTC",
+      passwordHash,
+      passwordSalt,
+      createdAt: nowIso
+    },
+    sessions: [],
+    trustedDevices: [],
+    attemptState: {},
+    updatedAt: nowIso
+  };
+  await writeFile(path.join(authDir, "state.json"), JSON.stringify(state, null, 2), "utf-8");
+};
+
+const assertCondition = (condition: unknown, message: string) => {
+  if (!condition) throw new Error(message);
+};
+
+const readJson = async (response: Response) => {
+  const text = await response.text();
+  if (!text) return {} as JsonRecord;
+  try {
+    return JSON.parse(text) as JsonRecord;
+  } catch {
+    throw new Error(`Expected JSON response but got: ${text.slice(0, 200)}`);
+  }
+};
+
+class CookieSessionClient {
+  private readonly cookies = new Map<string, string>();
+
+  private readSetCookieHeaders(response: Response) {
+    const withGetSetCookie = response.headers as Headers & { getSetCookie?: () => string[] };
+    if (typeof withGetSetCookie.getSetCookie === "function") return withGetSetCookie.getSetCookie();
+    const single = response.headers.get("set-cookie");
+    return single ? [single] : [];
+  }
+
+  private storeResponseCookies(response: Response) {
+    const headers = this.readSetCookieHeaders(response);
+    for (const header of headers) {
+      const firstPart = header.split(";")[0]?.trim();
+      if (!firstPart) continue;
+      const eqIndex = firstPart.indexOf("=");
+      if (eqIndex <= 0) continue;
+      const name = firstPart.slice(0, eqIndex).trim();
+      const value = firstPart.slice(eqIndex + 1);
+      if (!name) continue;
+      this.cookies.set(name, value);
+    }
+  }
+
+  private cookieHeader() {
+    if (this.cookies.size === 0) return "";
+    return Array.from(this.cookies.entries())
+      .map(([key, value]) => `${key}=${value}`)
+      .join("; ");
+  }
+
+  csrfToken() {
+    return this.cookies.get(CSRF_COOKIE_NAME) ?? "";
+  }
+
+  async request(
+    pathName: string,
+    options?: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: unknown;
+      includeCsrf?: boolean;
+      expectedStatus?: number;
+    }
+  ) {
+    const method = options?.method ?? "GET";
+    const headers: Record<string, string> = {};
+    const cookie = this.cookieHeader();
+    if (cookie) headers.Cookie = cookie;
+    if (options?.includeCsrf) {
+      const csrf = this.csrfToken();
+      if (csrf) headers["x-csrf-token"] = csrf;
+    }
+    let body: string | undefined;
+    if (options?.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(options.body);
+    }
+    const response = await fetch(`${BASE}${pathName}`, { method, headers, body });
+    this.storeResponseCookies(response);
+    const payload = await readJson(response);
+
+    if (options?.expectedStatus !== undefined) {
+      if (response.status !== options.expectedStatus) {
+        throw new Error(`${method} ${pathName} expected ${options.expectedStatus}, got ${response.status}: ${JSON.stringify(payload)}`);
+      }
+    } else if (!response.ok) {
+      throw new Error(`${method} ${pathName} failed (${response.status}): ${JSON.stringify(payload)}`);
+    }
+
+    return payload;
+  }
+}
+
+const waitForHealth = async () => {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await fetch(`${BASE}/api/health`);
+      if (response.ok) return;
+    } catch {
+      // wait and retry
+    }
+    await delay(250);
+  }
+  throw new Error("Backend did not become healthy in time.");
+};
+
+const startBackend = async (mediaDir: string): Promise<ChildProcess> => {
+  const child = spawn(process.execPath, ["dist/backend/src/index.js"], {
+    cwd: path.resolve(process.cwd()),
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      PORT: String(PORT),
+      CORS_ORIGIN: "http://localhost:5173",
+      MEDIA_DIR: mediaDir,
+      API_PUBLIC_BASE_URL: BASE
+    }
+  });
+
+  child.stdout?.on("data", (chunk) => process.stdout.write(String(chunk)));
+  child.stderr?.on("data", (chunk) => process.stderr.write(String(chunk)));
+
+  await waitForHealth();
+  return child;
+};
+
+const stopBackend = async (child: ChildProcess) => {
+  if (child.killed) return;
+  child.kill("SIGTERM");
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      if (!child.killed) child.kill("SIGKILL");
+      resolve();
+    }, 2000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+};
+
+const run = async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "autohub-site-validation-test-"));
+  const mediaDir = path.join(tempDir, "storage");
+  let child: ChildProcess | null = null;
+
+  try {
+    await seedOwnerAuthState(mediaDir);
+    child = await startBackend(mediaDir);
+    const client = new CookieSessionClient();
+
+    const authStatus = await client.request("/api/auth/status");
+    assertCondition(authStatus.hasOwner === true, "Expected owner account to exist before validation.");
+
+    const loginStart = await client.request("/api/auth/login/start", {
+      method: "POST",
+      body: { email: OWNER_EMAIL, password: OWNER_PASSWORD }
+    });
+    if (loginStart.requiresOtp === true) {
+      const devOtp = typeof loginStart.devOtp === "string" ? loginStart.devOtp : "";
+      assertCondition(devOtp.length > 0, "Expected dev OTP for login verification.");
+      await client.request("/api/auth/login/verify", {
+        method: "POST",
+        body: { email: OWNER_EMAIL, otp: devOtp }
+      });
+    }
+    const session = await client.request("/api/auth/session");
+    assertCondition(session.valid === true, "Expected cookie session after login.");
+
+    const published = await client.request("/api/site/published");
+    const publishedContent = published.content as JsonRecord | undefined;
+    assertCondition(Boolean(publishedContent), "Expected published content payload.");
+
+    const invalidAdsectionDraft = structuredClone(publishedContent ?? {});
+    if (
+      typeof invalidAdsectionDraft === "object" &&
+      invalidAdsectionDraft &&
+      "homeUi" in invalidAdsectionDraft &&
+      typeof invalidAdsectionDraft.homeUi === "object" &&
+      invalidAdsectionDraft.homeUi &&
+      "adsectionMan" in (invalidAdsectionDraft.homeUi as JsonRecord)
+    ) {
+      const homeUi = invalidAdsectionDraft.homeUi as JsonRecord;
+      const adsectionMan = homeUi.adsectionMan as JsonRecord;
+      const gadgets = adsectionMan.gadgets as JsonRecord;
+      gadgets.buttonTarget = "";
+    }
+
+    const invalidAdsectionResponse = await client.request("/api/site/draft", {
+      method: "PUT",
+      includeCsrf: true,
+      body: { content: invalidAdsectionDraft },
+      expectedStatus: 400
+    });
+    const adsectionError = String(invalidAdsectionResponse.error ?? "");
+    assertCondition(
+      adsectionError.includes("homeUi.adsectionMan.gadgets.buttonTarget"),
+      "Expected backend draft validation error for adsectionMan.gadgets.buttonTarget."
+    );
+
+    const invalidDraft = structuredClone(publishedContent ?? {});
+    if (typeof invalidDraft === "object" && invalidDraft && "socials" in invalidDraft) {
+      const socials = invalidDraft.socials as JsonRecord;
+      socials.facebookUrl = "invalid-url";
+    }
+
+    const invalidDraftResponse = await client.request("/api/site/draft", {
+      method: "PUT",
+      includeCsrf: true,
+      body: { content: invalidDraft },
+      expectedStatus: 400
+    });
+    const draftError = String(invalidDraftResponse.error ?? "");
+    assertCondition(draftError.includes("socials.facebookUrl"), "Expected backend draft validation error for invalid social URL.");
+
+    const invalidEventThemeDraft = structuredClone(publishedContent ?? {});
+    if (typeof invalidEventThemeDraft === "object" && invalidEventThemeDraft && "branding" in invalidEventThemeDraft) {
+      const branding = invalidEventThemeDraft.branding as JsonRecord;
+      branding.eventTheme = "halloween";
+    }
+    const invalidEventThemeResponse = await client.request("/api/site/draft", {
+      method: "PUT",
+      includeCsrf: true,
+      body: { content: invalidEventThemeDraft },
+      expectedStatus: 400
+    });
+    const eventThemeError = String(invalidEventThemeResponse.error ?? "");
+    assertCondition(eventThemeError.includes("branding.eventTheme"), "Expected backend draft validation error for invalid event theme.");
+
+    const validDraftResponse = await client.request("/api/site/draft", {
+      method: "PUT",
+      includeCsrf: true,
+      body: { content: publishedContent }
+    });
+    assertCondition(Boolean(validDraftResponse.content), "Expected valid draft save success.");
+
+    const invalidPublishPayload = structuredClone(publishedContent ?? {});
+    if (typeof invalidPublishPayload === "object" && invalidPublishPayload && "products" in invalidPublishPayload) {
+      const products = invalidPublishPayload.products as JsonRecord;
+      if (Array.isArray(products.forex) && products.forex[0] && typeof products.forex[0] === "object") {
+        (products.forex[0] as JsonRecord).title = "";
+      } else if (Array.isArray(products.forex)) {
+        products.forex.push({
+          id: "invalid-1",
+          title: "",
+          shortDescription: "x",
+          longDescription: "x",
+          features: ["x"],
+          rating: 4.5,
+          isNew: false,
+          category: "Forex",
+          checkoutLink: "https://example.com"
+        });
+      }
+    }
+
+    const invalidPublishResponse = await client.request("/api/site/publish", {
+      method: "POST",
+      includeCsrf: true,
+      body: { content: invalidPublishPayload },
+      expectedStatus: 400
+    });
+    const publishError = String(invalidPublishResponse.error ?? "");
+    assertCondition(publishError.toLowerCase().includes("title"), "Expected backend publish validation error for invalid product title.");
+
+    const validPublishResponse = await client.request("/api/site/publish", {
+      method: "POST",
+      includeCsrf: true,
+      body: { content: publishedContent }
+    });
+    assertCondition(Boolean(validPublishResponse.content), "Expected valid publish success.");
+
+    console.log("Site validation tests passed.");
+  } finally {
+    if (child) await stopBackend(child);
+    await rm(tempDir, { recursive: true, force: true });
+  }
+};
+
+void run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
