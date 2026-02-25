@@ -10,6 +10,7 @@ import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
+import { createAiControlStore } from "./ai/store.js";
 import { createEmailStore } from "./email/store.js";
 import { createCookieConsentStore } from "./cookies/store.js";
 import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail, verifySmtpConnection } from "./email/confirmationSender.js";
@@ -58,6 +59,9 @@ const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
 const RATE_LIMIT_BUCKET_LIMIT = Number(process.env.RATE_LIMIT_BUCKET_LIMIT ?? 10_000);
 const TRUSTED_DEVICE_TTL_MS = Number(process.env.TRUSTED_DEVICE_TTL_MS ?? 30 * 24 * 60 * 60 * 1000);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
+const AI_CHAT_MAX_MESSAGE_CHARS = Number(process.env.AI_CHAT_MAX_MESSAGE_CHARS ?? 8_000);
+const AI_CHAT_TIMEOUT_MS = Number(process.env.AI_CHAT_TIMEOUT_MS ?? 45_000);
+const AI_ACTION_MAX_PROMPT_CHARS = Number(process.env.AI_ACTION_MAX_PROMPT_CHARS ?? 6_000);
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
   if (!raw) return false;
@@ -230,6 +234,7 @@ const bootstrap = async () => {
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
+  const aiControlStore = await createAiControlStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
   const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
@@ -614,6 +619,194 @@ const bootstrap = async () => {
   };
 
   const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
+
+  const parseSuperBaseUrl = (value: string) => {
+    const normalized = normalizePublicBaseUrl(value);
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("baseUrl must use http or https.");
+    }
+    return normalized;
+  };
+
+  const parseModelCandidates = (value: string) => {
+    const candidates = value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    return Array.from(new Set(candidates));
+  };
+
+  const callProviderModel = async (input: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    message: string;
+  }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_CHAT_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${input.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${input.apiKey}`
+        },
+        body: JSON.stringify({
+          model: input.model,
+          temperature: 0.4,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an admin AI copilot for website operations, content updates, and email workflows. Respond concisely in markdown."
+            },
+            { role: "user", content: input.message }
+          ]
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`AI provider error (${response.status}): ${text.slice(0, 240)}`);
+      }
+
+      const payload = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const answer = payload.choices?.[0]?.message?.content?.trim() ?? "";
+      if (!answer) {
+        throw new Error("AI provider returned an empty response.");
+      }
+      return answer;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("AI provider timed out.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const callSuperModeChat = async (input: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    message: string;
+  }) => {
+    const models = parseModelCandidates(input.model);
+    if (!models.length) {
+      throw new Error("At least one model is required.");
+    }
+    const errors: string[] = [];
+    for (const model of models) {
+      try {
+        const answer = await callProviderModel({ ...input, model });
+        return { answer, modelUsed: model, attemptedModels: models };
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "unknown provider error";
+        errors.push(`${model}: ${text}`);
+      }
+    }
+    throw new Error(`AI provider failed for all configured models. ${errors.join(" | ").slice(0, 700)}`);
+  };
+
+  const parseJsonFromModelOutput = <T>(raw: string): T => {
+    const trimmed = raw.trim();
+    const withoutFence = trimmed.startsWith("```")
+      ? trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+      : trimmed;
+    return JSON.parse(withoutFence) as T;
+  };
+
+  type AiPreparedAction =
+    | {
+        kind: "update_hero";
+        summary: string;
+        payload: {
+          headline?: string;
+          subtext?: string;
+          ctaPrimaryLabel?: string;
+          ctaPrimaryTarget?: string;
+          ctaSecondaryLabel?: string;
+          ctaSecondaryTarget?: string;
+        };
+      }
+    | {
+        kind: "update_confirmation_template";
+        summary: string;
+        payload: {
+          mode?: "rich" | "html";
+          subject?: string;
+          previewText?: string;
+          bodyRich?: string;
+          bodyHtml?: string;
+        };
+      };
+
+  const parsePreparedAction = (value: unknown): AiPreparedAction => {
+    if (!value || typeof value !== "object") throw new Error("action object is required.");
+    const payload = value as Record<string, unknown>;
+    const kind = payload.kind;
+    const summary = typeof payload.summary === "string" ? payload.summary.trim() : "";
+    const rawActionPayload =
+      payload.payload && typeof payload.payload === "object" ? (payload.payload as Record<string, unknown>) : {};
+    if (!summary) {
+      throw new Error("action.summary is required.");
+    }
+
+    if (kind === "update_hero") {
+      const next: AiPreparedAction = {
+        kind: "update_hero",
+        summary,
+        payload: {
+          headline: typeof rawActionPayload.headline === "string" ? rawActionPayload.headline.trim() : undefined,
+          subtext: typeof rawActionPayload.subtext === "string" ? rawActionPayload.subtext.trim() : undefined,
+          ctaPrimaryLabel:
+            typeof rawActionPayload.ctaPrimaryLabel === "string" ? rawActionPayload.ctaPrimaryLabel.trim() : undefined,
+          ctaPrimaryTarget:
+            typeof rawActionPayload.ctaPrimaryTarget === "string" ? rawActionPayload.ctaPrimaryTarget.trim() : undefined,
+          ctaSecondaryLabel:
+            typeof rawActionPayload.ctaSecondaryLabel === "string" ? rawActionPayload.ctaSecondaryLabel.trim() : undefined,
+          ctaSecondaryTarget:
+            typeof rawActionPayload.ctaSecondaryTarget === "string" ? rawActionPayload.ctaSecondaryTarget.trim() : undefined
+        }
+      };
+      const hasAtLeastOneField = Object.values(next.payload).some((entry) => typeof entry === "string" && entry.trim());
+      if (!hasAtLeastOneField) {
+        throw new Error("update_hero payload must include at least one editable field.");
+      }
+      return next;
+    }
+
+    if (kind === "update_confirmation_template") {
+      const next: AiPreparedAction = {
+        kind: "update_confirmation_template",
+        summary,
+        payload: {
+          mode: rawActionPayload.mode === "html" ? "html" : rawActionPayload.mode === "rich" ? "rich" : undefined,
+          subject: typeof rawActionPayload.subject === "string" ? rawActionPayload.subject.trim() : undefined,
+          previewText: typeof rawActionPayload.previewText === "string" ? rawActionPayload.previewText : undefined,
+          bodyRich: typeof rawActionPayload.bodyRich === "string" ? rawActionPayload.bodyRich : undefined,
+          bodyHtml: typeof rawActionPayload.bodyHtml === "string" ? rawActionPayload.bodyHtml : undefined
+        }
+      };
+      const hasTextUpdate = Boolean(
+        (next.payload.subject && next.payload.subject.trim()) ||
+          (next.payload.previewText && next.payload.previewText.trim()) ||
+          (next.payload.bodyRich && next.payload.bodyRich.trim()) ||
+          (next.payload.bodyHtml && next.payload.bodyHtml.trim())
+      );
+      if (!hasTextUpdate) {
+        throw new Error("update_confirmation_template payload must include subject, previewText, bodyRich, or bodyHtml.");
+      }
+      return next;
+    }
+
+    throw new Error("Unsupported action kind.");
+  };
 
   const buildConfirmationLinks = (input: { confirmToken: string; unsubscribeToken: string }) => {
     const confirmUrl = `${API_PUBLIC_BASE_URL}/api/email/confirm?token=${encodeURIComponent(input.confirmToken)}`;
@@ -1460,6 +1653,275 @@ const bootstrap = async () => {
           return;
         }
         res.status(500).json({ error: error instanceof Error ? error.message : "SMTP verification failed." });
+      }
+    }
+  );
+
+  app.get("/api/ai/control/settings", requireAdminAuth, async (_req, res) => {
+    try {
+      const settings = await aiControlStore.getSettings();
+      res.status(200).json(settings);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI settings." });
+    }
+  });
+
+  app.put("/api/ai/control/settings/mode", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.settings_mode"), async (req, res) => {
+    const mode = req.body?.mode === "super" ? "super" : "current";
+    try {
+      await aiControlStore.setMode(mode);
+      const settings = await aiControlStore.getSettings();
+      res.status(200).json(settings);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save AI mode." });
+    }
+  });
+
+  app.put(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const provider = payload.provider === "openai_compatible" ? "openai_compatible" : "openai_compatible";
+      const baseUrlRaw = typeof payload.baseUrl === "string" ? payload.baseUrl : "";
+      const model = typeof payload.model === "string" ? payload.model.trim() : "";
+      const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
+      if (!model) {
+        res.status(400).json({ error: "model is required." });
+        return;
+      }
+      try {
+        const baseUrl = parseSuperBaseUrl(baseUrlRaw);
+        await aiControlStore.upsertSuperMode({ provider, baseUrl, model, apiKey });
+        const settings = await aiControlStore.getSettings();
+        res.status(200).json(settings);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save super mode settings." });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super_clear"),
+    async (_req, res) => {
+      try {
+        await aiControlStore.clearSuperMode();
+        const settings = await aiControlStore.getSettings();
+        res.status(200).json(settings);
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to clear super mode settings." });
+      }
+    }
+  );
+
+  app.post("/api/ai/control/health", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.health"), async (_req, res) => {
+    const startedAt = Date.now();
+    try {
+      const runtimeSettings = await aiControlStore.getRuntimeSettings();
+      if (!runtimeSettings.superMode) {
+        res.status(400).json({ ok: false, error: "Super mode is not configured." });
+        return;
+      }
+      const result = await callSuperModeChat({
+        baseUrl: runtimeSettings.superMode.baseUrl,
+        apiKey: runtimeSettings.superMode.apiKey,
+        model: runtimeSettings.superMode.model,
+        message: "Health check: reply with OK only."
+      });
+      res.status(200).json({
+        ok: true,
+        modelUsed: result.modelUsed,
+        attemptedModels: result.attemptedModels,
+        responseTimeMs: Date.now() - startedAt,
+        answer: result.answer.slice(0, 120)
+      });
+    } catch (error) {
+      res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "AI provider health check failed." });
+    }
+  });
+
+  app.post("/api/ai/control/chat", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.chat"), async (req, res) => {
+    const messageRaw = typeof req.body?.message === "string" ? req.body.message : "";
+    const message = messageRaw.trim();
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+    if (message.length > AI_CHAT_MAX_MESSAGE_CHARS) {
+      res.status(400).json({ error: `message is too long (max ${AI_CHAT_MAX_MESSAGE_CHARS} chars).` });
+      return;
+    }
+
+    try {
+      const runtimeSettings = await aiControlStore.getRuntimeSettings();
+      if (!runtimeSettings.superMode || runtimeSettings.mode !== "super") {
+        res.status(400).json({ error: "Super mode is not configured or enabled." });
+        return;
+      }
+      const [siteDraft, emailSummary, analyticsSummary] = await Promise.all([
+        siteStore.getDraft(),
+        emailStore.getAnalyticsSummary(),
+        analyticsStore.summary()
+      ]);
+      const productGroups = siteDraft?.products ?? {};
+      let productsTotal = 0;
+      for (const group of Object.values(productGroups as Record<string, unknown>)) {
+        if (Array.isArray(group)) productsTotal += group.length;
+      }
+      const contextMessage = [
+        "System context snapshot:",
+        `- Products total: ${productsTotal}`,
+        `- Email subscribers: ${emailSummary.totals.subscribers}`,
+        `- Email confirmed: ${emailSummary.totals.confirmed}`,
+        `- Email campaigns sent: ${emailSummary.totals.campaignsSent}`,
+        `- Analytics events total: ${analyticsSummary.totalEvents}`
+      ].join("\n");
+      const answer = await callSuperModeChat({
+        baseUrl: runtimeSettings.superMode.baseUrl,
+        apiKey: runtimeSettings.superMode.apiKey,
+        model: runtimeSettings.superMode.model,
+        message: `${contextMessage}\n\nUser request:\n${message}`
+      });
+      res.status(200).json({
+        ok: true,
+        mode: "super",
+        answer: answer.answer,
+        modelUsed: answer.modelUsed,
+        attemptedModels: answer.attemptedModels,
+        suggestions: [
+          "Ask it to edit email campaign copy",
+          "Ask it to generate product section updates",
+          "Ask it to propose backend route refactors"
+        ]
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "AI chat failed." });
+    }
+  });
+
+  app.post(
+    "/api/ai/control/prepare-action",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.prepare_action"),
+    async (req, res) => {
+      const promptRaw = typeof req.body?.prompt === "string" ? req.body.prompt : "";
+      const prompt = promptRaw.trim();
+      if (!prompt) {
+        res.status(400).json({ error: "prompt is required." });
+        return;
+      }
+      if (prompt.length > AI_ACTION_MAX_PROMPT_CHARS) {
+        res.status(400).json({ error: `prompt is too long (max ${AI_ACTION_MAX_PROMPT_CHARS} chars).` });
+        return;
+      }
+
+      try {
+        const runtimeSettings = await aiControlStore.getRuntimeSettings();
+        if (!runtimeSettings.superMode || runtimeSettings.mode !== "super") {
+          res.status(400).json({ error: "Super mode is not configured or enabled." });
+          return;
+        }
+        const [siteDraft, sitePublished, confirmationTemplate] = await Promise.all([
+          siteStore.getDraft(),
+          siteStore.getPublished(),
+          emailStore.getConfirmationTemplate()
+        ]);
+        const activeSite = siteDraft ?? sitePublished;
+        const aiPrompt = [
+          "You convert admin requests into one safe JSON action.",
+          "Allowed actions only:",
+          '1) {"kind":"update_hero","summary":"...","payload":{"headline?":"...","subtext?":"...","ctaPrimaryLabel?":"...","ctaPrimaryTarget?":"...","ctaSecondaryLabel?":"...","ctaSecondaryTarget?":"..."}}',
+          '2) {"kind":"update_confirmation_template","summary":"...","payload":{"mode?":"rich|html","subject?":"...","previewText?":"...","bodyRich?":"...","bodyHtml?":"..."}}',
+          "Return valid JSON only. No markdown.",
+          "Use only fields that change. Keep summary under 120 chars.",
+          `Current hero: ${JSON.stringify(activeSite.hero)}`,
+          `Current confirmation template: ${JSON.stringify(confirmationTemplate)}`,
+          `Admin request: ${prompt}`
+        ].join("\n");
+
+        const response = await callSuperModeChat({
+          baseUrl: runtimeSettings.superMode.baseUrl,
+          apiKey: runtimeSettings.superMode.apiKey,
+          model: runtimeSettings.superMode.model,
+          message: aiPrompt
+        });
+        const rawAction = parseJsonFromModelOutput<unknown>(response.answer);
+        const action = parsePreparedAction(rawAction);
+        res.status(200).json({
+          ok: true,
+          action,
+          modelUsed: response.modelUsed,
+          attemptedModels: response.attemptedModels
+        });
+      } catch (error) {
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to prepare action." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/apply-action",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.apply_action"),
+    async (req, res) => {
+      try {
+        const action = parsePreparedAction(req.body?.action);
+        if (action.kind === "update_hero") {
+          const [draft, published] = await Promise.all([siteStore.getDraft(), siteStore.getPublished()]);
+          const base = draft ?? published;
+          const next: SiteContent = {
+            ...base,
+            hero: {
+              ...base.hero,
+              headline: action.payload.headline?.trim() || base.hero.headline,
+              subtext: action.payload.subtext?.trim() || base.hero.subtext,
+              ctaPrimary: {
+                ...base.hero.ctaPrimary,
+                label: action.payload.ctaPrimaryLabel?.trim() || base.hero.ctaPrimary.label,
+                target: action.payload.ctaPrimaryTarget?.trim() || base.hero.ctaPrimary.target
+              },
+              ctaSecondary: {
+                ...base.hero.ctaSecondary,
+                label: action.payload.ctaSecondaryLabel?.trim() || base.hero.ctaSecondary.label,
+                target: action.payload.ctaSecondaryTarget?.trim() || base.hero.ctaSecondary.target
+              }
+            }
+          };
+          const savedDraft = await siteStore.saveDraft(next);
+          res.status(200).json({
+            ok: true,
+            applied: action.kind,
+            summary: action.summary,
+            draftSaved: true,
+            hero: savedDraft.hero
+          });
+          return;
+        }
+
+        const currentTemplate = await emailStore.getConfirmationTemplate();
+        const nextMode = action.payload.mode ?? currentTemplate.mode;
+        const nextTemplate = await emailStore.saveConfirmationTemplate({
+          mode: nextMode,
+          subject: action.payload.subject ?? currentTemplate.subject,
+          previewText: action.payload.previewText ?? currentTemplate.previewText,
+          bodyRich: action.payload.bodyRich ?? currentTemplate.bodyRich,
+          bodyHtml: action.payload.bodyHtml ?? currentTemplate.bodyHtml
+        });
+        res.status(200).json({
+          ok: true,
+          applied: action.kind,
+          summary: action.summary,
+          template: nextTemplate
+        });
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to apply action." });
       }
     }
   );
