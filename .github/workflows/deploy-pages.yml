@@ -74,8 +74,9 @@ jobs:
       - name: Replace site URL placeholders
         shell: bash
         run: |
+          sed -i "s|__SITE_URL__|$EFFECTIVE_SITE_URL|g" dist/index.html
           sed -i "s|__SITE_URL__|$EFFECTIVE_SITE_URL|g" dist/sitemap.xml
-          sed -i "s|__SITE_URL__|$EFFECTIVE_SITE_URL|g" dist/robots.txt
+          sed -i "s|__SITE_URL__|$EFFECTIVE_SITE_URL|g" dist/robots.txt || true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

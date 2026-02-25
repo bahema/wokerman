@@ -29,8 +29,6 @@ const Health = () => {
   const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
   const [quickGrabsOpen, setQuickGrabsOpen] = useState(false);
   const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
-  const industriesScrollRef = useRef<HTMLDivElement>(null);
-  const [industriesScrollPaused, setIndustriesScrollPaused] = useState(false);
   const footerYear = new Date().getFullYear();
   const gadgetsFilters = useProductFilters(content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets);
   const supplementsFilters = useProductFilters(content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements);
@@ -89,6 +87,7 @@ const Health = () => {
   useEffect(() => {
     let cancelled = false;
     const interval = window.setInterval(() => {
+      if (document.hidden) return;
       void (async () => {
         try {
           const meta = await getSiteMetaAsync();
@@ -106,7 +105,7 @@ const Health = () => {
           // Keep current content on polling failures.
         }
       })();
-    }, 4000);
+    }, 15000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -118,33 +117,6 @@ const Health = () => {
     const timer = window.setTimeout(() => setNewProductsNotice(""), 60000);
     return () => window.clearTimeout(timer);
   }, [newProductsNotice]);
-
-  useEffect(() => {
-    const el = industriesScrollRef.current;
-    if (!el || content.industries.length < 2) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return;
-    let rafId = 0;
-    let last = performance.now();
-    const speedPxPerMs = window.innerWidth < 640 ? 0.028 : 0.04;
-    el.scrollLeft = 0;
-
-    const tick = (now: number) => {
-      const delta = now - last;
-      last = now;
-      if (!industriesScrollPaused) {
-        const travelWidth = el.scrollWidth - el.clientWidth;
-        if (travelWidth > 0) {
-          const next = el.scrollLeft + delta * speedPxPerMs;
-          el.scrollLeft = next >= travelWidth ? 0 : next;
-        }
-      }
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [content.industries.length, industriesScrollPaused]);
 
   const healthPage = {
     ...defaultHealthPage,
@@ -521,15 +493,7 @@ const Health = () => {
             </div>
           ) : (
             <div
-              ref={industriesScrollRef}
               className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
-              onMouseEnter={() => setIndustriesScrollPaused(true)}
-              onMouseLeave={() => setIndustriesScrollPaused(false)}
-              onPointerDown={() => setIndustriesScrollPaused(true)}
-              onPointerUp={() => setIndustriesScrollPaused(false)}
-              onPointerCancel={() => setIndustriesScrollPaused(false)}
-              onFocusCapture={() => setIndustriesScrollPaused(true)}
-              onBlurCapture={() => setIndustriesScrollPaused(false)}
             >
               <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
                 {content.industries.map((industry) => (

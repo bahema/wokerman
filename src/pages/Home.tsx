@@ -124,8 +124,6 @@ const Home = (_props: HomeProps) => {
   const [loadingContent, setLoadingContent] = useState(true);
   const activeSection = useSectionObserver(["forex", "betting", "software", "social"]);
   const footerYear = new Date().getFullYear();
-  const industriesScrollRef = useRef<HTMLDivElement>(null);
-  const [industriesScrollPaused, setIndustriesScrollPaused] = useState(false);
 
   const forex = useProductFilters(content.products.forex);
   const betting = useProductFilters(content.products.betting);
@@ -200,6 +198,7 @@ const Home = (_props: HomeProps) => {
   useEffect(() => {
     let cancelled = false;
     const interval = window.setInterval(() => {
+      if (document.hidden) return;
       void (async () => {
         try {
           const meta = await getSiteMetaAsync();
@@ -216,7 +215,7 @@ const Home = (_props: HomeProps) => {
           // Keep current content on polling failures.
         }
       })();
-    }, 4000);
+    }, 15000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -255,34 +254,6 @@ const Home = (_props: HomeProps) => {
       category: infoProduct.category
     });
   }, [infoProduct]);
-
-  useEffect(() => {
-    const el = industriesScrollRef.current;
-    if (!el || content.industries.length < 2) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return;
-    let rafId = 0;
-    let last = performance.now();
-    const speedPxPerMs = window.innerWidth < 640 ? 0.028 : 0.04;
-
-    el.scrollLeft = 0;
-
-    const tick = (now: number) => {
-      const delta = now - last;
-      last = now;
-      if (!industriesScrollPaused) {
-        const travelWidth = el.scrollWidth - el.clientWidth;
-        if (travelWidth > 0) {
-          const next = el.scrollLeft + delta * speedPxPerMs;
-          el.scrollLeft = next >= travelWidth ? 0 : next;
-        }
-      }
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [content.industries.length, industriesScrollPaused]);
 
   useEffect(() => {
     const origin = window.location.origin;
@@ -765,15 +736,7 @@ const Home = (_props: HomeProps) => {
             </div>
           ) : (
             <div
-              ref={industriesScrollRef}
               className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
-              onMouseEnter={() => setIndustriesScrollPaused(true)}
-              onMouseLeave={() => setIndustriesScrollPaused(false)}
-              onPointerDown={() => setIndustriesScrollPaused(true)}
-              onPointerUp={() => setIndustriesScrollPaused(false)}
-              onPointerCancel={() => setIndustriesScrollPaused(false)}
-              onFocusCapture={() => setIndustriesScrollPaused(true)}
-              onBlurCapture={() => setIndustriesScrollPaused(false)}
             >
               <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
                 {industriesForTrack.map((industry) => {
