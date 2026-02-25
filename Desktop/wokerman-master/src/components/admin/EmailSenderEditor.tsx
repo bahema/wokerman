@@ -114,6 +114,12 @@ type TestCampaignResponse = {
   queuedTo: string;
 };
 
+type SmtpVerifyResponse = {
+  ok: boolean;
+  verified: boolean;
+  provider: "smtp" | "console";
+};
+
 type SenderProfileResponse = {
   profile: {
     fromName: string;
@@ -187,6 +193,7 @@ const EmailSenderEditor = () => {
   const [isSavingCampaign, setIsSavingCampaign] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isSavingCompliance, setIsSavingCompliance] = useState(false);
+  const [isVerifyingSmtp, setIsVerifyingSmtp] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -837,6 +844,41 @@ const EmailSenderEditor = () => {
                     <input type="checkbox" checked={smtpSecure} onChange={(e) => setSmtpSecure(e.target.checked)} />
                     Use secure SMTP (SSL/TLS, usually port 465)
                   </label>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      disabled={isVerifyingSmtp || complianceValidation.hasErrors}
+                      onClick={() => {
+                        void (async () => {
+                          if (complianceValidation.hasErrors) {
+                            setActionError("Fix SMTP validation errors before verification.");
+                            return;
+                          }
+                          setActionError("");
+                          setActionMessage("");
+                          setIsVerifyingSmtp(true);
+                          try {
+                            const response = await apiJson<SmtpVerifyResponse>("/api/email/settings/verify-smtp", "POST");
+                            setActionMessage(
+                              response.provider === "smtp"
+                                ? "SMTP connection verified. Credentials are accepted by the provider."
+                                : "SMTP verification passed in test mode."
+                            );
+                          } catch (error) {
+                            setActionError(resolveErrorMessage(error, "SMTP verification failed."));
+                          } finally {
+                            setIsVerifyingSmtp(false);
+                          }
+                        })();
+                      }}
+                      className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-100"
+                    >
+                      {isVerifyingSmtp ? "Verifying SMTP..." : "Verify SMTP connection"}
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Verifies SMTP host/auth without sending to a recipient inbox.
+                    </p>
+                  </div>
                 </div>
               </div>
               <label className="inline-flex items-center gap-2">
