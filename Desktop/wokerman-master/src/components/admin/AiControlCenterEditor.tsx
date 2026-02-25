@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet, apiJson } from "../../api/client";
 
 type AiSettingsResponse = {
@@ -55,21 +55,6 @@ type AiPreparedAction =
       };
     };
 
-type TodoItem = {
-  id: string;
-  label: string;
-  done: boolean;
-};
-
-const TODO_STORAGE_KEY = "autohub_ai_restore_todo_v1";
-
-const defaultTodos: TodoItem[] = [
-  { id: "settings", label: "Save provider settings (base URL, model, API key)", done: false },
-  { id: "mode", label: "Enable Super mode", done: false },
-  { id: "ping", label: "Send first AI test message", done: false },
-  { id: "ops", label: "Use AI for one real operation task", done: false }
-];
-
 const AiControlCenterEditor = () => {
   const [mode, setMode] = useState<"current" | "super">("current");
   const [provider] = useState<"openai_compatible">("openai_compatible");
@@ -89,28 +74,6 @@ const AiControlCenterEditor = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [todos, setTodos] = useState<TodoItem[]>(() => {
-    if (typeof window === "undefined") return defaultTodos;
-    try {
-      const raw = window.localStorage.getItem(TODO_STORAGE_KEY);
-      if (!raw) return defaultTodos;
-      const parsed = JSON.parse(raw) as TodoItem[];
-      if (!Array.isArray(parsed) || !parsed.length) return defaultTodos;
-      return parsed;
-    } catch {
-      return defaultTodos;
-    }
-  });
-
-  const completion = useMemo(() => {
-    const done = todos.filter((item) => item.done).length;
-    return Math.round((done / Math.max(1, todos.length)) * 100);
-  }, [todos]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(TODO_STORAGE_KEY, JSON.stringify(todos));
-  }, [todos]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +112,6 @@ const AiControlCenterEditor = () => {
       setApiKey("");
       setApiKeyMask(refreshed.superMode?.apiKeyMask ?? "");
       setMessage("AI provider settings saved.");
-      setTodos((prev) => prev.map((item) => (item.id === "settings" ? { ...item, done: true } : item)));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to save AI settings.");
     } finally {
@@ -166,9 +128,6 @@ const AiControlCenterEditor = () => {
       setMode(settings.mode);
       setSuperConfigured(settings.superModeConfigured);
       setMessage(`AI mode set to ${settings.mode}.`);
-      if (settings.mode === "super") {
-        setTodos((prev) => prev.map((item) => (item.id === "mode" ? { ...item, done: true } : item)));
-      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to update AI mode.");
     } finally {
@@ -195,13 +154,6 @@ const AiControlCenterEditor = () => {
           : ""
       );
       setMessage("AI response received.");
-      setTodos((prev) =>
-        prev.map((item) =>
-          item.id === "ping" || item.id === "ops"
-            ? { ...item, done: true }
-            : item
-        )
-      );
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "AI chat request failed.");
     } finally {
@@ -277,29 +229,6 @@ const AiControlCenterEditor = () => {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-bold">AI Restore TODO</h3>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold dark:bg-slate-800">{completion}%</span>
-        </div>
-        <div className="space-y-2">
-          {todos.map((item) => (
-            <label key={item.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={item.done}
-                onChange={(event) =>
-                  setTodos((prev) =>
-                    prev.map((entry) => (entry.id === item.id ? { ...entry, done: event.target.checked } : entry))
-                  )
-                }
-              />
-              {item.label}
-            </label>
-          ))}
-        </div>
-      </section>
-
       <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
         <h3 className="mb-3 text-lg font-bold">Provider Settings</h3>
         <div className="space-y-3">
