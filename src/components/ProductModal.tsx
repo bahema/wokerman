@@ -96,6 +96,7 @@ const ProductModal = ({ product, onClose, returnFocusTo }: ProductModalProps) =>
               className="mb-4 h-40 w-full rounded-xl object-cover object-center sm:h-56"
               loading="lazy"
               decoding="async"
+              fetchPriority="low"
               onError={() => setImageFailed(true)}
             />
           ) : null}

@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { deleteMediaItem, getMediaLibrary, uploadMediaFiles, type MediaItem } from "../../utils/mediaLibrary";
 import { withBasePath } from "../../utils/basePath";
 
-const MAX_UPLOAD_DIMENSION = 1200;
-const UPLOAD_QUALITY = 0.72;
+const MAX_UPLOAD_DIMENSION = 960;
+const UPLOAD_QUALITY = 0.68;
+const MIN_UPLOAD_QUALITY = 0.5;
+const TARGET_MAX_BYTES = 320 * 1024;
 const MIN_SIZE_TO_OPTIMIZE_BYTES = 80 * 1024;
 
 const loadImage = (file: File): Promise<HTMLImageElement> =>
@@ -23,6 +25,7 @@ const loadImage = (file: File): Promise<HTMLImageElement> =>
 
 const optimizeImageFile = async (file: File): Promise<File> => {
   if (!file.type.startsWith("image/") || file.size < MIN_SIZE_TO_OPTIMIZE_BYTES) return file;
+  if (file.type === "image/gif") return file;
 
   let img: HTMLImageElement;
   try {
@@ -43,13 +46,18 @@ const optimizeImageFile = async (file: File): Promise<File> => {
 
   ctx.drawImage(img, 0, 0, width, height);
 
-  const hasAlpha = file.type === "image/png" || file.type === "image/webp";
-  const targetType = hasAlpha ? "image/webp" : "image/jpeg";
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, targetType, UPLOAD_QUALITY));
+  const targetType = "image/webp";
+  const encode = (quality: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, targetType, quality));
+  let quality = UPLOAD_QUALITY;
+  let blob = await encode(quality);
+  while (blob && blob.size > TARGET_MAX_BYTES && quality > MIN_UPLOAD_QUALITY) {
+    quality = Math.max(MIN_UPLOAD_QUALITY, quality - 0.08);
+    blob = await encode(quality);
+  }
   if (!blob || blob.size >= file.size) return file;
 
   const baseName = file.name.replace(/\.[^.]+$/, "");
-  const ext = targetType === "image/webp" ? "webp" : "jpg";
+  const ext = "webp";
   return new File([blob], `${baseName}.${ext}`, { type: targetType, lastModified: Date.now() });
 };
 

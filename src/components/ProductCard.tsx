@@ -91,6 +91,7 @@ const ProductCard = ({ product, onCheckout, onMoreInfo, labels, pricing }: Produ
             className="absolute inset-0 h-full w-full object-cover object-center"
             loading="lazy"
             decoding="async"
+            fetchPriority="low"
             onError={() => setImageFailed(true)}
           />
         ) : null}
