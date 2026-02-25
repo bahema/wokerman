@@ -158,6 +158,7 @@ const Health = () => {
     ...defaultHomeUi,
     ...(content.homeUi ?? {})
   };
+  const industriesForTrack = content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
 
   const runTarget = (target: string) => {
     const normalized = target.trim().toLowerCase().replace("#", "");
@@ -493,11 +494,11 @@ const Health = () => {
             </div>
           ) : (
             <div
-              className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
+              className="scrollbar-none overflow-hidden py-4"
             >
-              <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
-                {content.industries.map((industry) => (
-                  <div key={industry.id} className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3">
+              <div className={`flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8 ${content.industries.length > 1 ? "marquee-track" : ""}`}>
+                {industriesForTrack.map((industry, index) => (
+                  <div key={`${industry.id}-${index}`} className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3">
                     {industry.link?.trim() ? (
                       <a href={industry.link.trim()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${industry.label}`}>
                         {industry.imageUrl ? (
@@ -580,3 +581,4 @@ const Health = () => {
 };
 
 export default Health;
+
