@@ -1,0 +1,582 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import Navbar from "../components/Navbar";
+import BackToTop from "../components/BackToTop";
+import ProductCard from "../components/ProductCard";
+import ProductModal from "../components/ProductModal";
+import QuickGrabsModal from "../components/QuickGrabsModal";
+import SectionHeader from "../components/SectionHeader";
+import { type HealthUpcomingItem, type Product, type SiteContent } from "../../shared/siteTypes";
+import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
+import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
+import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
+import { getEventThemeCssVars } from "../utils/eventTheme";
+import { useProductFilters } from "../utils/useProductFilters";
+import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
+import { withBasePath } from "../utils/basePath";
+import { useI18n } from "../i18n/provider";
+import { trackAnalyticsEvent } from "../utils/analytics";
+import { removeStructuredData, setStructuredData } from "../utils/seo";
+import { resolveCurrencyContext } from "../utils/pricing";
+
+const Health = () => {
+  const { t } = useI18n();
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
+  const [content, setContent] = useState<SiteContent>(defaultSiteContent);
+  const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
+  const [newProductsNotice, setNewProductsNotice] = useState<string>("");
+  const knownHealthProductIdsRef = useRef<Set<string>>(new Set());
+  const [infoProduct, setInfoProduct] = useState<Product | null>(null);
+  const [infoTrigger, setInfoTrigger] = useState<HTMLElement | null>(null);
+  const [quickGrabsOpen, setQuickGrabsOpen] = useState(false);
+  const [quickGrabsTrigger, setQuickGrabsTrigger] = useState<HTMLElement | null>(null);
+  const footerYear = new Date().getFullYear();
+  const gadgetsFilters = useProductFilters(content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets);
+  const supplementsFilters = useProductFilters(content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements);
+
+  useEffect(() => {
+    updateTheme(theme);
+  }, [theme]);
+
+  const collectHealthProductIds = (siteContent: SiteContent) => {
+    const ids = new Set<string>();
+    for (const item of siteContent.healthPage?.products?.gadgets ?? []) ids.add(item.id);
+    for (const item of siteContent.healthPage?.products?.supplements ?? []) ids.add(item.id);
+    return ids;
+  };
+
+  const detectNewHealthProducts = (siteContent: SiteContent) => {
+    const latest = collectHealthProductIds(siteContent);
+    const previous = knownHealthProductIdsRef.current;
+    if (previous.size > 0) {
+      const newCount = Array.from(latest).filter((id) => !previous.has(id)).length;
+      if (newCount > 0) {
+        setNewProductsNotice(`${newCount} new health product${newCount > 1 ? "s" : ""} just added.`);
+      }
+    }
+    knownHealthProductIdsRef.current = latest;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const metaPromise = getSiteMetaAsync();
+        const params = new URLSearchParams(window.location.search);
+        const isDraftPreview = params.get("preview") === "draft";
+        const draft = isDraftPreview ? await getDraftContentAsync() : null;
+        const nextContent = draft ?? (await getPublishedContentAsync());
+        const meta = await metaPromise;
+        if (!cancelled) {
+          knownHealthProductIdsRef.current = collectHealthProductIds(nextContent);
+          setContent(nextContent);
+          setSiteUpdatedAt(meta?.updatedAt ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setContent(defaultSiteContent);
+          setSiteUpdatedAt(null);
+          knownHealthProductIdsRef.current = collectHealthProductIds(defaultSiteContent);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      if (document.hidden) return;
+      void (async () => {
+        try {
+          const meta = await getSiteMetaAsync();
+          if (!meta?.updatedAt || cancelled || meta.updatedAt === siteUpdatedAt) return;
+          const params = new URLSearchParams(window.location.search);
+          const isDraftPreview = params.get("preview") === "draft";
+          const draft = isDraftPreview ? await getDraftContentAsync() : null;
+          const nextContent = draft ?? (await getPublishedContentAsync());
+          if (!cancelled) {
+            detectNewHealthProducts(nextContent);
+            setContent(nextContent);
+            setSiteUpdatedAt(meta.updatedAt);
+          }
+        } catch {
+          // Keep current content on polling failures.
+        }
+      })();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [siteUpdatedAt]);
+
+  useEffect(() => {
+    if (!newProductsNotice) return;
+    const timer = window.setTimeout(() => setNewProductsNotice(""), 60000);
+    return () => window.clearTimeout(timer);
+  }, [newProductsNotice]);
+
+  const healthPage = {
+    ...defaultHealthPage,
+    ...(content.healthPage ?? {}),
+    hero2: {
+      ...defaultHealthPage.hero2,
+      ...(content.healthPage?.hero2 ?? {})
+    },
+    sections: {
+      gadgets: {
+        ...defaultHealthPage.sections.gadgets,
+        ...(content.healthPage?.sections?.gadgets ?? {})
+      },
+      supplements: {
+        ...defaultHealthPage.sections.supplements,
+        ...(content.healthPage?.sections?.supplements ?? {})
+      }
+    },
+    products: {
+      gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
+      supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    },
+    upcoming: {
+      ...defaultHealthPage.upcoming,
+      ...(content.healthPage?.upcoming ?? {}),
+      items: content.healthPage?.upcoming?.items ?? defaultHealthPage.upcoming.items
+    }
+  };
+
+  const upcomingItems: HealthUpcomingItem[] = [...healthPage.upcoming.items]
+    .map((item) => ({
+      ...item,
+      active: item.active !== false
+    }))
+    .filter((item) => item.active)
+    .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER));
+
+  const homeUi = {
+    ...defaultHomeUi,
+    ...(content.homeUi ?? {})
+  };
+
+  const runTarget = (target: string) => {
+    const normalized = target.trim().toLowerCase().replace("#", "");
+    if (normalized.startsWith("http")) {
+      window.open(target, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const targetMap: Record<string, string> = {
+      gadgets: "healthy-gadgets",
+      supplements: "healthy-supplements",
+      "healthy-gadgets": "healthy-gadgets",
+      "healthy-supplements": "healthy-supplements"
+    };
+    const nextId = targetMap[normalized] ?? normalized;
+    document.getElementById(nextId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const resolveImage = (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("http")) return trimmed;
+    if (trimmed.startsWith("/api/") || trimmed.startsWith("/uploads/")) return trimmed;
+    return withBasePath(trimmed);
+  };
+
+  const formatLaunchDate = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const eventTheme = content.branding.eventTheme ?? "none";
+  const eventThemeActive = eventTheme !== "none";
+  const eventThemeVars = getEventThemeCssVars(eventTheme, theme) as CSSProperties;
+  const pricingContext = resolveCurrencyContext(content.pricing);
+
+  useEffect(() => {
+    const origin = window.location.origin;
+    const healthUrl = new URL(withBasePath("/health"), `${origin}/`).toString();
+    const sections = [
+      { id: "gadgets", name: healthPage.sections.gadgets.title, items: healthPage.products.gadgets },
+      { id: "supplements", name: healthPage.sections.supplements.title, items: healthPage.products.supplements }
+    ];
+    const graph = {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "CollectionPage",
+          "@id": `${healthUrl}#health`,
+          url: healthUrl,
+          name: "Health Products",
+          hasPart: sections.map((section) => ({
+            "@type": "ItemList",
+            name: section.name,
+            itemListElement: section.items.slice(0, 20).map((item, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              item: {
+                "@type": "Product",
+                name: item.title,
+                description: item.shortDescription,
+                category: item.category,
+                image: item.imageUrl || undefined,
+                offers: {
+                  "@type": "Offer",
+                  url: item.checkoutLink,
+                  priceCurrency: pricingContext.currency,
+                  availability: "https://schema.org/InStock"
+                }
+              }
+            }))
+          }))
+        }
+      ]
+    };
+    setStructuredData("health-graph", graph);
+    return () => removeStructuredData("health-graph");
+  }, [
+    healthPage.products.gadgets,
+    healthPage.products.supplements,
+    healthPage.sections.gadgets.title,
+    healthPage.sections.supplements.title,
+    pricingContext.currency
+  ]);
+
+  const renderProductGrid = (products: Product[], sourceCount: number, emptyMessage: string) => {
+    if (sourceCount === 0) {
+      return (
+        <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          {emptyMessage}
+        </div>
+      );
+    }
+
+    if (products.length === 0) {
+      return (
+        <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          No products match your current search/filter.
+        </div>
+      );
+    }
+
+    return products.map((product) => (
+      <ProductCard
+        key={product.id}
+        product={product}
+        pricing={content.pricing}
+        labels={{
+          newBadgeLabel: homeUi.productCardNewBadgeLabel,
+          newReleaseLabel: homeUi.productCardNewReleaseLabel,
+          keyFeaturesSuffix: homeUi.productCardKeyFeaturesSuffix,
+          checkoutLabel: homeUi.productCardCheckoutLabel,
+          moreInfoLabel: homeUi.productCardMoreInfoLabel,
+          affiliateDisclosure: homeUi.productCardAffiliateDisclosure
+        }}
+        onCheckout={(item) => window.open(item.checkoutLink, "_blank", "noopener,noreferrer")}
+        onMoreInfo={(item, trigger) => {
+          setInfoProduct(item);
+          setInfoTrigger(trigger);
+        }}
+      />
+    ));
+  };
+
+  return (
+    <div
+      className={`min-h-screen overflow-x-hidden text-slate-900 dark:text-slate-100 ${
+        eventThemeActive ? "event-page" : "bg-slate-50 dark:bg-slate-950"
+      }`}
+      style={eventThemeVars}
+    >
+      <Navbar
+        activeSection="health"
+        theme={theme}
+        onThemeToggle={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+        logoText={content.branding.logoText}
+        socials={content.socials}
+        eventThemeActive={eventThemeActive}
+      />
+
+      <main className="overflow-x-hidden">
+        <section className="relative overflow-hidden py-16">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-emerald-50 via-cyan-50 to-slate-50 dark:from-transparent dark:via-transparent dark:to-transparent" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+            <div>
+              <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {healthPage.hero2.eyebrow}
+              </span>
+              <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">{healthPage.hero2.headline}</h1>
+              <p className="mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-300">{healthPage.hero2.subtext}</p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => runTarget(healthPage.hero2.ctaPrimary.target)}
+                  className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                >
+                  {healthPage.hero2.ctaPrimary.label}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runTarget(healthPage.hero2.ctaSecondary.target)}
+                  className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  {healthPage.hero2.ctaSecondary.label}
+                </button>
+              </div>
+            </div>
+            <div className="min-w-0">
+              {healthPage.hero2.imageUrl.trim() ? (
+                <a
+                  href={healthPage.hero2.imageLink.trim() || "#"}
+                  onClick={(event) => {
+                    if (!healthPage.hero2.imageLink.trim()) {
+                      event.preventDefault();
+                      return;
+                    }
+                    trackAnalyticsEvent("hero_image_click", {
+                      sectionId: "health-hero2",
+                      url: healthPage.hero2.imageLink.trim()
+                    });
+                  }}
+                  target={healthPage.hero2.imageLink.trim() ? "_blank" : undefined}
+                  rel={healthPage.hero2.imageLink.trim() ? "noopener noreferrer" : undefined}
+                  className="group block overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-[0_24px_40px_-24px_rgba(15,23,42,0.42)] dark:border-emerald-900/60 dark:bg-slate-900"
+                >
+                  <img
+                    src={resolveImage(healthPage.hero2.imageUrl)}
+                    alt={healthPage.hero2.imageAlt}
+                    className="h-72 w-full object-cover transition duration-300 group-hover:scale-[1.02] sm:h-80"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </a>
+              ) : (
+                <div className="flex h-72 items-center justify-center rounded-3xl border border-dashed border-emerald-300 bg-white/60 px-4 text-center text-sm text-slate-500 dark:border-emerald-900/70 dark:bg-slate-900/70 dark:text-slate-300 sm:h-80">
+                  Set Hero 2 image in Admin to display it here.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="pb-8 sm:pb-12">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="max-w-full rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-4 shadow-[0_24px_40px_-30px_rgba(2,132,199,0.45)] dark:border-emerald-900/70 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 sm:p-6">
+              <div className="mb-5">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Upcoming</p>
+                <h2 className="mt-2 break-words text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{healthPage.upcoming.title}</h2>
+                <p className="mt-2 break-words text-sm text-slate-600 dark:text-slate-300">{healthPage.upcoming.subtitle}</p>
+              </div>
+              {upcomingItems.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  No upcoming health releases published yet.
+                </div>
+              ) : (
+                <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex min-w-max snap-x snap-mandatory gap-3 sm:gap-4">
+                    {upcomingItems.map((item) => {
+                      const launchLabel = formatLaunchDate(item.launchDate ?? "");
+                      return (
+                        <article
+                          key={item.id}
+                          className="w-[16.25rem] max-w-[84vw] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_35px_-28px_rgba(15,23,42,0.85)] max-[360px]:w-[14.5rem] dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          {item.imageUrl.trim() ? (
+                            <img
+                              src={resolveImage(item.imageUrl)}
+                              alt={item.title}
+                              className="h-36 w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="flex h-36 items-center justify-center bg-slate-100 px-3 text-center text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                              Upload image from Admin Upcoming.
+                            </div>
+                          )}
+                          <div className="space-y-3 p-4">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <h3 className="min-w-0 break-words text-base font-bold text-slate-900 dark:text-slate-100">{item.title}</h3>
+                              {item.badge?.trim() ? (
+                                <span className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200">
+                                  {item.badge.trim()}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="line-clamp-3 text-sm text-slate-600 dark:text-slate-300">{item.shortDescription}</p>
+                            {launchLabel ? (
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Launch: {launchLabel}</p>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                setQuickGrabsTrigger(event.currentTarget);
+                                setQuickGrabsOpen(true);
+                                trackAnalyticsEvent("health_upcoming_notify_click", { itemId: item.id, title: item.title });
+                              }}
+                              className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                            >
+                              {(item.notifyLabel ?? "").trim() || "Notify me"}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section id="healthy-gadgets" className="py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <SectionHeader
+              eyebrow="Healthy Gadgets"
+              title={healthPage.sections.gadgets.title}
+              description={healthPage.sections.gadgets.description}
+              searchValue={gadgetsFilters.search}
+              sortValue={gadgetsFilters.sort}
+              updatedAt={siteUpdatedAt}
+              onSearchChange={(value) => {
+                gadgetsFilters.setSearch(value);
+                trackAnalyticsEvent("product_search", { sectionId: "health-gadgets", query: value });
+              }}
+              onSortChange={(value) => {
+                gadgetsFilters.setSort(value);
+                trackAnalyticsEvent("product_sort", { sectionId: "health-gadgets", sort: value });
+              }}
+            />
+            <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {renderProductGrid(gadgetsFilters.filteredProducts, healthPage.products.gadgets.length, "No gadgets published yet.")}
+            </div>
+          </div>
+        </section>
+
+        <section id="healthy-supplements" className="py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <SectionHeader
+              eyebrow="Healthy Supplements"
+              title={healthPage.sections.supplements.title}
+              description={healthPage.sections.supplements.description}
+              searchValue={supplementsFilters.search}
+              sortValue={supplementsFilters.sort}
+              updatedAt={siteUpdatedAt}
+              onSearchChange={(value) => {
+                supplementsFilters.setSearch(value);
+                trackAnalyticsEvent("product_search", { sectionId: "health-supplements", query: value });
+              }}
+              onSortChange={(value) => {
+                supplementsFilters.setSort(value);
+                trackAnalyticsEvent("product_sort", { sectionId: "health-supplements", sort: value });
+              }}
+            />
+            <div className="mt-6 grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {renderProductGrid(supplementsFilters.filteredProducts, healthPage.products.supplements.length, "No supplements published yet.")}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <section className="border-y border-slate-200 bg-gradient-to-b from-slate-50 via-white to-slate-50 py-12 dark:border-slate-800 dark:bg-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-5 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">{t("home.industriesLabel")}</p>
+            <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{content.homeUi?.industriesHeading ?? "Industries We Work With"}</h3>
+          </div>
+          {content.industries.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              {content.homeUi?.industriesEmptyMessage ?? "No industries published yet."}
+            </div>
+          ) : (
+            <div
+              className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
+            >
+              <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
+                {content.industries.map((industry) => (
+                  <div key={industry.id} className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3">
+                    {industry.link?.trim() ? (
+                      <a href={industry.link.trim()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${industry.label}`}>
+                        {industry.imageUrl ? (
+                          <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] transition hover:scale-105 dark:shadow-none" />
+                        ) : (
+                          <span aria-hidden="true" className="text-4xl">{industry.icon ?? "•"}</span>
+                        )}
+                      </a>
+                    ) : industry.imageUrl ? (
+                      <img src={industry.imageUrl} alt={industry.label} className="h-16 w-16 rounded object-cover shadow-[0_10px_24px_-12px_rgba(37,99,235,0.55)] dark:shadow-none" />
+                    ) : (
+                      <span aria-hidden="true" className="text-4xl">{industry.icon ?? "•"}</span>
+                    )}
+                    <span className="sr-only">{industry.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <footer className="relative overflow-hidden py-14">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-slate-100 via-sky-100 to-blue-100 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950" />
+        <div className="pointer-events-none absolute -left-20 top-0 h-48 w-48 rounded-full bg-white/40 blur-3xl dark:bg-cyan-800/20" />
+        <div className="pointer-events-none absolute -right-20 bottom-0 h-52 w-52 rounded-full bg-blue-200/40 blur-3xl dark:bg-blue-700/20" />
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="rounded-3xl bg-gradient-to-r from-white/80 via-sky-50/80 to-blue-50/80 p-6 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.4)] backdrop-blur dark:from-slate-900/85 dark:via-slate-900/80 dark:to-blue-950/80 dark:shadow-[0_20px_45px_-18px_rgba(0,0,0,0.9),0_0_0_1px_rgba(148,163,184,0.25)]">
+            <div className="grid gap-6 md:grid-cols-3">
+              <div>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{t("home.quickLinks")}</h4>
+                <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+                  <a href={withBasePath("/health")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/health")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-600 dark:hover:text-emerald-400">{t("navbar.health")}</a>
+                  <a href={withBasePath("/forex")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/forex")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">{t("navbar.forex")}</a>
+                  <a href={withBasePath("/betting")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/betting")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-600 dark:hover:text-blue-400">{t("navbar.betting")}</a>
+                  <a href={withBasePath("/software")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/software")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-rose-600 dark:hover:text-blue-400">{t("navbar.software")}</a>
+                  <a href={withBasePath("/social")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/social")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-blue-600 dark:hover:text-blue-400">{t("navbar.social")}</a>
+                </div>
+              </div>
+              <div>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{t("home.socialLinks")}</h4>
+                <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+                  <a href={content.socials.facebookUrl} target="_blank" rel="noopener noreferrer" className="block transition hover:text-blue-600 dark:hover:text-blue-400">Facebook</a>
+                  <a href={content.socials.whatsappUrl} target="_blank" rel="noopener noreferrer" className="block transition hover:text-blue-600 dark:hover:text-blue-400">WhatsApp</a>
+                  {(content.socials.other ?? []).map((social) => (
+                    <a key={social.name} href={social.url} target="_blank" rel="noopener noreferrer" className="block transition hover:text-blue-600 dark:hover:text-blue-400">{social.name}</a>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{content.branding.logoText}</h4>
+                <p className="text-sm text-slate-700 dark:text-slate-200">{content.footer.note}</p>
+                <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                  <a href={withBasePath("/affiliate-disclosure")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/affiliate-disclosure")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-700 dark:hover:text-emerald-400">{t("home.affiliateDisclosure")}</a>
+                  <a href={withBasePath("/earnings-disclaimer")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/earnings-disclaimer")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-700 dark:hover:text-emerald-400">{t("home.earningsDisclaimer")}</a>
+                  <a href={withBasePath("/privacy")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/privacy")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-700 dark:hover:text-emerald-400">{t("home.privacyPolicy")}</a>
+                  <a href={withBasePath("/terms")} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", withBasePath("/terms")); window.dispatchEvent(new PopStateEvent("popstate")); }} className="block transition hover:text-emerald-700 dark:hover:text-emerald-400">{t("home.termsOfUse")}</a>
+                  <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_COOKIE_SETTINGS_EVENT))} className="block text-left transition hover:text-emerald-700 dark:hover:text-emerald-400">{t("home.cookieSettings")}</button>
+                </div>
+              </div>
+            </div>
+            <p className="mt-8 pt-5 text-xs text-slate-500 dark:text-slate-300">
+              {content.footer.copyright || `© ${footerYear} ${content.branding.logoText}. All rights reserved.`}
+            </p>
+          </div>
+        </div>
+      </footer>
+
+      <BackToTop isModalOpen={quickGrabsOpen || Boolean(infoProduct)} />
+      <QuickGrabsModal open={quickGrabsOpen} onClose={() => setQuickGrabsOpen(false)} returnFocusTo={quickGrabsTrigger} />
+      <ProductModal product={infoProduct} onClose={() => setInfoProduct(null)} returnFocusTo={infoTrigger} />
+      {newProductsNotice ? (
+        <div className="pointer-events-none fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1200] rounded-2xl border border-emerald-300 bg-emerald-50/95 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200 sm:left-auto sm:right-4 sm:max-w-sm">
+          {newProductsNotice}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+export default Health;

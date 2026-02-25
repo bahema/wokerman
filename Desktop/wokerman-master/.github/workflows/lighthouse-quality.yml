@@ -1,0 +1,89 @@
+name: Lighthouse Quality Gate
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy Frontend to GitHub Pages"]
+    types: [completed]
+
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: https://bahema.github.io/wokerman/
+      MIN_PERFORMANCE: "0.90"
+      MIN_ACCESSIBILITY: "0.98"
+      MIN_BEST_PRACTICES: "0.98"
+      MIN_SEO: "0.95"
+    steps:
+      - name: Check public reachability
+        run: |
+          set -euo pipefail
+          curl -sS -I --max-time 30 "$SITE_URL" >/tmp/site_headers.txt
+          cat /tmp/site_headers.txt
+
+      - name: Run Lighthouse (mobile)
+        run: |
+          npx -y lighthouse "$SITE_URL" \
+            --output=json \
+            --output-path=./lighthouse-mobile.json \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --chrome-flags="--headless --no-sandbox --disable-gpu" \
+            --quiet
+
+      - name: Run Lighthouse (desktop)
+        run: |
+          npx -y lighthouse "$SITE_URL" \
+            --preset=desktop \
+            --output=json \
+            --output-path=./lighthouse-desktop.json \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --chrome-flags="--headless --no-sandbox --disable-gpu" \
+            --quiet
+
+      - name: Enforce score thresholds
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const min = {
+            performance: Number(process.env.MIN_PERFORMANCE || "0.9"),
+            accessibility: Number(process.env.MIN_ACCESSIBILITY || "0.98"),
+            "best-practices": Number(process.env.MIN_BEST_PRACTICES || "0.98"),
+            seo: Number(process.env.MIN_SEO || "0.95")
+          };
+          const files = ["lighthouse-mobile.json", "lighthouse-desktop.json"];
+          let failed = false;
+          for (const file of files) {
+            const report = JSON.parse(fs.readFileSync(file, "utf8"));
+            const name = file.replace(".json", "");
+            const categories = report.categories;
+            const scores = {
+              performance: categories.performance.score,
+              accessibility: categories.accessibility.score,
+              "best-practices": categories["best-practices"].score,
+              seo: categories.seo.score
+            };
+            console.log(`\n${name}`);
+            for (const [k, v] of Object.entries(scores)) {
+              const pct = Math.round((v ?? 0) * 100);
+              const threshold = min[k];
+              console.log(`- ${k}: ${pct} (min ${Math.round(threshold * 100)})`);
+              if ((v ?? 0) < threshold) failed = true;
+            }
+          }
+          if (failed) {
+            console.error("\nLighthouse quality gate failed.");
+            process.exit(1);
+          }
+          console.log("\nLighthouse quality gate passed.");
+          NODE
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: |
+            lighthouse-mobile.json
+            lighthouse-desktop.json
