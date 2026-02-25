@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "(npm --prefix Desktop/wokerman-master/backend ci --no-audit --no-fund || npm --prefix Desktop/wokerman-master/backend install --no-audit --no-fund) && npm --prefix Desktop/wokerman-master/backend run build"
+  },
+  "deploy": {
+    "startCommand": "node Desktop/wokerman-master/backend/dist/backend/src/index.js",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
