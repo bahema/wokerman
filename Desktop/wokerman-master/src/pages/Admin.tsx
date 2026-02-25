@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
+import PricingEditor from "../components/admin/PricingEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AiControlCenterEditor from "../components/admin/AiControlCenterEditor";
@@ -10,7 +11,9 @@ import EmailAnalyticsEditor from "../components/admin/EmailAnalyticsEditor";
 import EmailSenderEditor from "../components/admin/EmailSenderEditor";
 import EditorShell from "../components/admin/EditorShell";
 import FooterEditor from "../components/admin/FooterEditor";
+import HealthUpcomingManager from "../components/admin/HealthUpcomingManager";
 import HeroEditor from "../components/admin/HeroEditor";
+import Hero2Editor from "../components/admin/Hero2Editor";
 import HomeUiEditor from "../components/admin/HomeUiEditor";
 import IndustryManager from "../components/admin/IndustryManager";
 import ProductManager from "../components/admin/ProductManager";
@@ -19,6 +22,7 @@ import { type AdminSection } from "../components/admin/Sidebar";
 import SocialLinksEditor from "../components/admin/SocialLinksEditor";
 import SystemHealthEditor from "../components/admin/SystemHealthEditor";
 import TestimonialManager from "../components/admin/TestimonialManager";
+import TrafficAiEditor from "../components/admin/TrafficAiEditor";
 import TopBar from "../components/admin/TopBar";
 import Drawer from "../components/admin/Drawer";
 import ProductCard from "../components/ProductCard";
@@ -31,27 +35,37 @@ import {
 } from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useEffect } from "react";
-import { defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
+import { defaultHealthPage, defaultHomeUi, defaultProductSections, defaultSiteContent } from "../data/siteData";
 import { clearAuth } from "../utils/authTrust";
 import { validateContentForSave } from "./adminValidation";
 import { withBasePath } from "../utils/basePath";
 
 const bossSectionByPath: Record<string, AdminSection> = {
-  "/boss/ai-control": "ai-control",
   "/boss/pre-deploy-checklist": "pre-deploy-checklist",
   "/boss/system-health": "system-health",
+  "/boss/ai-control": "ai-control",
+  "/boss/traffic-ai": "traffic-ai",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
+  "/boss/hero-2": "hero-2",
+  "/boss/products-supplements": "products-supplements",
+  "/boss/products-gadgets": "products-gadgets",
+  "/boss/health-upcoming": "health-upcoming",
   "/boss/adsection-man": "adsection-man",
   "/boss/account-settings": "account-settings"
 };
 
 const pathByBossSection: Partial<Record<AdminSection, string>> = {
-  "ai-control": "/boss/ai-control",
   "pre-deploy-checklist": "/boss/pre-deploy-checklist",
   "system-health": "/boss/system-health",
+  "ai-control": "/boss/ai-control",
+  "traffic-ai": "/boss/traffic-ai",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
+  "hero-2": "/boss/hero-2",
+  "products-supplements": "/boss/products-supplements",
+  "products-gadgets": "/boss/products-gadgets",
+  "health-upcoming": "/boss/health-upcoming",
   "adsection-man": "/boss/adsection-man",
   "account-settings": "/boss/account-settings"
 };
@@ -103,6 +117,48 @@ const Admin = () => {
     await publishContent(nextContent);
     setStatus("Published");
     setActionMessage("Section copy updated and published.");
+  };
+
+  const saveHealthSectionCopy = async (
+    section: "gadgets" | "supplements",
+    nextCopy: { title: string; description: string }
+  ) => {
+    const currentHealth = resolveHealthPageContent();
+    const nextContent = {
+      ...content,
+      healthPage: {
+        ...currentHealth,
+        sections: {
+          ...currentHealth.sections,
+          [section]: nextCopy
+        }
+      }
+    };
+    setContent(nextContent);
+    await saveDraftContent(nextContent);
+    await publishContent(nextContent);
+    setStatus("Published");
+    setActionMessage("Health section copy updated and published.");
+  };
+
+  const saveHealthUpcomingCopy = async (nextCopy: { title: string; subtitle: string }) => {
+    const currentHealth = resolveHealthPageContent();
+    const nextContent = {
+      ...content,
+      healthPage: {
+        ...currentHealth,
+        upcoming: {
+          ...currentHealth.upcoming,
+          title: nextCopy.title,
+          subtitle: nextCopy.subtitle
+        }
+      }
+    };
+    setContent(nextContent);
+    await saveDraftContent(nextContent);
+    await publishContent(nextContent);
+    setStatus("Published");
+    setActionMessage("Health upcoming section copy updated and published.");
   };
 
   useEffect(() => {
@@ -165,17 +221,36 @@ const Admin = () => {
     };
   }, []);
 
+  const resolveHealthPageContent = () => ({
+    ...defaultHealthPage,
+    ...(content.healthPage ?? {}),
+    hero2: {
+      ...defaultHealthPage.hero2,
+      ...(content.healthPage?.hero2 ?? {})
+    },
+    sections: {
+      gadgets: {
+        ...defaultHealthPage.sections.gadgets,
+        ...(content.healthPage?.sections?.gadgets ?? {})
+      },
+      supplements: {
+        ...defaultHealthPage.sections.supplements,
+        ...(content.healthPage?.sections?.supplements ?? {})
+      }
+    },
+    products: {
+      gadgets: content.healthPage?.products?.gadgets ?? defaultHealthPage.products.gadgets,
+      supplements: content.healthPage?.products?.supplements ?? defaultHealthPage.products.supplements
+    },
+    upcoming: {
+      ...defaultHealthPage.upcoming,
+      ...(content.healthPage?.upcoming ?? {}),
+      items: content.healthPage?.upcoming?.items ?? defaultHealthPage.upcoming.items
+    }
+  });
+
   const sectionNode = useMemo(() => {
     switch (activeSection) {
-      case "ai-control":
-        return (
-          <EditorShell
-            title="AI Control Center"
-            description="Configure external AI provider credentials, run live chat tests, and track restore tasks."
-          >
-            <AiControlCenterEditor />
-          </EditorShell>
-        );
       case "pre-deploy-checklist":
         return (
           <EditorShell
@@ -189,6 +264,24 @@ const Admin = () => {
         return (
           <EditorShell title="System Health" description="Run quick local checks to ensure frontend and backend are ready.">
             <SystemHealthEditor />
+          </EditorShell>
+        );
+      case "ai-control":
+        return (
+          <EditorShell
+            title="AI Control Center"
+            description="Global read-only assistant for site status, email health, traffic context, and safe suggestions."
+          >
+            <AiControlCenterEditor />
+          </EditorShell>
+        );
+      case "traffic-ai":
+        return (
+          <EditorShell
+            title="Traffic AI"
+            description="Local-first traffic opportunity planner (rule-based, no external AI APIs)."
+          >
+            <TrafficAiEditor />
           </EditorShell>
         );
       case "account-settings":
@@ -230,13 +323,29 @@ const Admin = () => {
       case "branding":
         return (
           <EditorShell title="Branding & Theme" description="Manage logo text, accent color and default theme.">
-            <BrandingEditor
-              value={content.branding}
-              onChange={(next) => {
-                const nextContent = { ...content, branding: next };
-                queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
-              }}
-            />
+            <div className="space-y-4">
+              <BrandingEditor
+                value={content.branding}
+                onChange={(next) => {
+                  const nextContent = { ...content, branding: next };
+                  queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
+                }}
+              />
+              <PricingEditor
+                value={
+                  content.pricing ?? {
+                    mode: "auto",
+                    defaultCurrency: "USD",
+                    fallbackLocale: "en-US",
+                    manualCurrency: "USD"
+                  }
+                }
+                onChange={(nextPricing) => {
+                  const nextContent = { ...content, pricing: nextPricing };
+                  queueAutoPublish(nextContent, "Pricing settings updated and published.", "Failed to publish pricing settings.");
+                }}
+              />
+            </div>
           </EditorShell>
         );
       case "social-links":
@@ -270,6 +379,24 @@ const Admin = () => {
                 }}
               />
             </div>
+          </EditorShell>
+        );
+      case "hero-2":
+        return (
+          <EditorShell title="Hero 2" description="Configure the hero content for the Health page (UI scaffolding only).">
+            <Hero2Editor
+              value={resolveHealthPageContent().hero2}
+              onChange={(next) => {
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...resolveHealthPageContent(),
+                    hero2: next
+                  }
+                };
+                queueAutoPublish(nextContent, "Hero 2 updated and published.", "Failed to publish Hero 2 updates.");
+              }}
+            />
           </EditorShell>
         );
       case "adsection-man":
@@ -497,6 +624,194 @@ const Admin = () => {
             />
           </EditorShell>
         );
+      case "products-supplements":
+        return (
+          <EditorShell title="Supplements" description="Manage health supplements with the same flow as main product sections.">
+            <ProductManager
+              title="Supplements Products"
+              category="Supplements"
+              items={resolveHealthPageContent().products.supplements}
+              sectionTitle={resolveHealthPageContent().sections.supplements.title}
+              sectionDescription={resolveHealthPageContent().sections.supplements.description}
+              onSectionCopySave={(next) => saveHealthSectionCopy("supplements", next)}
+              onChange={(next) => {
+                const current = resolveHealthPageContent();
+                setContent((prev) => ({
+                  ...prev,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      supplements: next
+                    }
+                  }
+                }));
+              }}
+              onSaveAndPublish={async (nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      supplements: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Supplements products saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      supplements: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
+              }}
+            />
+          </EditorShell>
+        );
+      case "products-gadgets":
+        return (
+          <EditorShell title="Gadgets" description="Manage healthy gadgets with the same flow as main product sections.">
+            <ProductManager
+              title="Gadgets Products"
+              category="Gadgets"
+              items={resolveHealthPageContent().products.gadgets}
+              sectionTitle={resolveHealthPageContent().sections.gadgets.title}
+              sectionDescription={resolveHealthPageContent().sections.gadgets.description}
+              onSectionCopySave={(next) => saveHealthSectionCopy("gadgets", next)}
+              onChange={(next) => {
+                const current = resolveHealthPageContent();
+                setContent((prev) => ({
+                  ...prev,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      gadgets: next
+                    }
+                  }
+                }));
+              }}
+              onSaveAndPublish={async (nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      gadgets: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Gadgets products saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    products: {
+                      ...current.products,
+                      gadgets: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
+              }}
+            />
+          </EditorShell>
+        );
+      case "health-upcoming":
+        return (
+          <EditorShell title="Health Upcoming" description="Manage upcoming teaser cards for the Health page slider.">
+            <HealthUpcomingManager
+              title="Upcoming Items"
+              sectionTitle={resolveHealthPageContent().upcoming.title}
+              sectionSubtitle={resolveHealthPageContent().upcoming.subtitle}
+              items={resolveHealthPageContent().upcoming.items}
+              onSectionCopySave={(next) => saveHealthUpcomingCopy(next)}
+              onChange={(next) => {
+                const current = resolveHealthPageContent();
+                setContent((prev) => ({
+                  ...prev,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: next
+                    }
+                  }
+                }));
+              }}
+              onSaveAndPublish={async (nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                await saveDraftContent(nextContent);
+                await publishContent(nextContent);
+                setStatus("Published");
+                setActionMessage("Health upcoming items saved and published.");
+              }}
+              onPreviewDraft={(nextItems) => {
+                const current = resolveHealthPageContent();
+                const nextContent = {
+                  ...content,
+                  healthPage: {
+                    ...current,
+                    upcoming: {
+                      ...current.upcoming,
+                      items: nextItems
+                    }
+                  }
+                };
+                setContent(nextContent);
+                void (async () => {
+                  await saveDraftContent(nextContent);
+                  setStatus("Draft");
+                  window.open(withBasePath("/health?preview=draft"), "_blank", "noopener,noreferrer");
+                })();
+              }}
+            />
+          </EditorShell>
+        );
       default:
         return null;
     }
@@ -634,6 +949,7 @@ const Admin = () => {
           {content.products.forex[0] ? (
             <ProductCard
               product={content.products.forex[0]}
+              pricing={content.pricing}
               onCheckout={() => {
                 // preview only
               }}

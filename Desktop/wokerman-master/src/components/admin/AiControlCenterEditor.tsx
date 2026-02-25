@@ -1,11 +1,206 @@
-import { useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiJson } from "../../api/client";
+import { getMediaLibrary, type MediaItem } from "../../utils/mediaLibrary";
+
+type AiContextResponse = {
+  snapshotAt: string;
+  site: {
+    updatedAt: string;
+    hasDraft: boolean;
+    industries: number;
+    testimonials: number;
+    sectionCounts: Record<string, number>;
+    totalProducts: number;
+  };
+  email: {
+    subscribers: number;
+    pending: number;
+    confirmed: number;
+    unsubscribed: number;
+    campaignsDraft: number;
+    campaignsScheduled: number;
+    campaignsSent: number;
+  };
+  analytics: {
+    totalEvents: number;
+    topEvents: Array<{ eventName: string; count: number }>;
+  };
+  trafficAi: null | {
+    latestPlanAt: string;
+    opportunities: number;
+    avgScore: number;
+  };
+  role?: "viewer" | "editor" | "publisher" | "owner";
+  capabilities?: string[];
+};
+
+type SourceItem = {
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+};
+
+type AiChatResponse = {
+  mode: "read-only" | "super";
+  intent?:
+    | "CODING_HELP"
+    | "AD_COPY"
+    | "SEO_RESEARCH"
+    | "COMPLIANCE"
+    | "DASHBOARD_INSIGHTS"
+    | "PRODUCT_POSITIONING"
+    | "GENERAL_QA";
+  answer: string;
+  suggestions: string[];
+  sources?: SourceItem[];
+};
+
+type PreparedActionResponse = {
+  mode: "preview-only";
+  actionType: "add_product";
+  executeAvailable: boolean;
+  confirmationRequired: true;
+  target: {
+    section: "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming";
+    path: string;
+  };
+  productDraft: {
+    title: string;
+    shortDescription: string;
+    longDescription: string;
+    features: string[];
+    rating: number;
+    isNew: boolean;
+    imageUrl: string;
+    checkoutLink: string;
+    complianceWarnings: string[];
+  };
+  approval: {
+    id: string;
+    confirmPhrase: string;
+    expiresAt: number;
+  };
+  nextStep: string;
+};
+
+type ExecuteActionResponse = {
+  ok: true;
+  mode: "execute";
+  section: "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming";
+  insertedTitle: string;
+  productsInSection: number;
+  rollbackId?: string;
+};
+
+type WebSearchResponse = {
+  query: string;
+  results: SourceItem[];
+};
+
+type MessageStatus = "sending" | "streaming" | "complete" | "error";
+
+type ChatSession = {
+  id: string;
+  title: string;
+  createdAt: number;
+  lastUpdatedAt: number;
+};
+
+type ChatMessage = {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  imageUrl?: string;
+  imageName?: string;
+  createdAt: number;
+  status: MessageStatus;
+  suggestions?: string[];
+  sources?: SourceItem[];
+};
+
+type MarkdownBlock =
+  | { type: "heading"; level: number; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "blockquote"; text: string }
+  | { type: "code"; language: string; code: string };
+
+type AiEmailResponse = {
+  ok: true;
+  mode: "email_generate";
+  language: string;
+  tone: string;
+  includeEmojis?: boolean;
+  section: string;
+  campaignId: string | null;
+  draftSaved: boolean;
+  email: {
+    subject: string;
+    previewText: string;
+    bodyHtml: string;
+    bodyRich: string;
+  };
+};
+
+type AiExportResponse = {
+  ok: true;
+  mode: "export_generate";
+  format: "pdf" | "doc" | "excel";
+  fileName: string;
+  url: string;
+  sizeBytes: number;
+};
+
+type ToolPanel = "none" | "web" | "action" | "email" | "docs";
+type AiMainTab = "chat" | "snapshot" | "tools";
+type AiIntent =
+  | "CODING_HELP"
+  | "AD_COPY"
+  | "SEO_RESEARCH"
+  | "COMPLIANCE"
+  | "DASHBOARD_INSIGHTS"
+  | "PRODUCT_POSITIONING"
+  | "GENERAL_QA";
+type SessionContext = {
+  category: string;
+  platform: string;
+  tone: string;
+};
+
+const QUICK_PROMPTS = [
+  "What happened on my page today?",
+  "Search online affiliate disclosure rules for supplements",
+  "Give me SEO traffic opportunities summary",
+  "Prepare add product to gadgets"
+];
+
+const STORAGE_SESSIONS_KEY = "autohub_ai_sessions_v2";
+const STORAGE_MESSAGES_KEY = "autohub_ai_messages_by_session_v2";
+const STORAGE_ACTIVE_SESSION_KEY = "autohub_ai_active_session_v2";
+const STORAGE_SESSION_CONTEXT_KEY = "autohub_ai_session_context_v1";
+const MAX_STORED_SESSIONS = 40;
+const MAX_MESSAGES_PER_SESSION = 160;
+const MAX_MESSAGE_CONTENT_CHARS = 12_000;
+
+const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const now = () => Date.now();
+
+const parseJson = <T,>(value: string | null, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
 
 type AiSettingsResponse = {
   mode: "current" | "super";
   superModeConfigured: boolean;
   superMode: null | {
-    provider: "openai_compatible";
+    provider: string;
     baseUrl: string;
     model: string;
     apiKeyMask: string;
@@ -13,375 +208,1922 @@ type AiSettingsResponse = {
   };
 };
 
-type AiChatResponse = {
-  ok: boolean;
-  mode: "super";
-  answer: string;
-  modelUsed?: string;
-  attemptedModels?: string[];
-  suggestions: string[];
+const truncateTitle = (value: string, max = 52) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "AI Assistant Control";
+  return trimmed.length > max ? `${trimmed.slice(0, max)}...` : trimmed;
 };
 
-type AiHealthResponse = {
-  ok: boolean;
-  modelUsed?: string;
-  attemptedModels?: string[];
-  responseTimeMs?: number;
-  answer?: string;
+const createSession = (title = "New session"): ChatSession => {
+  const timestamp = now();
+  return { id: createId("session"), title, createdAt: timestamp, lastUpdatedAt: timestamp };
 };
 
-type AiPreparedAction =
-  | {
-      kind: "update_hero";
-      summary: string;
-      payload: {
-        headline?: string;
-        subtext?: string;
-        ctaPrimaryLabel?: string;
-        ctaPrimaryTarget?: string;
-        ctaSecondaryLabel?: string;
-        ctaSecondaryTarget?: string;
-      };
+const createAssistantMessage = (sessionId: string, content: string, status: MessageStatus = "complete"): ChatMessage => ({
+  id: createId("msg-a"),
+  sessionId,
+  role: "assistant",
+  content,
+  createdAt: now(),
+  status
+});
+
+const createUserMessage = (sessionId: string, content: string, status: MessageStatus = "complete"): ChatMessage => ({
+  id: createId("msg-u"),
+  sessionId,
+  role: "user",
+  content,
+  createdAt: now(),
+  status
+});
+const normalizeMessageContent = (value: string) => value.slice(0, MAX_MESSAGE_CONTENT_CHARS);
+const normalizeMessage = (item: ChatMessage): ChatMessage => ({
+  ...item,
+  content: normalizeMessageContent(item.content)
+});
+
+const isNearBottom = (el: HTMLElement, threshold = 120) =>
+  el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+
+const buildAnalysisPrompt = (message: string, context: AiContextResponse | null) => {
+  const trimmed = message.trim();
+  if (!context) return `${trimmed}\n\nRespond with markdown headings, bullets, and concrete next steps.`;
+  return `${trimmed}
+
+Use markdown output with sections:
+- Summary
+- Key Risks
+- Search/SEO Opportunities
+- Recommended Actions (prioritized)
+
+Current snapshot:
+- Total products: ${context.site.totalProducts}
+- Subscribers: ${context.email.subscribers}
+- Analytics events: ${context.analytics.totalEvents}
+- Industries: ${context.site.industries}
+- Section counts: ${JSON.stringify(context.site.sectionCounts)}
+`;
+};
+
+const shouldUseAnalysisContext = (message: string) => {
+  const lower = message.trim().toLowerCase();
+  if (!lower) return false;
+  if (lower === "hi" || lower === "hello" || lower === "hey") return false;
+  if (lower.startsWith("how are you") || lower.startsWith("who are you")) return false;
+  return /(status|summary|traffic|seo|analytics|report|analy|audit|opportunit|search|compare|plan)/i.test(lower);
+};
+
+const improveSearchQuery = (query: string) => {
+  const base = query.trim();
+  if (!base) return "";
+  if (/\b(2026|latest|guidelines|best practices|compliance|seo)\b/i.test(base)) return base;
+  return `${base} latest guidelines 2026 best practices compliance`;
+};
+
+const rewriteQuestionText = (input: string) => {
+  const cleaned = input.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const normalized = cleaned.endsWith("?") ? cleaned : `${cleaned}?`;
+  const first = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return `Please help with this request clearly and step by step: ${first}`;
+};
+
+const inferActiveSection = (input: string) => {
+  const lower = input.toLowerCase();
+  if (/\bforex\b/.test(lower)) return "forex";
+  if (/\bbetting\b/.test(lower)) return "betting";
+  if (/\bsoftware\b/.test(lower)) return "software";
+  if (/\bsocial\b/.test(lower)) return "social";
+  if (/\bgadget\b/.test(lower)) return "gadgets";
+  if (/\bsupplement\b/.test(lower)) return "supplements";
+  if (/\bupcoming\b/.test(lower)) return "upcoming";
+  if (/\bhealth\b/.test(lower)) return "health";
+  return "marketing";
+};
+
+const defaultSessionContext = (): SessionContext => ({
+  category: "health",
+  platform: "web",
+  tone: "professional"
+});
+
+const suggestionsForIntent = (intent: AiIntent, sessionContext: SessionContext): string[] => {
+  const base = `${sessionContext.category} on ${sessionContext.platform}`;
+  switch (intent) {
+    case "SEO_RESEARCH":
+      return [`Latest SEO opportunities for ${base}`, "Keyword cluster ideas", "Internal linking plan", "Competitor gap summary"];
+    case "COMPLIANCE":
+      return ["Affiliate disclosure rewrite", "Risky claims audit", "Policy/rules latest check", "Compliant CTA examples"];
+    case "AD_COPY":
+      return [`Ad headlines for ${base}`, "Short social captions", "High-converting CTA set", "A/B ad angle ideas"];
+    case "PRODUCT_POSITIONING":
+      return ["Positioning statement", "Feature-to-benefit mapping", "Audience persona fit", "Offer differentiation"];
+    case "DASHBOARD_INSIGHTS":
+      return ["What changed today", "Weakest section by count", "Top growth bottlenecks", "Weekly action priorities"];
+    case "CODING_HELP":
+      return ["Route handler example", "Type-safe payload model", "Validation checklist", "Refactor proposal"];
+    default:
+      return ["Summarize opportunities", "Create action plan", "Ask a focused question", "Generate next steps"];
+  }
+};
+
+const parseMarkdown = (input: string): MarkdownBlock[] => {
+  const lines = input.replace(/\r\n/g, "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (!line.trim()) {
+      index += 1;
+      continue;
     }
-  | {
-      kind: "update_confirmation_template";
-      summary: string;
-      payload: {
-        mode?: "rich" | "html";
-        subject?: string;
-        previewText?: string;
-        bodyRich?: string;
-        bodyHtml?: string;
-      };
-    };
+
+    const codeStart = line.match(/^```\s*(\w+)?\s*$/);
+    if (codeStart) {
+      const language = codeStart[1] ?? "text";
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```\s*$/.test(lines[index] ?? "")) {
+        codeLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      blocks.push({ type: "code", language, code: codeLines.join("\n") });
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index] ?? "")) {
+        items.push((lines[index] ?? "").replace(/^\s*[-*]\s+/, "").trim());
+        index += 1;
+      }
+      blocks.push({ type: "list", items });
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^>\s?/.test(lines[index] ?? "")) {
+        quoteLines.push((lines[index] ?? "").replace(/^>\s?/, ""));
+        index += 1;
+      }
+      blocks.push({ type: "blockquote", text: quoteLines.join("\n") });
+      continue;
+    }
+
+    const paragraphLines: string[] = [line];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index]?.trim() &&
+      !/^(#{1,6})\s+/.test(lines[index] ?? "") &&
+      !/^\s*[-*]\s+/.test(lines[index] ?? "") &&
+      !/^>\s?/.test(lines[index] ?? "") &&
+      !/^```/.test(lines[index] ?? "")
+    ) {
+      paragraphLines.push(lines[index] ?? "");
+      index += 1;
+    }
+    blocks.push({ type: "paragraph", text: paragraphLines.join("\n") });
+  }
+
+  return blocks;
+};
+
+const renderInline = (text: string, keyPrefix: string): ReactNode[] => {
+  const nodes: ReactNode[] = [];
+  const pattern = /(https?:\/\/\S+)|`([^`]+)`|\*\*([^*]+)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null = pattern.exec(text);
+  let part = 0;
+
+  while (match) {
+    if (match.index > lastIndex) {
+      nodes.push(<span key={`${keyPrefix}-t-${part}`}>{text.slice(lastIndex, match.index)}</span>);
+      part += 1;
+    }
+    const [full, link, inlineCode, bold] = match;
+    if (link) {
+      nodes.push(
+        <a key={`${keyPrefix}-l-${part}`} href={link} target="_blank" rel="noopener noreferrer nofollow" className="text-blue-300 underline underline-offset-2 hover:text-blue-200">
+          {link}
+        </a>
+      );
+    } else if (inlineCode) {
+      nodes.push(
+        <code key={`${keyPrefix}-c-${part}`} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[0.9em] text-cyan-200">
+          {inlineCode}
+        </code>
+      );
+    } else if (bold) {
+      nodes.push(
+        <strong key={`${keyPrefix}-b-${part}`} className="font-semibold text-white">
+          {bold}
+        </strong>
+      );
+    } else {
+      nodes.push(<span key={`${keyPrefix}-f-${part}`}>{full}</span>);
+    }
+    lastIndex = match.index + full.length;
+    part += 1;
+    match = pattern.exec(text);
+  }
+  if (lastIndex < text.length) {
+    nodes.push(<span key={`${keyPrefix}-tail`}>{text.slice(lastIndex)}</span>);
+  }
+  return nodes;
+};
 
 const AiControlCenterEditor = () => {
-  const [mode, setMode] = useState<"current" | "super">("current");
-  const [provider] = useState<"openai_compatible">("openai_compatible");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
-  const [model, setModel] = useState("gpt-4o-mini");
-  const [apiKey, setApiKey] = useState("");
-  const [apiKeyMask, setApiKeyMask] = useState("");
-  const [superConfigured, setSuperConfigured] = useState(false);
-  const [prompt, setPrompt] = useState("Audit my current email system and give 5 fixes.");
-  const [answer, setAnswer] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [modelInfo, setModelInfo] = useState("");
-  const [healthInfo, setHealthInfo] = useState("");
-  const [actionPrompt, setActionPrompt] = useState("Update homepage hero headline to highlight instant onboarding.");
-  const [preparedAction, setPreparedAction] = useState<AiPreparedAction | null>(null);
-  const [applyResult, setApplyResult] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lastFailedPrompt, setLastFailedPrompt] = useState("");
   const [message, setMessage] = useState("");
+  const [toolPanel, setToolPanel] = useState<ToolPanel>("none");
+  const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<AiMainTab>("chat");
+  const [forceMarkdown, setForceMarkdown] = useState(true);
+  const [autoRewrite, setAutoRewrite] = useState(true);
+  const [lastIntent, setLastIntent] = useState<AiIntent>("GENERAL_QA");
+  const [toast, setToast] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [aiMode, setAiMode] = useState<"current" | "super">("current");
+  const [superConfigured, setSuperConfigured] = useState(false);
+  const [superProvider, setSuperProvider] = useState("openai_compatible");
+  const [superBaseUrl, setSuperBaseUrl] = useState("https://api.openai.com/v1");
+  const [superModel, setSuperModel] = useState("gpt-4o-mini");
+  const [superApiKey, setSuperApiKey] = useState("");
+  const [superApiKeyMask, setSuperApiKeyMask] = useState("");
+
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionImageUrl, setActionImageUrl] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [preparedAction, setPreparedAction] = useState<PreparedActionResponse | null>(null);
+  const [executeIssues, setExecuteIssues] = useState<string[]>([]);
+
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailObjective, setEmailObjective] = useState("");
+  const [emailSection, setEmailSection] = useState("health");
+  const [emailLanguage, setEmailLanguage] = useState("en");
+  const [emailTone, setEmailTone] = useState("professional");
+  const [emailEmojis, setEmailEmojis] = useState(true);
+  const [emailResult, setEmailResult] = useState<AiEmailResponse | null>(null);
+  const [docsBusy, setDocsBusy] = useState(false);
+  const [docsQuestion, setDocsQuestion] = useState("");
+  const [docsFormat, setDocsFormat] = useState<"pdf" | "doc" | "excel">("pdf");
+  const [exportResults, setExportResults] = useState<AiExportResponse[]>([]);
+
+  const [webQuery, setWebQuery] = useState("");
+  const [webBusy, setWebBusy] = useState(false);
+  const [webResults, setWebResults] = useState<SourceItem[]>([]);
+  const [chatImageUrl, setChatImageUrl] = useState("");
+  const [chatImageName, setChatImageName] = useState("");
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [imageSearch, setImageSearch] = useState("");
+  const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+
+  const [context, setContext] = useState<AiContextResponse | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>(() =>
+    parseJson<ChatSession[]>(typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSIONS_KEY) : null, []).slice(
+      0,
+      MAX_STORED_SESSIONS
+    )
+  );
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY) : null
+  );
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() => {
+    const stored = parseJson<Record<string, ChatMessage[]>>(
+      typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_MESSAGES_KEY) : null,
+      {}
+    );
+    const next: Record<string, ChatMessage[]> = {};
+    for (const [key, items] of Object.entries(stored)) {
+      next[key] = items.slice(-MAX_MESSAGES_PER_SESSION).map((item) => normalizeMessage(item));
+    }
+    return next;
+  });
+  const [sessionContextBySession, setSessionContextBySession] = useState<Record<string, SessionContext>>(() =>
+    parseJson<Record<string, SessionContext>>(
+      typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_SESSION_CONTEXT_KEY) : null,
+      {}
+    )
+  );
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [followLatest, setFollowLatest] = useState(true);
+
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt), [sessions]);
+
+  const activeMessages = useMemo(() => {
+    if (!activeSessionId) return [];
+    return messagesBySession[activeSessionId] ?? [];
+  }, [activeSessionId, messagesBySession]);
+  const activeSessionContext = useMemo(
+    () => (activeSessionId ? sessionContextBySession[activeSessionId] ?? defaultSessionContext() : defaultSessionContext()),
+    [activeSessionId, sessionContextBySession]
+  );
+  const filteredMedia = useMemo(
+    () => mediaLibrary.filter((media) => media.name.toLowerCase().includes(imageSearch.trim().toLowerCase())),
+    [imageSearch, mediaLibrary]
+  );
+  const smartPrompts = useMemo(() => suggestionsForIntent(lastIntent, activeSessionContext), [lastIntent, activeSessionContext]);
+
+  const latestTitle = useMemo(() => {
+    if (!activeSessionId) return "AI Assistant Control";
+    const current = sessions.find((item) => item.id === activeSessionId);
+    return current?.title ?? "AI Assistant Control";
+  }, [activeSessionId, sessions]);
+
+  const updateSessionMeta = (sessionId: string, titleOverride?: string) => {
+    setSessions((prev) =>
+      prev.map((item) =>
+        item.id === sessionId
+          ? { ...item, title: titleOverride ? truncateTitle(titleOverride) : item.title, lastUpdatedAt: now() }
+          : item
+      )
+    );
+  };
+
+  const appendMessage = (sessionId: string, messageToAdd: ChatMessage, titleFromUser?: string) => {
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: [...(prev[sessionId] ?? []), normalizeMessage(messageToAdd)].slice(-MAX_MESSAGES_PER_SESSION)
+    }));
+    updateSessionMeta(sessionId, titleFromUser);
+  };
+
+  const replaceMessage = (sessionId: string, messageId: string, patch: Partial<ChatMessage>) => {
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] ?? [])
+        .map((item) => (item.id === messageId ? normalizeMessage({ ...item, ...patch }) : item))
+        .slice(-MAX_MESSAGES_PER_SESSION)
+    }));
+    updateSessionMeta(sessionId);
+  };
+
+  const removeMessage = (sessionId: string, messageId: string) => {
+    setMessagesBySession((prev) => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] ?? []).filter((item) => item.id !== messageId)
+    }));
+    updateSessionMeta(sessionId);
+  };
+
+  const createEmptySession = () => {
+    const session = createSession();
+    const welcome = createAssistantMessage(
+      session.id,
+      "I can audit your live site status, search online sources, and prepare product actions. Use quick prompts or ask directly."
+    );
+    welcome.suggestions = ["Ask: what happened on my page today?", "Ask: search online FTC affiliate rules"];
+    setSessions((prev) => [session, ...prev].slice(0, MAX_STORED_SESSIONS));
+    setMessagesBySession((prev) => ({ ...prev, [session.id]: [welcome] }));
+    setSessionContextBySession((prev) => ({ ...prev, [session.id]: defaultSessionContext() }));
+    setActiveSessionId(session.id);
+    return session.id;
+  };
+
+  const ensureActiveSession = () => {
+    if (activeSessionId && sessions.some((item) => item.id === activeSessionId)) return activeSessionId;
+    return createEmptySession();
+  };
+
+  const loadContext = async () => {
+    setError("");
+    try {
+      const next = await apiGet<AiContextResponse>("/api/ai/control/context");
+      setContext(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load AI context.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
+    void loadContext();
+    void loadAiSettings();
+  }, []);
+
+  useEffect(() => {
+    if (sessions.length === 0) {
+      createEmptySession();
+    }
+  }, [sessions.length]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    if (!sessions.some((item) => item.id === activeSessionId)) {
+      setActiveSessionId(null);
+    }
+  }, [activeSessionId, sessions]);
+
+  useEffect(() => {
+    const allowedSessionIds = new Set(sessions.map((item) => item.id));
+    setMessagesBySession((prev) => {
+      let changed = false;
+      const next: Record<string, ChatMessage[]> = {};
+      for (const [sessionId, items] of Object.entries(prev)) {
+        if (!allowedSessionIds.has(sessionId)) {
+          changed = true;
+          continue;
+        }
+        const normalized = items.slice(-MAX_MESSAGES_PER_SESSION).map((item) => normalizeMessage(item));
+        if (normalized.length !== items.length) changed = true;
+        next[sessionId] = normalized;
+      }
+      return changed ? next : prev;
+    });
+    setSessionContextBySession((prev) => {
+      let changed = false;
+      const next: Record<string, SessionContext> = {};
+      for (const [sessionId, ctx] of Object.entries(prev)) {
+        if (!allowedSessionIds.has(sessionId)) {
+          changed = true;
+          continue;
+        }
+        next[sessionId] = ctx;
+      }
+      return changed ? next : prev;
+    });
+  }, [sessions]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    setSessionContextBySession((prev) =>
+      prev[activeSessionId] ? prev : { ...prev, [activeSessionId]: defaultSessionContext() }
+    );
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messagesBySession));
+    }
+  }, [messagesBySession]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_SESSION_CONTEXT_KEY, JSON.stringify(sessionContextBySession));
+    }
+  }, [sessionContextBySession]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeSessionId) {
+      window.localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, activeSessionId);
+    } else {
+      window.localStorage.removeItem(STORAGE_ACTIVE_SESSION_KEY);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 1400);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    if (!followLatest) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [activeMessages, activeSessionId, followLatest]);
+
+  useEffect(() => {
+    setFollowLatest(true);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!imagePickerOpen) return;
     let cancelled = false;
     void (async () => {
+      setMediaLoading(true);
+      setMediaError("");
       try {
-        const settings = await apiGet<AiSettingsResponse>("/api/ai/control/settings");
-        if (cancelled) return;
-        setMode(settings.mode);
-        setSuperConfigured(settings.superModeConfigured);
-        setBaseUrl(settings.superMode?.baseUrl ?? "https://api.openai.com/v1");
-        setModel(settings.superMode?.model ?? "gpt-4o-mini");
-        setApiKeyMask(settings.superMode?.apiKeyMask ?? "");
-      } catch (nextError) {
-        if (!cancelled) setError(nextError instanceof Error ? nextError.message : "Failed to load AI settings.");
+        const media = await getMediaLibrary();
+        if (!cancelled) setMediaLibrary(media);
+      } catch (err) {
+        if (!cancelled) setMediaError(err instanceof Error ? err.message : "Unable to load uploaded images.");
+      } finally {
+        if (!cancelled) setMediaLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [imagePickerOpen]);
 
-  const saveSettings = async () => {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      await apiJson<AiSettingsResponse>("/api/ai/control/settings/super", "PUT", {
-        provider,
-        baseUrl,
-        model,
-        apiKey
-      });
-      const refreshed = await apiGet<AiSettingsResponse>("/api/ai/control/settings");
-      setMode(refreshed.mode);
-      setSuperConfigured(refreshed.superModeConfigured);
-      setApiKey("");
-      setApiKeyMask(refreshed.superMode?.apiKeyMask ?? "");
-      setMessage("AI provider settings saved.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to save AI settings.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveMode = async (nextMode: "current" | "super") => {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/mode", "PUT", { mode: nextMode });
-      setMode(settings.mode);
-      setSuperConfigured(settings.superModeConfigured);
-      setMessage(`AI mode set to ${settings.mode}.`);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to update AI mode.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runChat = async () => {
-    const messageValue = prompt.trim();
-    if (!messageValue) {
-      setError("Prompt is required.");
+  useEffect(() => {
+    if (mainTab === "tools") {
+      if (toolPanel === "none") setToolPanel("web");
+      setToolDrawerOpen(true);
       return;
     }
+    setToolDrawerOpen(false);
+  }, [mainTab, toolPanel]);
+
+  const sendPrompt = async (prompt: string) => {
+    const trimmed = prompt.trim();
+    const normalizedPrompt = trimmed || (chatImageUrl ? "Analyze this uploaded image and generate ad copy." : "");
+    if (!normalizedPrompt || busy) return;
+    const sessionId = ensureActiveSession();
+    const priorMessages = (messagesBySession[sessionId] ?? []).slice(-20).map((item) => ({
+      role: item.role,
+      content: item.content
+    }));
+    const activeSection = inferActiveSection(
+      [normalizedPrompt, actionMessage, latestTitle, toolPanel].filter(Boolean).join(" ")
+    );
+    const sessionContext = activeSessionContext;
+
     setBusy(true);
     setError("");
+    setLastFailedPrompt("");
     setMessage("");
+
+    const userItem = createUserMessage(sessionId, normalizedPrompt, "sending");
+    if (chatImageUrl) {
+      userItem.imageUrl = chatImageUrl;
+      userItem.imageName = chatImageName;
+    }
+    appendMessage(sessionId, userItem, normalizedPrompt);
+    replaceMessage(sessionId, userItem.id, { status: "complete" });
+    const placeholder = createAssistantMessage(sessionId, "Thinking...", "streaming");
+    appendMessage(sessionId, placeholder);
+
     try {
-      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", { message: messageValue });
-      setAnswer(response.answer);
-      setSuggestions(response.suggestions ?? []);
-      setModelInfo(
-        response.modelUsed
-          ? `Model: ${response.modelUsed}${response.attemptedModels?.length ? ` | Fallback chain: ${response.attemptedModels.join(" -> ")}` : ""}`
-          : ""
+      let enrichedMessage = shouldUseAnalysisContext(normalizedPrompt)
+        ? buildAnalysisPrompt(normalizedPrompt, context)
+        : normalizedPrompt;
+      if (forceMarkdown) {
+        enrichedMessage = `${enrichedMessage}\n\nReturn the final answer in markdown with clear headings, bullet lists, and concise action steps.`;
+      }
+      const response = await apiJson<AiChatResponse>("/api/ai/control/chat", "POST", {
+        sessionId,
+        message: enrichedMessage,
+        rawMessage: normalizedPrompt,
+        imageUrl: chatImageUrl || undefined,
+        messages: priorMessages,
+        clientContext: {
+          currentMode: aiMode,
+          productsCount: context?.site.totalProducts ?? 0,
+          subscribersCount: context?.email.subscribers ?? 0,
+          eventsCount: context?.analytics.totalEvents ?? 0,
+          snapshotTime: context?.snapshotAt ?? ""
+        },
+        sessionContext: {
+          category: sessionContext.category || activeSection,
+          platform: sessionContext.platform,
+          tone: sessionContext.tone
+        },
+        autoRewrite,
+        formatting: {
+          markdown: forceMarkdown
+        }
+      });
+      if (response.intent) setLastIntent(response.intent);
+      if (response.mode === "super") {
+        setAiMode("super");
+      }
+      replaceMessage(sessionId, placeholder.id, {
+        content: response.answer,
+        status: "complete",
+        suggestions: response.suggestions,
+        sources: response.sources ?? []
+      });
+      setChatImageUrl("");
+      setChatImageName("");
+      await loadContext();
+    } catch (err) {
+      setLastFailedPrompt(normalizedPrompt);
+      replaceMessage(sessionId, placeholder.id, {
+        content: err instanceof Error ? err.message : "AI chat failed.",
+        status: "error"
+      });
+      setError(err instanceof Error ? err.message : "AI chat failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hydrateSettings = (settings: AiSettingsResponse) => {
+    setAiMode(settings.mode);
+    setSuperConfigured(settings.superModeConfigured);
+    setSuperProvider(settings.superMode?.provider ?? "openai_compatible");
+    setSuperBaseUrl(settings.superMode?.baseUrl ?? "https://api.openai.com/v1");
+    setSuperModel(settings.superMode?.model ?? "gpt-4o-mini");
+    setSuperApiKeyMask(settings.superMode?.apiKeyMask ?? "");
+  };
+
+  const loadAiSettings = async () => {
+    try {
+      const settings = await apiGet<AiSettingsResponse>("/api/ai/control/settings");
+      hydrateSettings(settings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load AI settings.");
+    }
+  };
+
+  const saveMode = async (mode: "current" | "super") => {
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/mode", "PUT", { mode });
+      hydrateSettings(settings);
+      setToast(`Mode set to ${settings.mode}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save AI mode.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const saveSuperMode = async () => {
+    const key = superApiKey.trim();
+    if (!key) {
+      setError("Super mode API key is required.");
+      return;
+    }
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/super", "PUT", {
+        provider: superProvider,
+        baseUrl: superBaseUrl.trim(),
+        model: superModel.trim(),
+        apiKey: key
+      });
+      hydrateSettings(settings);
+      setSuperApiKey("");
+      setToast("Super mode key saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save super mode settings.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const clearSuperMode = async () => {
+    setSettingsBusy(true);
+    setError("");
+    try {
+      const settings = await apiJson<AiSettingsResponse>("/api/ai/control/settings/super", "DELETE");
+      hydrateSettings(settings);
+      setSuperApiKey("");
+      setToast("Super mode removed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear super mode settings.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const ask = async (event: FormEvent) => {
+    event.preventDefault();
+    await sendPrompt(message);
+  };
+
+  const rewriteQuestion = () => {
+    const rewritten = rewriteQuestionText(message);
+    if (!rewritten) return;
+    setMessage(rewritten);
+    setToast("Question rewritten");
+  };
+
+  const runWebSearch = async (event: FormEvent) => {
+    event.preventDefault();
+    const query = webQuery.trim();
+    if (!query || webBusy) return;
+    const sessionId = ensureActiveSession();
+    setWebBusy(true);
+    setError("");
+    try {
+      const response = await apiJson<WebSearchResponse>("/api/ai/control/web-search", "POST", { query });
+      let mergedResults = response.results ?? [];
+
+      if (mergedResults.length < 4) {
+        const improvedQuery = improveSearchQuery(query);
+        if (improvedQuery && improvedQuery.toLowerCase() !== query.toLowerCase()) {
+          const retry = await apiJson<WebSearchResponse>("/api/ai/control/web-search", "POST", { query: improvedQuery });
+          const combined = [...mergedResults, ...(retry.results ?? [])];
+          const seen = new Set<string>();
+          mergedResults = combined.filter((item) => {
+            if (seen.has(item.url)) return false;
+            seen.add(item.url);
+            return true;
+          });
+        }
+      }
+
+      setWebResults(mergedResults);
+      appendMessage(sessionId, createUserMessage(sessionId, `Search online: ${query}`), `Search online: ${query}`);
+      appendMessage(
+        sessionId,
+        {
+          ...createAssistantMessage(
+            sessionId,
+            mergedResults.length > 0
+              ? `Found ${mergedResults.length} online sources for "${query}".`
+              : `No web sources found for "${query}".`
+          ),
+          sources: mergedResults
+        }
       );
-      setMessage("AI response received.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "AI chat request failed.");
+      setToolPanel("none");
+      setToolDrawerOpen(false);
+      setMainTab("chat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Web search failed.");
     } finally {
-      setBusy(false);
+      setWebBusy(false);
     }
   };
 
-  const runHealthCheck = async () => {
-    setBusy(true);
+  const prepareAction = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = actionMessage.trim();
+    if (!trimmed || actionBusy) return;
+    const sessionId = ensureActiveSession();
+    setActionBusy(true);
     setError("");
-    setMessage("");
+    setExecuteIssues([]);
     try {
-      const response = await apiJson<AiHealthResponse>("/api/ai/control/health", "POST", {});
-      const details = [
-        response.modelUsed ? `Model ${response.modelUsed}` : "Model n/a",
-        typeof response.responseTimeMs === "number" ? `${response.responseTimeMs}ms` : "",
-        response.answer ? `Reply: ${response.answer}` : ""
-      ]
-        .filter(Boolean)
-        .join(" | ");
-      setHealthInfo(details || "Health check passed.");
-      setMessage("AI provider health check passed.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "AI health check failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const prepareAction = async () => {
-    const value = actionPrompt.trim();
-    if (!value) {
-      setError("Action prompt is required.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const response = await apiJson<{ ok: boolean; action: AiPreparedAction }>("/api/ai/control/prepare-action", "POST", {
-        prompt: value
+      const response = await apiJson<PreparedActionResponse>("/api/ai/control/prepare-action", "POST", {
+        message: trimmed,
+        imageUrl: actionImageUrl.trim()
       });
-      setPreparedAction(response.action);
-      setApplyResult("");
-      setMessage("AI action prepared. Review then apply.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to prepare AI action.");
+      setPreparedAction(response);
+      setConfirmText("");
+      appendMessage(sessionId, createUserMessage(sessionId, trimmed), trimmed);
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Prepared ${response.actionType} for ${response.target.section}. Confirm with exact phrase before expiry: ${response.approval.confirmPhrase}`
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to prepare action.");
     } finally {
-      setBusy(false);
+      setActionBusy(false);
     }
   };
 
-  const applyPreparedAction = async () => {
-    if (!preparedAction) {
-      setError("Prepare an action first.");
-      return;
-    }
-    setBusy(true);
+  const executePreparedAction = async () => {
+    if (!preparedAction || actionBusy) return;
+    const sessionId = ensureActiveSession();
+    setActionBusy(true);
     setError("");
-    setMessage("");
+    setExecuteIssues([]);
     try {
-      const response = await apiJson<{ ok: boolean; summary?: string; applied?: string }>("/api/ai/control/apply-action", "POST", {
-        action: preparedAction
+      const result = await apiJson<ExecuteActionResponse>("/api/ai/control/execute-action", "POST", {
+        approvalId: preparedAction.approval.id,
+        confirmText: confirmText.trim(),
+        target: preparedAction.target,
+        productDraft: preparedAction.productDraft
       });
-      setApplyResult(`Applied ${response.applied ?? "action"}${response.summary ? `: ${response.summary}` : ""}`);
-      setMessage("AI action applied and saved.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to apply AI action.");
+      setPreparedAction(null);
+      setActionMessage("");
+      setActionImageUrl("");
+      setConfirmText("");
+      setToolPanel("none");
+      setToolDrawerOpen(false);
+      setMainTab("chat");
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Executed: inserted "${result.insertedTitle}" into ${result.section}. Total products now: ${result.productsInSection}.${result.rollbackId ? ` Rollback ID: ${result.rollbackId}.` : ""}`
+        )
+      );
+      await loadContext();
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "Failed to execute action.";
+      setError(messageText);
+      if (/duplicate/i.test(messageText) || /compliance/i.test(messageText) || /health category/i.test(messageText)) {
+        setExecuteIssues([messageText]);
+      }
     } finally {
-      setBusy(false);
+      setActionBusy(false);
     }
+  };
+
+  const deleteSession = (sessionId: string) => {
+    setSessions((prev) => {
+      const remaining = prev.filter((item) => item.id !== sessionId);
+      if (sessionId === activeSessionId) {
+        const next = [...remaining].sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt)[0] ?? null;
+        setActiveSessionId(next?.id ?? null);
+      }
+      return remaining;
+    });
+    setMessagesBySession((prev) => {
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+    setSessionContextBySession((prev) => {
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+    setMessage("");
+    setPreparedAction(null);
+    setExecuteIssues([]);
+    setToolPanel("none");
+    setToolDrawerOpen(false);
+    setMainTab("chat");
+    setWebResults([]);
+  };
+
+  const updateActiveSessionContext = (patch: Partial<SessionContext>) => {
+    if (!activeSessionId) return;
+    setSessionContextBySession((prev) => ({
+      ...prev,
+      [activeSessionId]: {
+        ...(prev[activeSessionId] ?? defaultSessionContext()),
+        ...patch
+      }
+    }));
+  };
+
+  const generateAiEmail = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!emailObjective.trim() || emailBusy) return;
+    const sessionId = ensureActiveSession();
+    setEmailBusy(true);
+    setError("");
+    try {
+      const objective = emailObjective.trim();
+      const response = await apiJson<AiEmailResponse>("/api/ai/control/email/generate", "POST", {
+        objective,
+        section: emailSection,
+        language: emailLanguage,
+        tone: emailTone,
+        includeEmojis: emailEmojis,
+        saveDraft: true
+      });
+      setEmailResult(response);
+      appendMessage(sessionId, createUserMessage(sessionId, `Generate email draft: ${objective}`), `Generate email draft: ${objective}`);
+      appendMessage(
+        sessionId,
+        createAssistantMessage(
+          sessionId,
+          `Email draft generated for ${response.section} (${response.language}/${response.tone}). ${
+            response.draftSaved && response.campaignId ? `Saved as campaign ${response.campaignId}.` : "Draft not saved."
+          }`
+        )
+      );
+      await loadContext();
+      setToolPanel("none");
+      setToolDrawerOpen(false);
+      setMainTab("chat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Email generation failed.");
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const generateExport = async (event: FormEvent) => {
+    event.preventDefault();
+    const question = docsQuestion.trim();
+    if (!question || docsBusy) return;
+    const sessionId = ensureActiveSession();
+    setDocsBusy(true);
+    setError("");
+    try {
+      const response = await apiJson<AiExportResponse>("/api/ai/control/export", "POST", {
+        question,
+        format: docsFormat
+      });
+      setExportResults((prev) => [response, ...prev].slice(0, 20));
+      appendMessage(
+        sessionId,
+        createUserMessage(sessionId, `Generate ${docsFormat.toUpperCase()} export: ${question}`),
+        `Generate ${docsFormat.toUpperCase()} export: ${question}`
+      );
+      appendMessage(
+        sessionId,
+        createAssistantMessage(sessionId, `Generated ${response.format.toUpperCase()} export: ${response.fileName}`)
+      );
+      setDocsQuestion("");
+      setToolPanel("none");
+      setToolDrawerOpen(false);
+      setMainTab("chat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate export.");
+    } finally {
+      setDocsBusy(false);
+    }
+  };
+
+  const copyGeneratedHtml = async () => {
+    if (!emailResult?.email.bodyHtml) return;
+    try {
+      await navigator.clipboard.writeText(emailResult.email.bodyHtml);
+      setToast("Copied");
+      const sessionId = ensureActiveSession();
+      appendMessage(sessionId, createAssistantMessage(sessionId, "Copied generated HTML email to clipboard."));
+    } catch {
+      setError("Clipboard copy failed. Select and copy manually.");
+    }
+  };
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setToast("Copied");
+    } catch {
+      setError("Clipboard copy failed.");
+    }
+  };
+
+  const renderMarkdownMessage = (content: string) => {
+    const blocks = parseMarkdown(content);
+    return (
+      <div className="space-y-3">
+        {blocks.map((block, index) => {
+          const key = `b-${index}`;
+          if (block.type === "heading") {
+            const cls =
+              block.level <= 2
+                ? "text-base font-semibold text-white"
+                : block.level === 3
+                  ? "text-sm font-semibold text-white"
+                  : "text-sm font-medium text-slate-100";
+            return (
+              <h4 key={key} className={cls}>
+                {renderInline(block.text, `${key}-h`)}
+              </h4>
+            );
+          }
+          if (block.type === "list") {
+            return (
+              <ul key={key} className="list-disc space-y-1 pl-5 text-sm leading-6 text-slate-100">
+                {block.items.map((item, itemIndex) => (
+                  <li key={`${key}-i-${itemIndex}`}>{renderInline(item, `${key}-i-${itemIndex}`)}</li>
+                ))}
+              </ul>
+            );
+          }
+          if (block.type === "blockquote") {
+            return (
+              <blockquote key={key} className="border-l-2 border-slate-600 pl-3 text-sm italic text-slate-300">
+                {renderInline(block.text, `${key}-q`)}
+              </blockquote>
+            );
+          }
+          if (block.type === "code") {
+            return (
+              <div key={key} className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950/80">
+                <div className="flex items-center justify-between border-b border-slate-700 px-3 py-2 text-[11px] uppercase tracking-wide text-slate-400">
+                  <span>{block.language || "code"}</span>
+                  <button
+                    type="button"
+                    onClick={() => void copyText(block.code)}
+                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                  >
+                    Copy code
+                  </button>
+                </div>
+                <pre className="overflow-x-auto px-3 py-3 text-xs leading-5 text-cyan-200">
+                  <code>{block.code}</code>
+                </pre>
+              </div>
+            );
+          }
+          return (
+            <p key={key} className="whitespace-pre-wrap text-sm leading-6 text-slate-100">
+              {renderInline(block.text, `${key}-p`)}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
-        <h3 className="mb-3 text-lg font-bold">Provider Settings</h3>
-        <div className="space-y-3">
-          <label className="block text-sm">
-            Base URL
-            <input
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-              placeholder="https://api.openai.com/v1"
-            />
-          </label>
-          <label className="block text-sm">
-            Model
-            <input
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-              placeholder="gpt-4o-mini"
-            />
-          </label>
-          <label className="block text-sm">
-            API Key
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-              placeholder={apiKeyMask ? `Stored key: ${apiKeyMask}` : "Paste provider API key"}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void saveSettings()}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              Save AI Settings
-            </button>
-            <button
-              type="button"
-              disabled={busy || !superConfigured}
-              onClick={() => void saveMode("super")}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 disabled:opacity-60"
-            >
-              Enable Super Mode
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void saveMode("current")}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 disabled:opacity-60"
-            >
-              Set Current Mode
-            </button>
+    <section className="h-dvh min-h-0 max-w-full overflow-x-hidden overflow-y-hidden rounded-3xl border border-slate-800/90 bg-slate-950 text-slate-100 shadow-2xl">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-slate-800/90 bg-slate-900/80 p-4 lg:flex lg:flex-col">
+          <button
+            type="button"
+            onClick={createEmptySession}
+            className="mb-4 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-left text-sm font-semibold hover:bg-slate-800"
+          >
+            + New Chat
+          </button>
+          <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Current Session</p>
+          <div className="rounded-xl bg-blue-950/50 px-3 py-2 text-sm text-blue-200">{latestTitle}</div>
+          <p className="mb-2 mt-5 text-xs uppercase tracking-wide text-slate-400">Quick Commands</p>
+          <div className="space-y-2.5">
+            {QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => void sendPrompt(prompt)}
+                className="w-full rounded-xl border border-slate-700 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+              >
+                {prompt}
+              </button>
+            ))}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Current mode: <span className="font-semibold">{mode}</span> | Super configured:{" "}
-            <span className="font-semibold">{superConfigured ? "yes" : "no"}</span>
-          </p>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
-        <h3 className="mb-3 text-lg font-bold">AI Live Test</h3>
-        <div className="space-y-3">
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            rows={4}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-            placeholder="Ask AI to analyze, edit, or generate."
-          />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void runChat()}
-            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            Run AI Chat Test
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void runHealthCheck()}
-            className="ml-2 rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 disabled:opacity-60"
-          >
-            Health Check
-          </button>
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-          {!error && message ? <p className="text-sm text-emerald-600">{message}</p> : null}
-          {healthInfo ? <p className="text-xs text-slate-500 dark:text-slate-400">{healthInfo}</p> : null}
-          {modelInfo ? <p className="text-xs text-slate-500 dark:text-slate-400">{modelInfo}</p> : null}
-          {answer ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-950">
-              <p className="mb-2 whitespace-pre-wrap">{answer}</p>
-              {suggestions.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {suggestions.map((item) => (
+          <p className="mb-2 mt-5 text-xs uppercase tracking-wide text-slate-400">Asked Sessions</p>
+          <div className="mt-1 flex-1 space-y-2.5 overflow-y-auto pr-1">
+            {sortedSessions.length === 0 ? (
+              <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400">
+                No asked sessions yet.
+              </p>
+            ) : (
+              sortedSessions.map((item) => (
+                <div key={item.id} className="rounded-xl border border-slate-700 bg-slate-900/70 px-2.5 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSessionId(item.id)}
+                    className={`w-full text-left text-xs hover:text-white ${
+                      item.id === activeSessionId ? "text-blue-200" : "text-slate-200"
+                    }`}
+                    title="Open this session"
+                  >
+                    {item.title}
+                  </button>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500">{new Date(item.lastUpdatedAt).toLocaleTimeString()}</span>
                     <button
-                      key={item}
                       type="button"
-                      className="rounded-full border border-slate-300 px-3 py-1 text-xs dark:border-slate-600"
-                      onClick={() => setPrompt(item)}
+                      onClick={() => deleteSession(item.id)}
+                      className="rounded-md border border-slate-600 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-800"
                     >
-                      {item}
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (toolPanel === "none") setToolPanel("web");
+              setMainTab("tools");
+            }}
+            className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Open Tools
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Settings
+          </button>
+        </aside>
+
+        <div className="flex h-full min-h-0 min-w-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/95">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/90 px-4 py-4 md:px-6">
+            <div>
+              <h3 className="text-lg font-bold md:text-xl">AI Assistant Offers Help</h3>
+              <p className="text-xs text-slate-400">
+                Global system brain: status, web sources, and safe action prep.{" "}
+                <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                  {aiMode} mode
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadContext()}
+              className="rounded-full border border-slate-700 bg-slate-800/80 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+            >
+              Refresh Snapshot
+            </button>
+          </header>
+
+          <div className="border-b border-slate-800/90 px-4 py-3 md:px-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMainTab("chat")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "chat" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab("snapshot")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "snapshot" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Snapshot
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab("tools")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${mainTab === "tools" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Tools
+              </button>
+            </div>
+          </div>
+
+          {mainTab === "snapshot" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-800/90 px-4 py-3 sm:grid-cols-4 md:px-6">
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Products</p>
+                  <p className="text-sm font-semibold">{context?.site.totalProducts ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Subscribers</p>
+                  <p className="text-sm font-semibold">{context?.email.subscribers ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Events</p>
+                  <p className="text-sm font-semibold">{context?.analytics.totalEvents ?? "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Snapshot</p>
+                  <p className="text-sm font-semibold">
+                    {context ? new Date(context.snapshotAt).toLocaleTimeString() : loading ? "Loading..." : "-"}
+                  </p>
+                </article>
+              </div>
+              <div className="grid grid-cols-1 gap-3 border-b border-slate-800/90 px-4 py-2.5 sm:grid-cols-3 md:px-6">
+                <article className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Role</p>
+                  <p className="text-sm font-semibold capitalize">{context?.role ?? "-"}</p>
+                </article>
+                <article className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 sm:col-span-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Capabilities</p>
+                  <p className="break-words text-sm font-semibold">{context?.capabilities?.join(", ") ?? "-"}</p>
+                </article>
+              </div>
+            </>
+          ) : null}
+
+          {error ? (
+            <div className="px-4 pt-3 md:px-6">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-800 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
+                <p className="min-w-0 break-words">{error}</p>
+                {lastFailedPrompt ? (
+                  <button
+                    type="button"
+                    onClick={() => void sendPrompt(lastFailedPrompt)}
+                    className="shrink-0 rounded border border-rose-500 px-2 py-0.5 text-xs text-rose-100 hover:bg-rose-900/40"
+                  >
+                    Retry
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {toast ? <div className="px-4 pt-3 text-xs text-emerald-300 md:px-6">{toast}</div> : null}
+
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={scrollRef}
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                setFollowLatest(isNearBottom(element));
+              }}
+              className="min-h-0 h-full overflow-y-auto overscroll-contain"
+            >
+            <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-5 pb-28">
+              {activeSessionId ? (
+                activeMessages.length > 0 ? (
+                  activeMessages.map((item) => (
+                    <article key={item.id} className={`flex ${item.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`w-full max-w-[85%] rounded-2xl border px-4 py-3.5 md:max-w-[75%] ${
+                          item.role === "user"
+                            ? "border-slate-700 bg-slate-800 text-slate-100"
+                            : item.status === "error"
+                              ? "border-rose-800 bg-rose-950/30 text-rose-100"
+                              : "border-slate-800 bg-slate-900/80 text-slate-100"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-slate-400">
+                          <span>{item.role}</span>
+                          <div className="flex items-center gap-2">
+                            <span>{item.status}</span>
+                            <button
+                              type="button"
+                              onClick={() => void copyText(item.content)}
+                              className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                            >
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeMessage(item.sessionId, item.id)}
+                              className="rounded border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-800"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        {item.imageUrl ? (
+                          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/80 px-2 py-2">
+                            <img src={item.imageUrl} alt={item.imageName || "Attached upload"} className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                            {item.imageName ? <p className="truncate text-[11px] text-slate-300">{item.imageName}</p> : null}
+                          </div>
+                        ) : null}
+                        {item.role === "assistant" ? (
+                          <div className="break-words">{renderMarkdownMessage(item.content)}</div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
+                        )}
+                        {item.status === "streaming" ? <p className="mt-2 text-xs text-slate-400">Generating...</p> : null}
+                        {item.suggestions && item.suggestions.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {item.suggestions.map((suggestion) => (
+                              <button
+                                key={suggestion}
+                                type="button"
+                                onClick={() => void sendPrompt(suggestion.replace(/^Ask:\s*/i, ""))}
+                                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {item.sources && item.sources.length > 0 ? (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {item.sources.slice(0, 6).map((source) => (
+                              <a
+                                key={`${item.id}-${source.url}`}
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer nofollow"
+                                className="rounded-xl border border-slate-800 bg-slate-950 p-3 hover:bg-slate-800/80"
+                              >
+                                <p className="break-words text-sm font-semibold text-blue-300">{source.title}</p>
+                                <p className="mt-1 line-clamp-2 break-words text-xs text-slate-300">{source.snippet}</p>
+                                <p className="mt-1 text-[11px] text-slate-500">{source.source}</p>
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-300">
+                    <p>No messages in this session yet.</p>
+                    <p className="mt-1 text-xs text-slate-400">Try one of these:</p>
+                    <div className="mt-3 flex flex-wrap justify-center gap-2">
+                      {smartPrompts.map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => void sendPrompt(prompt)}
+                          className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-400">
+                  No active session. Create a new chat to start.
+                </div>
+              )}
+            </div>
+            </div>
+            {!followLatest ? (
+              <div className="pointer-events-none absolute bottom-4 right-4 z-10 md:right-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!scrollRef.current) return;
+                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                    setFollowLatest(true);
+                  }}
+                  className="pointer-events-auto rounded-full border border-slate-600 bg-slate-900/95 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg hover:bg-slate-800"
+                >
+                  Jump to latest
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          <footer className="sticky bottom-0 shrink-0 border-t border-slate-800/90 bg-slate-950/90 px-4 py-4 backdrop-blur md:px-6">
+            <div className="mx-auto w-full max-w-3xl">
+            <div className="mb-2 flex flex-wrap gap-2">
+              {smartPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => void sendPrompt(prompt)}
+                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={ask} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 shadow-[0_8px_24px_rgba(2,6,23,0.35)]">
+              {chatImageUrl ? (
+                <div className="mb-2 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-2 py-2 text-xs text-slate-200">
+                  <img src={chatImageUrl} alt={chatImageName || "Selected upload"} className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate pr-2">{chatImageName || "Attached upload image"}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChatImageUrl("");
+                      setChatImageName("");
+                    }}
+                    className="rounded border border-slate-600 px-2 py-0.5 text-[10px] hover:bg-slate-800"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : null}
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                rows={2}
+                placeholder="Ask this admin AI about site status, traffic opportunities, compliance checks, or content actions."
+                className="w-full resize-none border-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-400 outline-none"
+              />
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={rewriteQuestion}
+                    disabled={!message.trim() || busy}
+                    className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                  >
+                    Rewrite my question
+                  </button>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={forceMarkdown}
+                      onChange={(event) => setForceMarkdown(event.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    Improve answer formatting
+                  </label>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={autoRewrite}
+                      onChange={(event) => setAutoRewrite(event.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    Auto understand
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <select
+                    value={activeSessionContext.category}
+                    onChange={(event) => updateActiveSessionContext({ category: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="health">health</option>
+                    <option value="forex">forex</option>
+                    <option value="betting">betting</option>
+                    <option value="software">software</option>
+                    <option value="social">social</option>
+                    <option value="gadgets">gadgets</option>
+                    <option value="supplements">supplements</option>
+                    <option value="upcoming">upcoming</option>
+                  </select>
+                  <select
+                    value={activeSessionContext.platform}
+                    onChange={(event) => updateActiveSessionContext({ platform: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="web">web</option>
+                    <option value="email">email</option>
+                    <option value="social">social</option>
+                    <option value="search">search</option>
+                  </select>
+                  <select
+                    value={activeSessionContext.tone}
+                    onChange={(event) => updateActiveSessionContext({ tone: event.target.value })}
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="professional">professional</option>
+                    <option value="friendly">friendly</option>
+                    <option value="direct">direct</option>
+                    <option value="urgent">urgent</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageSearch("");
+                      setImagePickerOpen(true);
+                    }}
+                    className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-60"
+                  >
+                    Grab Image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (toolPanel === "none") setToolPanel("web");
+                      setMainTab("tools");
+                    }}
+                    className="shrink-0 rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
+                  >
+                    Open Tools
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="shrink-0 rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busy ? "Thinking..." : "Send"}
+                  </button>
+                </div>
+              </div>
+            </form>
+            </div>
+          </footer>
+        </div>
+      </div>
+      {imagePickerOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4" role="presentation" onClick={() => setImagePickerOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select uploaded image for AI chat"
+            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-base font-semibold text-slate-100">Product Media Library</h4>
+              <button type="button" onClick={() => setImagePickerOpen(false)} className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200">
+                Close
+              </button>
+            </div>
+            <input
+              value={imageSearch}
+              onChange={(event) => setImageSearch(event.target.value)}
+              placeholder="Search uploaded image..."
+              className="mb-3 h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100"
+            />
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-700 p-2">
+              {mediaLoading ? (
+                <p className="p-2 text-sm text-slate-400">Loading uploaded images...</p>
+              ) : mediaError ? (
+                <p className="rounded-lg border border-rose-800 bg-rose-950/40 p-2 text-sm text-rose-200">{mediaError}</p>
+              ) : filteredMedia.length === 0 ? (
+                <p className="p-2 text-sm text-slate-400">No uploaded images found.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  {filteredMedia.map((media) => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() => {
+                        setChatImageUrl(media.dataUrl);
+                        setChatImageName(media.name);
+                        setImagePickerOpen(false);
+                        setToast("Image attached");
+                      }}
+                      className="overflow-hidden rounded-xl border border-slate-700 text-left transition hover:border-blue-500"
+                    >
+                      <img src={media.dataUrl} alt={media.name} className="h-24 w-full object-cover" />
+                      <p className="truncate px-2 py-1 text-xs text-slate-200">{media.name}</p>
                     </button>
                   ))}
                 </div>
-              ) : null}
+              )}
             </div>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
-        <h3 className="mb-3 text-lg font-bold">AI Safe Actions</h3>
-        <div className="space-y-3">
-          <textarea
-            value={actionPrompt}
-            onChange={(event) => setActionPrompt(event.target.value)}
-            rows={3}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-            placeholder="Describe one change for hero or confirmation email template."
-          />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void prepareAction()}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              Prepare Action
-            </button>
-            <button
-              type="button"
-              disabled={busy || !preparedAction}
-              onClick={() => void applyPreparedAction()}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 disabled:opacity-60"
-            >
-              Apply Prepared Action
-            </button>
           </div>
-          {preparedAction ? (
-            <pre className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-950">
-              {JSON.stringify(preparedAction, null, 2)}
-            </pre>
-          ) : null}
-          {applyResult ? <p className="text-sm text-emerald-600">{applyResult}</p> : null}
         </div>
-      </section>
-    </div>
+      ) : null}
+
+      {toolDrawerOpen ? (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/75 p-4"
+          role="presentation"
+          onClick={() => {
+            setToolDrawerOpen(false);
+            setMainTab("chat");
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI tools"
+            className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h4 className="text-base font-semibold text-slate-100">AI Tools</h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setToolDrawerOpen(false);
+                  setMainTab("chat");
+                }}
+                className="rounded-lg border border-slate-600 px-2 py-1 text-sm text-slate-200"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setToolPanel("web")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "web" ? "border-blue-500 bg-blue-900/40 text-blue-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Sources Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("action")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "action" ? "border-indigo-500 bg-indigo-900/40 text-indigo-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Ads/Product Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("email")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "email" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Email Tool
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolPanel("docs")}
+                className={`rounded-full border px-3 py-1.5 text-xs ${toolPanel === "docs" ? "border-cyan-500 bg-cyan-900/40 text-cyan-200" : "border-slate-700 text-slate-200"}`}
+              >
+                Docs Tool
+              </button>
+            </div>
+
+            {toolPanel === "web" ? (
+              <form onSubmit={runWebSearch} className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+                <label className="text-xs uppercase tracking-wide text-slate-400">Web Search Query</label>
+                <input
+                  value={webQuery}
+                  onChange={(event) => setWebQuery(event.target.value)}
+                  placeholder="Search online: health affiliate disclaimer requirements"
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={webBusy}
+                    className="rounded-full border border-slate-600 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-60"
+                  >
+                    {webBusy ? "Searching..." : "Run Search"}
+                  </button>
+                  <p className="text-xs text-slate-400">{webResults.length > 0 ? `${webResults.length} results cached.` : "No cached results."}</p>
+                </div>
+              </form>
+            ) : null}
+
+            {toolPanel === "action" ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+                <form onSubmit={prepareAction} className="space-y-2">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">Prepare Product/Ad Draft</label>
+                  <textarea
+                    value={actionMessage}
+                    onChange={(event) => setActionMessage(event.target.value)}
+                    rows={2}
+                    placeholder="Add product to gadgets for posture corrector with affiliate disclosure..."
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={actionImageUrl}
+                    onChange={(event) => setActionImageUrl(event.target.value)}
+                    placeholder="Optional image URL from uploads (/uploads/...)"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={actionBusy}
+                    className="rounded-full bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {actionBusy ? "Preparing..." : "Prepare Draft"}
+                  </button>
+                </form>
+
+                {preparedAction ? (
+                  <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
+                    <p className="text-sm font-semibold">{preparedAction.productDraft.title}</p>
+                    <p className="mt-1 text-xs text-slate-300">{preparedAction.productDraft.shortDescription}</p>
+                    <p className="mt-2 text-xs text-slate-400">Target: {preparedAction.target.section}</p>
+                    <div className="mt-2 rounded-lg border border-slate-800 bg-slate-900/80 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Pre-Execute Guardrails</p>
+                      <ul className="mt-1 space-y-1 text-xs text-slate-300">
+                        <li>Approval token and phrase required</li>
+                        <li>Duplicate check in target section</li>
+                        <li>Affiliate disclosure compliance required</li>
+                        <li>Health claim restrictions enforced for health sections</li>
+                      </ul>
+                    </div>
+                    <div className="mt-2">
+                      <label className="text-[11px] uppercase tracking-wide text-slate-400">Type exact phrase to publish</label>
+                      <input
+                        value={confirmText}
+                        onChange={(event) => setConfirmText(event.target.value)}
+                        placeholder={preparedAction.approval.confirmPhrase}
+                        className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Expires: {new Date(preparedAction.approval.expiresAt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={
+                        actionBusy ||
+                        !preparedAction.executeAvailable ||
+                        confirmText.trim() !== preparedAction.approval.confirmPhrase
+                      }
+                      onClick={() => void executePreparedAction()}
+                      className="mt-2 rounded-full border border-slate-600 px-4 py-1.5 text-xs font-semibold text-slate-100 disabled:opacity-50"
+                    >
+                      Confirm & Execute
+                    </button>
+                    {executeIssues.length > 0 ? (
+                      <div className="mt-2 rounded-lg border border-rose-800 bg-rose-950/30 p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-200">Execution Issues</p>
+                        <ul className="mt-1 space-y-1 text-xs text-rose-200">
+                          {executeIssues.map((issue) => (
+                            <li key={issue}>{issue}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {toolPanel === "email" ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+                <form onSubmit={generateAiEmail} className="space-y-2">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">Generate HTML Campaign</label>
+                  <textarea
+                    value={emailObjective}
+                    onChange={(event) => setEmailObjective(event.target.value)}
+                    rows={2}
+                    placeholder="Objective: launch new health supplements and drive clicks..."
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                  />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <select
+                      value={emailSection}
+                      onChange={(event) => setEmailSection(event.target.value)}
+                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    >
+                      <option value="health">Health</option>
+                      <option value="gadgets">Gadgets</option>
+                      <option value="supplements">Supplements</option>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="forex">Forex</option>
+                      <option value="betting">Betting</option>
+                      <option value="software">Software</option>
+                      <option value="social">Social</option>
+                    </select>
+                    <select
+                      value={emailLanguage}
+                      onChange={(event) => setEmailLanguage(event.target.value)}
+                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    >
+                      <option value="en">English</option>
+                      <option value="fr">French</option>
+                      <option value="es">Spanish</option>
+                      <option value="de">German</option>
+                      <option value="ar">Arabic</option>
+                      <option value="pt">Portuguese</option>
+                    </select>
+                    <select
+                      value={emailTone}
+                      onChange={(event) => setEmailTone(event.target.value)}
+                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    >
+                      <option value="professional">Professional</option>
+                      <option value="friendly">Friendly</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="educational">Educational</option>
+                    </select>
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={emailEmojis}
+                        onChange={(event) => setEmailEmojis(event.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      <span>Allow emojis</span>
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={emailBusy}
+                    className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {emailBusy ? "Generating..." : "Generate & Save Draft"}
+                  </button>
+                </form>
+              </div>
+            ) : null}
+
+            {toolPanel === "docs" ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+                <form onSubmit={generateExport} className="space-y-2">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">Generate PDF/DOC/Excel From Question</label>
+                  <textarea
+                    value={docsQuestion}
+                    onChange={(event) => setDocsQuestion(event.target.value)}
+                    rows={2}
+                    placeholder="Question: What happened on my page this week and what should I improve?"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={docsFormat}
+                      onChange={(event) => setDocsFormat(event.target.value as "pdf" | "doc" | "excel")}
+                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    >
+                      <option value="pdf">PDF</option>
+                      <option value="doc">DOC</option>
+                      <option value="excel">Excel</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={docsBusy}
+                      className="rounded-full bg-cyan-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      {docsBusy ? "Generating..." : "Generate File"}
+                    </button>
+                  </div>
+                </form>
+                {exportResults.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {exportResults.map((item) => (
+                      <a
+                        key={`${item.fileName}-${item.url}`}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
+                      >
+                        {item.format.toUpperCase()} - {item.fileName} ({Math.max(1, Math.round(item.sizeBytes / 1024))} KB)
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {settingsOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h4 className="text-base font-semibold text-slate-100">AI Settings</h4>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={settingsBusy}
+                onClick={() => void saveMode("current")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm ${
+                  aiMode === "current" ? "border-emerald-500 bg-emerald-900/30 text-emerald-200" : "border-slate-700 text-slate-200"
+                }`}
+              >
+                <p className="font-semibold">Current mode</p>
+                <p className="mt-1 text-xs text-slate-400">Default local AI system.</p>
+              </button>
+              <button
+                type="button"
+                disabled={settingsBusy || !superConfigured}
+                onClick={() => void saveMode("super")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm ${
+                  aiMode === "super" ? "border-cyan-500 bg-cyan-900/30 text-cyan-200" : "border-slate-700 text-slate-200"
+                }`}
+              >
+                <p className="font-semibold">Super mode</p>
+                <p className="mt-1 text-xs text-slate-400">External provider via your API key.</p>
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Super mode provider</p>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  value={superProvider}
+                  onChange={(event) => setSuperProvider(event.target.value)}
+                  placeholder="Provider"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  value={superModel}
+                  onChange={(event) => setSuperModel(event.target.value)}
+                  placeholder="Model (e.g. gpt-4o-mini)"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  value={superBaseUrl}
+                  onChange={(event) => setSuperBaseUrl(event.target.value)}
+                  placeholder="Base URL (e.g. https://api.openai.com/v1)"
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
+                />
+                <input
+                  value={superApiKey}
+                  onChange={(event) => setSuperApiKey(event.target.value)}
+                  type="password"
+                  placeholder={superApiKeyMask ? `Stored key: ${superApiKeyMask} (enter new key to replace)` : "Paste API key"}
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={settingsBusy}
+                  onClick={() => void saveSuperMode()}
+                  className="rounded-full bg-cyan-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {settingsBusy ? "Saving..." : "Save Super Mode"}
+                </button>
+                <button
+                  type="button"
+                  disabled={settingsBusy || !superConfigured}
+                  onClick={() => void clearSuperMode()}
+                  className="rounded-full border border-slate-600 px-4 py-1.5 text-xs font-semibold text-slate-200 disabled:opacity-50"
+                >
+                  Clear Super Mode
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {emailResult ? (
+        <section className="border-t border-slate-800/90 bg-slate-950/95 px-4 py-4 md:px-6">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3">
+            <p className="text-sm font-semibold">Generated Email Draft</p>
+            <p className="mt-1 text-xs text-slate-300">Subject: {emailResult.email.subject}</p>
+            <p className="mt-1 text-xs text-slate-300">Preheader: {emailResult.email.previewText}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Campaign: {emailResult.campaignId ?? "not saved"} | Section: {emailResult.section} | Language: {emailResult.language}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void copyGeneratedHtml()}
+                className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800"
+              >
+                Copy HTML
+              </button>
+            </div>
+            <textarea
+              value={emailResult.email.bodyHtml}
+              readOnly
+              rows={10}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+            />
+          </div>
+        </section>
+      ) : null}
+    </section>
   );
 };
 

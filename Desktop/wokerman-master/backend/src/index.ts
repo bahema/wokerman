@@ -10,11 +10,15 @@ import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
-import { createAiControlStore } from "./ai/store.js";
 import { createEmailStore } from "./email/store.js";
 import { createCookieConsentStore } from "./cookies/store.js";
-import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail, verifySmtpConnection } from "./email/confirmationSender.js";
+import { EmailDeliveryError, sendAdminAlertEmail, sendConfirmationEmail, sendSmtpTestEmail } from "./email/confirmationSender.js";
 import { CampaignDeliveryError, sendCampaignEmails } from "./email/campaignSender.js";
+import { createTrafficAiStore } from "./traffic/store.js";
+import { generateTrafficAiPlan } from "./traffic/engine.js";
+import { searchWeb } from "./traffic/webSearch.js";
+import { createAiControlStore, hashAiPayload } from "./ai/store.js";
+import { hasAiCapability, listCapabilitiesForRole, resolveAiAdminRole, type AiCapability } from "./ai/governance.js";
 import {
   EMAIL_CAMPAIGN_AUDIENCE_MODE,
   EMAIL_CAMPAIGN_BODY_MODE,
@@ -23,9 +27,11 @@ import {
   EMAIL_EVENT_TYPES,
   EMAIL_SUBSCRIBER_STATUS
 } from "./db/schema.js";
+import { defaultPublishedContent } from "./db/defaultPublishedContent.js";
 
 const app = express();
 app.disable("x-powered-by");
+let processFailureHandlersInstalled = false;
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN_RAW =
@@ -52,16 +58,57 @@ const TRUSTED_DEVICE_COOKIE_NAME = "autohub_admin_trusted_device";
 const resolveAuthCookieSigningKey = () =>
   (process.env.AUTH_COOKIE_SIGNING_KEY ?? process.env.AUTH_COOKIE_SECRET ?? process.env.SESSION_SECRET ?? "").trim();
 const AUTH_COOKIE_SIGNING_KEY = resolveAuthCookieSigningKey();
+const AI_SUPER_MODE_ENCRYPTION_SECRET = (process.env.AI_SUPER_MODE_ENCRYPTION_SECRET ?? AUTH_COOKIE_SIGNING_KEY).trim();
 const AUTH_IP_RATE_WINDOW_MS = Number(process.env.AUTH_IP_RATE_WINDOW_MS ?? 60_000);
 const AUTH_IP_RATE_MAX = Number(process.env.AUTH_IP_RATE_MAX ?? 30);
+const AUTH_SENSITIVE_IP_RATE_WINDOW_MS = Number(process.env.AUTH_SENSITIVE_IP_RATE_WINDOW_MS ?? 60_000);
+const AUTH_SENSITIVE_IP_RATE_MAX = Number(process.env.AUTH_SENSITIVE_IP_RATE_MAX ?? 12);
 const SUBSCRIBE_IP_RATE_WINDOW_MS = Number(process.env.SUBSCRIBE_IP_RATE_WINDOW_MS ?? 60_000);
 const SUBSCRIBE_IP_RATE_MAX = Number(process.env.SUBSCRIBE_IP_RATE_MAX ?? 20);
+const EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS ?? 60_000);
+const EMAIL_LINK_ACTION_IP_RATE_MAX = Number(process.env.EMAIL_LINK_ACTION_IP_RATE_MAX ?? 40);
+const ANALYTICS_IP_RATE_WINDOW_MS = Number(process.env.ANALYTICS_IP_RATE_WINDOW_MS ?? 60_000);
+const ANALYTICS_IP_RATE_MAX = Number(process.env.ANALYTICS_IP_RATE_MAX ?? 120);
+const COOKIE_CONSENT_IP_RATE_WINDOW_MS = Number(process.env.COOKIE_CONSENT_IP_RATE_WINDOW_MS ?? 60_000);
+const COOKIE_CONSENT_IP_RATE_MAX = Number(process.env.COOKIE_CONSENT_IP_RATE_MAX ?? 60);
+const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_WINDOW_MS ?? 60_000);
+const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
+const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
+const MEDIA_UPLOAD_MAX_FILES = Number(process.env.MEDIA_UPLOAD_MAX_FILES ?? 20);
+const ADMIN_MUTATION_IP_RATE_WINDOW_MS = Number(process.env.ADMIN_MUTATION_IP_RATE_WINDOW_MS ?? 60_000);
+const ADMIN_MUTATION_IP_RATE_MAX = Number(process.env.ADMIN_MUTATION_IP_RATE_MAX ?? 60);
+const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
+const AI_CHAT_IP_RATE_MAX = Number(process.env.AI_CHAT_IP_RATE_MAX ?? 40);
+const AI_WEB_SEARCH_IP_RATE_WINDOW_MS = Number(process.env.AI_WEB_SEARCH_IP_RATE_WINDOW_MS ?? 60_000);
+const AI_WEB_SEARCH_IP_RATE_MAX = Number(process.env.AI_WEB_SEARCH_IP_RATE_MAX ?? 20);
 const RATE_LIMIT_BUCKET_LIMIT = Number(process.env.RATE_LIMIT_BUCKET_LIMIT ?? 10_000);
 const TRUSTED_DEVICE_TTL_MS = Number(process.env.TRUSTED_DEVICE_TTL_MS ?? 30 * 24 * 60 * 60 * 1000);
+const AI_CHAT_MAX_SESSION_ID_CHARS = Number(process.env.AI_CHAT_MAX_SESSION_ID_CHARS ?? 128);
+const AI_CHAT_MAX_MESSAGE_CHARS = Number(process.env.AI_CHAT_MAX_MESSAGE_CHARS ?? 6_000);
+const AI_CHAT_MAX_HISTORY_ITEM_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEM_CHARS ?? 2_000);
+const AI_CHAT_MAX_HISTORY_TOTAL_CHARS = Number(process.env.AI_CHAT_MAX_HISTORY_TOTAL_CHARS ?? 20_000);
+const AI_CHAT_MAX_HISTORY_ITEMS = Number(process.env.AI_CHAT_MAX_HISTORY_ITEMS ?? 20);
+const AI_WEB_SEARCH_MAX_QUERY_CHARS = Number(process.env.AI_WEB_SEARCH_MAX_QUERY_CHARS ?? 240);
+const LOGIN_EMAIL_MAX_CHARS = Number(process.env.LOGIN_EMAIL_MAX_CHARS ?? 254);
+const LOGIN_PASSWORD_MAX_CHARS = Number(process.env.LOGIN_PASSWORD_MAX_CHARS ?? 256);
+const SUBSCRIBE_NAME_MAX_CHARS = Number(process.env.SUBSCRIBE_NAME_MAX_CHARS ?? 120);
+const SUBSCRIBE_EMAIL_MAX_CHARS = Number(process.env.SUBSCRIBE_EMAIL_MAX_CHARS ?? 254);
+const SUBSCRIBE_PHONE_MAX_CHARS = Number(process.env.SUBSCRIBE_PHONE_MAX_CHARS ?? 32);
+const EMAIL_TOKEN_MAX_CHARS = Number(process.env.EMAIL_TOKEN_MAX_CHARS ?? 256);
+const ANALYTICS_EVENT_NAME_MAX_CHARS = Number(process.env.ANALYTICS_EVENT_NAME_MAX_CHARS ?? 80);
+const ANALYTICS_PAYLOAD_MAX_CHARS = Number(process.env.ANALYTICS_PAYLOAD_MAX_CHARS ?? 8_000);
+const CAMPAIGN_NAME_MAX_CHARS = Number(process.env.CAMPAIGN_NAME_MAX_CHARS ?? 120);
+const CAMPAIGN_SUBJECT_MAX_CHARS = Number(process.env.CAMPAIGN_SUBJECT_MAX_CHARS ?? 180);
+const CAMPAIGN_PREVIEW_MAX_CHARS = Number(process.env.CAMPAIGN_PREVIEW_MAX_CHARS ?? 240);
+const CAMPAIGN_BODY_MAX_CHARS = Number(process.env.CAMPAIGN_BODY_MAX_CHARS ?? 120_000);
+const CAMPAIGN_LIST_ITEM_MAX = Number(process.env.CAMPAIGN_LIST_ITEM_MAX ?? 50);
+const LIST_QUERY_TEXT_MAX_CHARS = Number(process.env.LIST_QUERY_TEXT_MAX_CHARS ?? 160);
+const LIST_PAGE_MAX = Number(process.env.LIST_PAGE_MAX ?? 10_000);
+const LIST_PAGE_SIZE_MAX = Number(process.env.LIST_PAGE_SIZE_MAX ?? 100);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
-const AI_CHAT_MAX_MESSAGE_CHARS = Number(process.env.AI_CHAT_MAX_MESSAGE_CHARS ?? 8_000);
-const AI_CHAT_TIMEOUT_MS = Number(process.env.AI_CHAT_TIMEOUT_MS ?? 45_000);
-const AI_ACTION_MAX_PROMPT_CHARS = Number(process.env.AI_ACTION_MAX_PROMPT_CHARS ?? 6_000);
+const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
+const SUPER_MODE_BASE_URL_MAX_CHARS = Number(process.env.SUPER_MODE_BASE_URL_MAX_CHARS ?? 240);
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
   if (!raw) return false;
@@ -104,6 +151,48 @@ const parseOrigin = (value: string) => {
     return "";
   }
 };
+const isPrivateIpv4Host = (hostname: string) => {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return false;
+  const values = parts.map((item) => Number(item));
+  if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
+  const [a, b] = values;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+};
+const isBlockedSuperModeHostname = (hostname: string) => {
+  const host = hostname.trim().toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host === "[::1]") return true;
+  if (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return true;
+  if (/^[\d.]+$/.test(host) && isPrivateIpv4Host(host)) return true;
+  return false;
+};
+const validateSuperModeBaseUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "Super mode baseUrl is required.";
+  if (trimmed.length > SUPER_MODE_BASE_URL_MAX_CHARS) {
+    return `Super mode baseUrl is too long (max ${SUPER_MODE_BASE_URL_MAX_CHARS} chars).`;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return "Super mode baseUrl must be a valid URL.";
+  }
+  if (parsed.protocol !== "https:") return "Super mode baseUrl must use https.";
+  if (parsed.username || parsed.password) return "Super mode baseUrl must not contain embedded credentials.";
+  if (isBlockedSuperModeHostname(parsed.hostname)) {
+    return "Super mode baseUrl host is not allowed.";
+  }
+  return null;
+};
 type AuthCookieSameSite = "strict" | "lax" | "none";
 const parseAuthCookieSameSite = (value: string): AuthCookieSameSite | null => {
   const normalized = value.trim().toLowerCase();
@@ -112,6 +201,15 @@ const parseAuthCookieSameSite = (value: string): AuthCookieSameSite | null => {
 };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const hashEmailForAudit = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+const maskEmailForLog = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 1) return "***";
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (!domain) return `${local[0]}***`;
+  return `${local[0]}***@${domain}`;
+};
 const resolveSmtpSecureForPort = (smtpPort: number, smtpSecure: boolean) => {
   if (smtpPort === 465) return true;
   if (smtpPort === 587) return false;
@@ -226,6 +324,23 @@ const assertProductionSecurityConfig = () => {
   }
 
 };
+const installProcessFailureHandlers = () => {
+  if (processFailureHandlersInstalled) return;
+  processFailureHandlersInstalled = true;
+  process.on("unhandledRejection", (reason) => {
+    const message = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
+    // eslint-disable-next-line no-console
+    console.error(`[fatal] unhandledRejection ${message}`);
+  });
+  process.on("uncaughtException", (error) => {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    // eslint-disable-next-line no-console
+    console.error(`[fatal] uncaughtException ${message}`);
+    setTimeout(() => {
+      process.exit(1);
+    }, 50);
+  });
+};
 
 const bootstrap = async () => {
   assertProductionSecurityConfig();
@@ -234,9 +349,12 @@ const bootstrap = async () => {
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
-  const aiControlStore = await createAiControlStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
   const cookieConsentStore = await createCookieConsentStore(MEDIA_DIR);
+  const trafficAiStore = await createTrafficAiStore(MEDIA_DIR);
+  const aiControlStore = await createAiControlStore(MEDIA_DIR, {
+    encryptionSecret: AI_SUPER_MODE_ENCRYPTION_SECRET
+  });
   const toPublicSenderProfile = (profile: Awaited<ReturnType<typeof emailStore.getSenderProfile>>) => ({
     ...profile,
     smtpPass: "",
@@ -260,9 +378,24 @@ const bootstrap = async () => {
       cb(null, `${Date.now()}-${randomUUID()}${ext}`);
     }
   });
+  const maxUploadFileBytes =
+    Number.isFinite(MEDIA_UPLOAD_MAX_FILE_BYTES) && MEDIA_UPLOAD_MAX_FILE_BYTES > 0 ? MEDIA_UPLOAD_MAX_FILE_BYTES : 10 * 1024 * 1024;
+  const maxUploadFiles = Number.isFinite(MEDIA_UPLOAD_MAX_FILES) && MEDIA_UPLOAD_MAX_FILES > 0 ? Math.floor(MEDIA_UPLOAD_MAX_FILES) : 20;
   const upload = multer({
     storage,
-    limits: { fileSize: 10 * 1024 * 1024 }
+    limits: {
+      fileSize: maxUploadFileBytes,
+      files: maxUploadFiles
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = (file.mimetype || "").toLowerCase();
+      if (!ALLOWED_UPLOAD_MIME_TYPES.has(mime) || !ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+        cb(new Error("Unsupported file type. Allowed: JPG, PNG, WEBP, GIF, AVIF."));
+        return;
+      }
+      cb(null, true);
+    }
   });
 
   app.use(
@@ -294,6 +427,26 @@ const bootstrap = async () => {
     res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     if (process.env.NODE_ENV === "production" && req.secure) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    }
+    next();
+  });
+  app.use((req, res, next) => {
+    const path = req.path;
+    const isSensitiveApiPath =
+      path.startsWith("/api/auth/") ||
+      path.startsWith("/api/ai/control/") ||
+      path === "/api/site/draft" ||
+      path === "/api/site/publish" ||
+      path === "/api/site/reset" ||
+      path.startsWith("/api/media") ||
+      path.startsWith("/api/email/subscribers") ||
+      path.startsWith("/api/email/campaigns") ||
+      path.startsWith("/api/email/settings/") ||
+      path.startsWith("/api/email/templates/");
+    if (isSensitiveApiPath) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
     }
     next();
   });
@@ -424,19 +577,27 @@ const bootstrap = async () => {
     return hashTrustedDeviceToken(trustedDeviceToken);
   };
 
-  const getAuthContext = (req: express.Request) => {
-    const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
-    if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+  const getBearerToken = (req: express.Request) => {
     const authorizationHeader = req.header("authorization") ?? "";
     const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
     if (bearerMatch) {
       const bearerToken = bearerMatch[1]?.trim() ?? "";
-      if (bearerToken) return { token: bearerToken, source: "bearer" as const };
+      if (bearerToken) return bearerToken;
     }
+    return "";
+  };
+
+  const getAuthContext = (req: express.Request) => {
+    const cookieToken = readSignedAuthToken(getCookieValue(req, AUTH_COOKIE_NAME));
+    if (cookieToken) return { token: cookieToken, source: "cookie" as const };
+    const bearerToken = getBearerToken(req);
+    if (bearerToken) return { token: bearerToken, source: "bearer" as const };
     return { token: "", source: "none" as const };
   };
 
   const getAuthToken = (req: express.Request) => {
+    const resolved = (req as express.Request & { authToken?: string }).authToken;
+    if (resolved) return resolved;
     return getAuthContext(req).token;
   };
 
@@ -451,12 +612,21 @@ const bootstrap = async () => {
   };
 
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const { token, source } = getAuthContext(req);
-    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
-    const valid =
+    let { token, source } = getAuthContext(req);
+    let trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    let valid =
       source === "cookie"
         ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
         : await authStore.verifySession(token);
+    if (!valid && source === "cookie") {
+      const bearerToken = getBearerToken(req);
+      if (bearerToken && (await authStore.verifySession(bearerToken))) {
+        token = bearerToken;
+        source = "bearer";
+        trustedDeviceTokenHash = "";
+        valid = true;
+      }
+    }
     if (!valid) {
       clearAuthCookie(res);
       res.status(401).json({ error: "Unauthorized." });
@@ -469,7 +639,22 @@ const bootstrap = async () => {
       attachCsrfHeaderFromRequest(req, res);
     }
     res.locals.authSource = source;
-    (req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource = source;
+    const requestWithAuth = req as express.Request & {
+      authSource?: "cookie" | "bearer" | "none";
+      authToken?: string;
+      adminRole?: "viewer" | "editor" | "publisher" | "owner";
+    };
+    requestWithAuth.authSource = source;
+    requestWithAuth.authToken = token;
+    try {
+      const account = await authStore.getAccountSettings();
+      const adminRole = resolveAiAdminRole(account.role);
+      requestWithAuth.adminRole = adminRole;
+      res.locals.adminRole = adminRole;
+    } catch {
+      requestWithAuth.adminRole = "owner";
+      res.locals.adminRole = "owner";
+    }
     next();
   };
 
@@ -485,6 +670,29 @@ const bootstrap = async () => {
 
   const resolveRequestIp = (req: express.Request) => {
     return req.ip || req.socket.remoteAddress || "unknown";
+  };
+
+  const requireAiCapability = (capability: AiCapability) => {
+    return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const role =
+        ((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ??
+          res.locals.adminRole ??
+          "viewer") as "viewer" | "editor" | "publisher" | "owner";
+      if (hasAiCapability(role, capability)) {
+        next();
+        return;
+      }
+      await aiControlStore.logAudit({
+        action: capability,
+        status: "denied",
+        role,
+        authSource: ((req as express.Request & { authSource?: "cookie" | "bearer" | "none" }).authSource ?? "unknown") as string,
+        path: req.originalUrl,
+        ip: resolveRequestIp(req),
+        metadata: { reason: "missing_capability" }
+      });
+      res.status(403).json({ error: "Forbidden: capability not granted for this role." });
+    };
   };
 
   const createIpRateLimiter = (keyPrefix: string, options: { windowMs: number; max: number }) => {
@@ -530,9 +738,59 @@ const bootstrap = async () => {
     windowMs: Number.isFinite(AUTH_IP_RATE_WINDOW_MS) && AUTH_IP_RATE_WINDOW_MS > 0 ? AUTH_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(AUTH_IP_RATE_MAX) && AUTH_IP_RATE_MAX > 0 ? AUTH_IP_RATE_MAX : 30
   });
+  const authSensitiveIpLimiter = createIpRateLimiter("auth_sensitive", {
+    windowMs:
+      Number.isFinite(AUTH_SENSITIVE_IP_RATE_WINDOW_MS) && AUTH_SENSITIVE_IP_RATE_WINDOW_MS > 0
+        ? AUTH_SENSITIVE_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(AUTH_SENSITIVE_IP_RATE_MAX) && AUTH_SENSITIVE_IP_RATE_MAX > 0 ? AUTH_SENSITIVE_IP_RATE_MAX : 12
+  });
   const subscribeIpLimiter = createIpRateLimiter("subscribe", {
     windowMs: Number.isFinite(SUBSCRIBE_IP_RATE_WINDOW_MS) && SUBSCRIBE_IP_RATE_WINDOW_MS > 0 ? SUBSCRIBE_IP_RATE_WINDOW_MS : 60_000,
     max: Number.isFinite(SUBSCRIBE_IP_RATE_MAX) && SUBSCRIBE_IP_RATE_MAX > 0 ? SUBSCRIBE_IP_RATE_MAX : 20
+  });
+  const analyticsIpLimiter = createIpRateLimiter("analytics", {
+    windowMs: Number.isFinite(ANALYTICS_IP_RATE_WINDOW_MS) && ANALYTICS_IP_RATE_WINDOW_MS > 0 ? ANALYTICS_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(ANALYTICS_IP_RATE_MAX) && ANALYTICS_IP_RATE_MAX > 0 ? ANALYTICS_IP_RATE_MAX : 120
+  });
+  const cookieConsentIpLimiter = createIpRateLimiter("cookie_consent", {
+    windowMs:
+      Number.isFinite(COOKIE_CONSENT_IP_RATE_WINDOW_MS) && COOKIE_CONSENT_IP_RATE_WINDOW_MS > 0
+        ? COOKIE_CONSENT_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(COOKIE_CONSENT_IP_RATE_MAX) && COOKIE_CONSENT_IP_RATE_MAX > 0 ? COOKIE_CONSENT_IP_RATE_MAX : 60
+  });
+  const emailLinkActionIpLimiter = createIpRateLimiter("email_link_action", {
+    windowMs:
+      Number.isFinite(EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS) && EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS > 0
+        ? EMAIL_LINK_ACTION_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(EMAIL_LINK_ACTION_IP_RATE_MAX) && EMAIL_LINK_ACTION_IP_RATE_MAX > 0 ? EMAIL_LINK_ACTION_IP_RATE_MAX : 40
+  });
+  const mediaUploadIpLimiter = createIpRateLimiter("media_upload", {
+    windowMs:
+      Number.isFinite(MEDIA_UPLOAD_IP_RATE_WINDOW_MS) && MEDIA_UPLOAD_IP_RATE_WINDOW_MS > 0
+        ? MEDIA_UPLOAD_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(MEDIA_UPLOAD_IP_RATE_MAX) && MEDIA_UPLOAD_IP_RATE_MAX > 0 ? MEDIA_UPLOAD_IP_RATE_MAX : 20
+  });
+  const adminMutationIpLimiter = createIpRateLimiter("admin_mutation", {
+    windowMs:
+      Number.isFinite(ADMIN_MUTATION_IP_RATE_WINDOW_MS) && ADMIN_MUTATION_IP_RATE_WINDOW_MS > 0
+        ? ADMIN_MUTATION_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(ADMIN_MUTATION_IP_RATE_MAX) && ADMIN_MUTATION_IP_RATE_MAX > 0 ? ADMIN_MUTATION_IP_RATE_MAX : 60
+  });
+  const aiChatIpLimiter = createIpRateLimiter("ai_chat", {
+    windowMs: Number.isFinite(AI_CHAT_IP_RATE_WINDOW_MS) && AI_CHAT_IP_RATE_WINDOW_MS > 0 ? AI_CHAT_IP_RATE_WINDOW_MS : 60_000,
+    max: Number.isFinite(AI_CHAT_IP_RATE_MAX) && AI_CHAT_IP_RATE_MAX > 0 ? AI_CHAT_IP_RATE_MAX : 40
+  });
+  const aiWebSearchIpLimiter = createIpRateLimiter("ai_web_search", {
+    windowMs:
+      Number.isFinite(AI_WEB_SEARCH_IP_RATE_WINDOW_MS) && AI_WEB_SEARCH_IP_RATE_WINDOW_MS > 0
+        ? AI_WEB_SEARCH_IP_RATE_WINDOW_MS
+        : 60_000,
+    max: Number.isFinite(AI_WEB_SEARCH_IP_RATE_MAX) && AI_WEB_SEARCH_IP_RATE_MAX > 0 ? AI_WEB_SEARCH_IP_RATE_MAX : 20
   });
 
   const auditAdminAction = (action: string) => {
@@ -563,6 +821,9 @@ const bootstrap = async () => {
     }
     res.status(400).json({ error: error instanceof Error ? error.message : fallbackMessage });
   };
+  const exposeInternalErrors = !isProduction || process.env.EXPOSE_INTERNAL_ERRORS === "true";
+  const safeServerErrorMessage = (error: unknown, fallbackMessage: string) =>
+    exposeInternalErrors && error instanceof Error && error.message.trim() ? error.message : fallbackMessage;
 
   const parseCampaignInput = (body: unknown) => {
     const payload = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
@@ -580,8 +841,12 @@ const bootstrap = async () => {
       payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.segments || payload.audienceMode === EMAIL_CAMPAIGN_AUDIENCE_MODE.all
         ? payload.audienceMode
         : EMAIL_CAMPAIGN_AUDIENCE_MODE.all;
-    const segments = Array.isArray(payload.segments) ? payload.segments.map((item) => String(item).trim()).filter(Boolean) : [];
-    const exclusions = Array.isArray(payload.exclusions) ? payload.exclusions.map((item) => String(item).trim()).filter(Boolean) : [];
+    const segments = Array.isArray(payload.segments)
+      ? payload.segments.map((item) => String(item).trim()).filter(Boolean).slice(0, CAMPAIGN_LIST_ITEM_MAX)
+      : [];
+    const exclusions = Array.isArray(payload.exclusions)
+      ? payload.exclusions.map((item) => String(item).trim()).filter(Boolean).slice(0, CAMPAIGN_LIST_ITEM_MAX)
+      : [];
     const sendMode =
       payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.schedule || payload.sendMode === EMAIL_CAMPAIGN_SEND_MODE.now
         ? payload.sendMode
@@ -619,193 +884,201 @@ const bootstrap = async () => {
   };
 
   const toFirstName = (fullName: string) => fullName.trim().split(/\s+/)[0] || "there";
-
-  const parseSuperBaseUrl = (value: string) => {
-    const normalized = normalizePublicBaseUrl(value);
-    const parsed = new URL(normalized);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      throw new Error("baseUrl must use http or https.");
-    }
-    return normalized;
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const normalizeLanguage = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (["en", "fr", "es", "de", "ar", "pt"].includes(normalized)) return normalized;
+    return "en";
   };
-
-  const parseModelCandidates = (value: string) => {
-    const candidates = value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    return Array.from(new Set(candidates));
-  };
-
-  const callProviderModel = async (input: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-    message: string;
+  const validateCampaignInputLimits = (input: {
+    name: string;
+    subject: string;
+    previewText: string;
+    bodyRich: string;
+    bodyHtml: string;
   }) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), AI_CHAT_TIMEOUT_MS);
-    try {
-      const response = await fetch(`${input.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${input.apiKey}`
-        },
-        body: JSON.stringify({
-          model: input.model,
-          temperature: 0.4,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an admin AI copilot for website operations, content updates, and email workflows. Respond concisely in markdown."
-            },
-            { role: "user", content: input.message }
-          ]
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`AI provider error (${response.status}): ${text.slice(0, 240)}`);
-      }
-
-      const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const answer = payload.choices?.[0]?.message?.content?.trim() ?? "";
-      if (!answer) {
-        throw new Error("AI provider returned an empty response.");
-      }
-      return answer;
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("AI provider timed out.");
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+    if (input.name.length > CAMPAIGN_NAME_MAX_CHARS) return `name is too long (max ${CAMPAIGN_NAME_MAX_CHARS} chars).`;
+    if (input.subject.length > CAMPAIGN_SUBJECT_MAX_CHARS) return `subject is too long (max ${CAMPAIGN_SUBJECT_MAX_CHARS} chars).`;
+    if (input.previewText.length > CAMPAIGN_PREVIEW_MAX_CHARS) return `previewText is too long (max ${CAMPAIGN_PREVIEW_MAX_CHARS} chars).`;
+    if (input.bodyRich.length > CAMPAIGN_BODY_MAX_CHARS || input.bodyHtml.length > CAMPAIGN_BODY_MAX_CHARS) {
+      return `email body is too large (max ${CAMPAIGN_BODY_MAX_CHARS} chars per format).`;
     }
+    return "";
   };
-
-  const callSuperModeChat = async (input: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-    message: string;
+  const parsePagination = (query: express.Request["query"]) => {
+    const pageRaw = typeof query?.page === "string" ? Number(query.page) : NaN;
+    const pageSizeRaw = typeof query?.pageSize === "string" ? Number(query.pageSize) : NaN;
+    const page = Number.isFinite(pageRaw) ? Math.floor(pageRaw) : 1;
+    const pageSize = Number.isFinite(pageSizeRaw) ? Math.floor(pageSizeRaw) : 25;
+    if (page < 1 || page > LIST_PAGE_MAX) {
+      return { error: `page must be between 1 and ${LIST_PAGE_MAX}.` };
+    }
+    if (pageSize < 1 || pageSize > LIST_PAGE_SIZE_MAX) {
+      return { error: `pageSize must be between 1 and ${LIST_PAGE_SIZE_MAX}.` };
+    }
+    return { page, pageSize };
+  };
+  const languageLabel = (value: string) => {
+    const map: Record<string, string> = { en: "English", fr: "French", es: "Spanish", de: "German", ar: "Arabic", pt: "Portuguese" };
+    return map[value] ?? "English";
+  };
+  const toneLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (["professional", "friendly", "urgent", "educational"].includes(normalized)) return normalized;
+    return "professional";
+  };
+  const toEmoji = (section: string) => {
+    const map: Record<string, string> = {
+      health: "🌿",
+      gadgets: "📱",
+      supplements: "💊",
+      upcoming: "🚀",
+      forex: "📈",
+      betting: "🎯",
+      software: "💻",
+      social: "📣"
+    };
+    return map[section] ?? "✨";
+  };
+  const buildAiEmailHtml = (input: {
+    headline: string;
+    intro: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    productBullets: string[];
+    disclaimer: string;
+    language: string;
   }) => {
-    const models = parseModelCandidates(input.model);
-    if (!models.length) {
-      throw new Error("At least one model is required.");
-    }
-    const errors: string[] = [];
-    for (const model of models) {
-      try {
-        const answer = await callProviderModel({ ...input, model });
-        return { answer, modelUsed: model, attemptedModels: models };
-      } catch (error) {
-        const text = error instanceof Error ? error.message : "unknown provider error";
-        errors.push(`${model}: ${text}`);
-      }
-    }
-    throw new Error(`AI provider failed for all configured models. ${errors.join(" | ").slice(0, 700)}`);
+    const bullets = input.productBullets.map((item) => `<li style="margin:0 0 8px 0;">${escapeHtml(item)}</li>`).join("");
+    return `<!doctype html>
+<html lang="${escapeHtml(input.language)}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${escapeHtml(input.headline)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f8ff;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8ff;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #dbe4ff;">
+            <tr>
+              <td style="padding:28px 24px;background:#0f172a;color:#ffffff;">
+                <h1 style="margin:0;font-size:26px;line-height:1.2;">${escapeHtml(input.headline)}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;color:#0f172a;">
+                <p style="margin:0 0 14px 0;font-size:16px;line-height:1.6;">${escapeHtml(input.intro)}</p>
+                <ul style="padding-left:20px;margin:0 0 18px 0;font-size:15px;line-height:1.5;color:#1e293b;">
+                  ${bullets}
+                </ul>
+                <p style="margin:0 0 18px 0;">
+                  <a href="${escapeHtml(input.ctaUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;">
+                    ${escapeHtml(input.ctaLabel)}
+                  </a>
+                </p>
+                <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:#475569;">${escapeHtml(input.disclaimer)}</p>
+                <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b;">
+                  Unsubscribe: <a href="{{unsubscribe_link}}" style="color:#2563eb;">{{unsubscribe_link}}</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
   };
-
-  const parseJsonFromModelOutput = <T>(raw: string): T => {
-    const trimmed = raw.trim();
-    const withoutFence = trimmed.startsWith("```")
-      ? trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
-      : trimmed;
-    return JSON.parse(withoutFence) as T;
+  const buildAiEmailRich = (input: {
+    headline: string;
+    intro: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    productBullets: string[];
+    disclaimer: string;
+  }) =>
+    [
+      input.headline,
+      "",
+      input.intro,
+      "",
+      ...input.productBullets.map((item, index) => `${index + 1}. ${item}`),
+      "",
+      `${input.ctaLabel}: ${input.ctaUrl}`,
+      "",
+      input.disclaimer,
+      "",
+      "Unsubscribe: {{unsubscribe_link}}"
+    ].join("\n");
+  const sanitizeFileSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "ai-export";
+  const toExportLines = (input: {
+    question: string;
+    generatedAt: string;
+    site: { products: number; industries: number; subscribers: number; events: number };
+    suggestions: string[];
+  }) => [
+    `Question: ${input.question}`,
+    `Generated at: ${input.generatedAt}`,
+    `Total products: ${input.site.products}`,
+    `Industries: ${input.site.industries}`,
+    `Subscribers: ${input.site.subscribers}`,
+    `Analytics events: ${input.site.events}`,
+    "",
+    "Suggested actions:",
+    ...input.suggestions.map((item, idx) => `${idx + 1}. ${item}`)
+  ];
+  const escapePdfText = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const buildSimplePdf = (lines: string[]) => {
+    const rendered = lines
+      .slice(0, 40)
+      .map((line, idx) => {
+        const y = 780 - idx * 18;
+        return `BT /F1 11 Tf 50 ${y} Td (${escapePdfText(line.slice(0, 110))}) Tj ET`;
+      })
+      .join("\n");
+    const stream = `${rendered}\n`;
+    const objects = [
+      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj",
+      `4 0 obj << /Length ${Buffer.byteLength(stream, "utf8")} >> stream\n${stream}endstream endobj`,
+      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj"
+    ];
+    let body = "";
+    const offsets = [0];
+    for (const obj of objects) {
+      offsets.push(Buffer.byteLength(body, "utf8"));
+      body += `${obj}\n`;
+    }
+    const xrefStart = Buffer.byteLength(body, "utf8");
+    const xrefRows = offsets
+      .map((offset, idx) => (idx === 0 ? "0000000000 65535 f " : `${String(offset).padStart(10, "0")} 00000 n `))
+      .join("\n");
+    const pdf = `%PDF-1.4\n${body}xref\n0 ${offsets.length}\n${xrefRows}\ntrailer << /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+    return Buffer.from(pdf, "utf8");
   };
-
-  type AiPreparedAction =
-    | {
-        kind: "update_hero";
-        summary: string;
-        payload: {
-          headline?: string;
-          subtext?: string;
-          ctaPrimaryLabel?: string;
-          ctaPrimaryTarget?: string;
-          ctaSecondaryLabel?: string;
-          ctaSecondaryTarget?: string;
-        };
-      }
-    | {
-        kind: "update_confirmation_template";
-        summary: string;
-        payload: {
-          mode?: "rich" | "html";
-          subject?: string;
-          previewText?: string;
-          bodyRich?: string;
-          bodyHtml?: string;
-        };
-      };
-
-  const parsePreparedAction = (value: unknown): AiPreparedAction => {
-    if (!value || typeof value !== "object") throw new Error("action object is required.");
-    const payload = value as Record<string, unknown>;
-    const kind = payload.kind;
-    const summary = typeof payload.summary === "string" ? payload.summary.trim() : "";
-    const rawActionPayload =
-      payload.payload && typeof payload.payload === "object" ? (payload.payload as Record<string, unknown>) : {};
-    if (!summary) {
-      throw new Error("action.summary is required.");
-    }
-
-    if (kind === "update_hero") {
-      const next: AiPreparedAction = {
-        kind: "update_hero",
-        summary,
-        payload: {
-          headline: typeof rawActionPayload.headline === "string" ? rawActionPayload.headline.trim() : undefined,
-          subtext: typeof rawActionPayload.subtext === "string" ? rawActionPayload.subtext.trim() : undefined,
-          ctaPrimaryLabel:
-            typeof rawActionPayload.ctaPrimaryLabel === "string" ? rawActionPayload.ctaPrimaryLabel.trim() : undefined,
-          ctaPrimaryTarget:
-            typeof rawActionPayload.ctaPrimaryTarget === "string" ? rawActionPayload.ctaPrimaryTarget.trim() : undefined,
-          ctaSecondaryLabel:
-            typeof rawActionPayload.ctaSecondaryLabel === "string" ? rawActionPayload.ctaSecondaryLabel.trim() : undefined,
-          ctaSecondaryTarget:
-            typeof rawActionPayload.ctaSecondaryTarget === "string" ? rawActionPayload.ctaSecondaryTarget.trim() : undefined
-        }
-      };
-      const hasAtLeastOneField = Object.values(next.payload).some((entry) => typeof entry === "string" && entry.trim());
-      if (!hasAtLeastOneField) {
-        throw new Error("update_hero payload must include at least one editable field.");
-      }
-      return next;
-    }
-
-    if (kind === "update_confirmation_template") {
-      const next: AiPreparedAction = {
-        kind: "update_confirmation_template",
-        summary,
-        payload: {
-          mode: rawActionPayload.mode === "html" ? "html" : rawActionPayload.mode === "rich" ? "rich" : undefined,
-          subject: typeof rawActionPayload.subject === "string" ? rawActionPayload.subject.trim() : undefined,
-          previewText: typeof rawActionPayload.previewText === "string" ? rawActionPayload.previewText : undefined,
-          bodyRich: typeof rawActionPayload.bodyRich === "string" ? rawActionPayload.bodyRich : undefined,
-          bodyHtml: typeof rawActionPayload.bodyHtml === "string" ? rawActionPayload.bodyHtml : undefined
-        }
-      };
-      const hasTextUpdate = Boolean(
-        (next.payload.subject && next.payload.subject.trim()) ||
-          (next.payload.previewText && next.payload.previewText.trim()) ||
-          (next.payload.bodyRich && next.payload.bodyRich.trim()) ||
-          (next.payload.bodyHtml && next.payload.bodyHtml.trim())
-      );
-      if (!hasTextUpdate) {
-        throw new Error("update_confirmation_template payload must include subject, previewText, bodyRich, or bodyHtml.");
-      }
-      return next;
-    }
-
-    throw new Error("Unsupported action kind.");
+  const buildDocHtml = (title: string, lines: string[]) =>
+    `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><h2>${escapeHtml(
+      title
+    )}</h2>${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</body></html>`;
+  const buildExcelHtml = (title: string, lines: string[]) => {
+    const rows = lines.map((line, idx) => `<tr><td>${idx + 1}</td><td>${escapeHtml(line)}</td></tr>`).join("");
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+      title
+    )}</title></head><body><table border="1"><thead><tr><th>#</th><th>Content</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
   };
 
   const buildConfirmationLinks = (input: { confirmToken: string; unsubscribeToken: string }) => {
@@ -816,7 +1089,7 @@ const bootstrap = async () => {
 
   const deliverConfirmationEmail = async (input: { name: string; email: string; confirmToken: string; unsubscribeToken: string }) => {
     // eslint-disable-next-line no-console
-    console.log(`[email] confirmation send requested email=${input.email}`);
+    console.log(`[email] confirmation send requested email=${maskEmailForLog(input.email)}`);
     const [template, senderProfile] = await Promise.all([emailStore.getConfirmationTemplate(), emailStore.getSenderProfile()]);
     const { confirmUrl, unsubscribeUrl } = buildConfirmationLinks({
       confirmToken: input.confirmToken,
@@ -845,7 +1118,7 @@ const bootstrap = async () => {
     });
     // eslint-disable-next-line no-console
     console.log(
-      `[email] confirmation send result email=${input.email} delivered=${String(result.delivered)} provider=${result.provider} messageId=${
+      `[email] confirmation send result email=${maskEmailForLog(input.email)} delivered=${String(result.delivered)} provider=${result.provider} messageId=${
         result.messageId
       }`
     );
@@ -903,25 +1176,29 @@ const bootstrap = async () => {
         });
         // eslint-disable-next-line no-console
         console.error(
-          `[email] confirmation async send failed source=${input.source} email=${input.email} code=${detailCode} message=${message}`
+          `[email] confirmation async send failed source=${input.source} email=${maskEmailForLog(input.email)} code=${detailCode} message=${message}`
         );
       }
     })();
   };
 
   app.get("/api/health", (_req, res) => {
-    res.status(200).json({
+    const payload: Record<string, unknown> = {
       ok: true,
       service: "autohub-backend",
-      env: {
+      timestamp: new Date().toISOString(),
+      uptimeSec: Math.floor(process.uptime())
+    };
+    if (!isProduction || process.env.HEALTH_INCLUDE_DETAILS === "true") {
+      payload.env = {
         persistenceMode: PERSISTENCE_MODE,
         port: PORT,
         corsOrigins: CORS_ORIGINS,
         dbUrlProvided: Boolean(DB_URL),
         mediaDir: MEDIA_DIR
-      },
-      timestamp: new Date().toISOString()
-    });
+      };
+    }
+    res.status(200).json(payload);
   });
 
   app.get("/api/auth/status", async (_req, res) => {
@@ -930,9 +1207,21 @@ const bootstrap = async () => {
   });
 
   app.post("/api/auth/login/start", authIpLimiter, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const trustDevice = req.body?.trustDevice === true;
+    if (!email || !password) {
+      res.status(400).json({ error: "Email and password are required." });
+      return;
+    }
+    if (email.length > LOGIN_EMAIL_MAX_CHARS) {
+      res.status(400).json({ error: `Email is too long (max ${LOGIN_EMAIL_MAX_CHARS} chars).` });
+      return;
+    }
+    if (password.length > LOGIN_PASSWORD_MAX_CHARS) {
+      res.status(400).json({ error: `Password is too long (max ${LOGIN_PASSWORD_MAX_CHARS} chars).` });
+      return;
+    }
     try {
       let trustedDeviceToken = "";
       let trustedDeviceTokenHash = "";
@@ -966,22 +1255,31 @@ const bootstrap = async () => {
   });
 
   app.get("/api/auth/session", async (req, res) => {
-    const { token, source } = getAuthContext(req);
-    const trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
-    const valid =
+    let { token, source } = getAuthContext(req);
+    let trustedDeviceTokenHash = source === "cookie" ? getTrustedDeviceTokenHash(req) : "";
+    let valid =
       source === "cookie"
         ? await authStore.verifySessionForDevice(token, trustedDeviceTokenHash)
         : await authStore.verifySession(token);
+    if (!valid && source === "cookie") {
+      const bearerToken = getBearerToken(req);
+      if (bearerToken && (await authStore.verifySession(bearerToken))) {
+        token = bearerToken;
+        source = "bearer";
+        trustedDeviceTokenHash = "";
+        valid = true;
+      }
+    }
     if (!valid) {
       clearAuthCookie(res);
     } else if (trustedDeviceTokenHash) {
       await authStore.touchTrustedDevice(trustedDeviceTokenHash);
     }
-    if (valid) attachCsrfHeaderFromRequest(req, res);
+    if (valid && source === "cookie") attachCsrfHeaderFromRequest(req, res);
     res.status(200).json({ valid });
   });
 
-  app.post("/api/auth/logout", async (req, res) => {
+  app.post("/api/auth/logout", authSensitiveIpLimiter, requireCsrfForCookieAuth, async (req, res) => {
     const token = getAuthToken(req);
     if (token) {
       await authStore.logout(token);
@@ -990,13 +1288,20 @@ const bootstrap = async () => {
     res.status(200).json({ ok: true });
   });
 
-  app.post("/api/auth/logout-all", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.logout_all"), async (req, res) => {
+  app.post(
+    "/api/auth/logout-all",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.logout_all"),
+    async (req, res) => {
     const token = getAuthToken(req);
     const keepCurrent = Boolean(req.body?.keepCurrent);
     await authStore.logoutAll(keepCurrent ? token : undefined);
     if (!keepCurrent) clearAuthCookie(res);
     res.status(200).json({ ok: true, keepCurrent });
-  });
+    }
+  );
 
   app.get("/api/auth/account", requireAdminAuth, async (_req, res) => {
     try {
@@ -1007,7 +1312,13 @@ const bootstrap = async () => {
     }
   });
 
-  app.put("/api/auth/account", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.update_account"), async (req, res) => {
+  app.put(
+    "/api/auth/account",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.update_account"),
+    async (req, res) => {
     try {
       const fullName = typeof req.body?.fullName === "string" ? req.body.fullName : "";
       const timezone = typeof req.body?.timezone === "string" ? req.body.timezone : "UTC";
@@ -1016,13 +1327,24 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save account settings." });
     }
-  });
+    }
+  );
 
-  app.put("/api/auth/password", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("auth.change_password"), async (req, res) => {
+  app.put(
+    "/api/auth/password",
+    requireAdminAuth,
+    authSensitiveIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("auth.change_password"),
+    async (req, res) => {
     try {
       const token = getAuthToken(req);
       const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+      if (currentPassword.length > LOGIN_PASSWORD_MAX_CHARS || newPassword.length > LOGIN_PASSWORD_MAX_CHARS) {
+        res.status(400).json({ error: `Password is too long (max ${LOGIN_PASSWORD_MAX_CHARS} chars).` });
+        return;
+      }
       const session = await authStore.changePassword(currentPassword, newPassword, token);
       await authStore.clearTrustedDevices();
       setAuthCookie(res, session.token, session.expiresAt);
@@ -1031,14 +1353,22 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update password." });
     }
-  });
+    }
+  );
 
-  app.get("/api/media", async (_req, res) => {
+  app.get("/api/media", requireAdminAuth, async (_req, res) => {
     const items = await mediaStore.list();
     res.status(200).json({ items });
   });
 
-  app.post("/api/media", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.upload"), upload.array("files", 20), async (req, res) => {
+  app.post(
+    "/api/media",
+    requireAdminAuth,
+    mediaUploadIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("media.upload"),
+    upload.array("files", maxUploadFiles),
+    async (req, res) => {
     const files = (req.files as Express.Multer.File[]) ?? [];
     if (!files.length) {
       res.status(400).json({ error: "No files uploaded. Use form-data field 'files'." });
@@ -1059,7 +1389,8 @@ const bootstrap = async () => {
     }
 
     res.status(201).json({ items: created });
-  });
+    }
+  );
 
   app.delete("/api/media/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.delete"), async (req, res) => {
     const mediaId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -1086,7 +1417,13 @@ const bootstrap = async () => {
     res.status(200).json(meta);
   });
 
-  app.put("/api/site/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.save_draft"), async (req, res) => {
+  app.put(
+    "/api/site/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.save_draft"),
+    async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     if (!payload || typeof payload !== "object") {
       res.status(400).json({ error: "content payload is required." });
@@ -1098,9 +1435,16 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid content payload." });
     }
-  });
+    }
+  );
 
-  app.post("/api/site/publish", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.publish"), async (req, res) => {
+  app.post(
+    "/api/site/publish",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.publish"),
+    async (req, res) => {
     const payload = req.body?.content as SiteContent | undefined;
     try {
       const content = await siteStore.publish(payload);
@@ -1108,14 +1452,1877 @@ const bootstrap = async () => {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid content payload." });
     }
-  });
+    }
+  );
 
-  app.post("/api/site/reset", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("site.reset"), async (_req, res) => {
+  app.post(
+    "/api/site/reset",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("site.reset"),
+    async (_req, res) => {
     const next = await siteStore.reset();
     res.status(200).json({ published: next.published, draft: next.draft });
+    }
+  );
+
+  const normalizeForCompare = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const hasHealthRiskClaims = (value: string) => /(cure|guaranteed|100%|no risk|instant results|instant)/i.test(value);
+  const hasAffiliateDisclosureSignal = (warnings: string[], shortDescription: string, longDescription: string) => {
+    const merged = [...warnings, shortDescription, longDescription].join(" ");
+    return /(affiliate|commission|disclosure)/i.test(merged);
+  };
+
+  const getSectionDuplicateReasons = (
+    published: SiteContent,
+    section: "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming",
+    candidate: { title: string; checkoutLink: string; imageUrl: string }
+  ) => {
+    const titleKey = normalizeForCompare(candidate.title);
+    const linkKey = normalizeForCompare(candidate.checkoutLink);
+    const imageKey = normalizeForCompare(candidate.imageUrl);
+    const reasons: string[] = [];
+
+    if (section === "upcoming") {
+      const items = published.healthPage?.upcoming.items ?? [];
+      const titleDuplicate = items.some((item) => normalizeForCompare(item.title) === titleKey);
+      const imageDuplicate = imageKey ? items.some((item) => normalizeForCompare(item.imageUrl ?? "") === imageKey) : false;
+      if (titleDuplicate) reasons.push("Duplicate title exists in upcoming.");
+      if (imageDuplicate) reasons.push("Duplicate image exists in upcoming.");
+      return reasons;
+    }
+
+    const items =
+      section === "gadgets" || section === "supplements"
+        ? published.healthPage?.products[section] ?? []
+        : published.products[section];
+    const titleDuplicate = items.some((item) => normalizeForCompare(item.title) === titleKey);
+    const linkDuplicate = linkKey ? items.some((item) => normalizeForCompare(item.checkoutLink ?? "") === linkKey) : false;
+    const imageDuplicate = imageKey ? items.some((item) => normalizeForCompare(item.imageUrl ?? "") === imageKey) : false;
+    if (titleDuplicate) reasons.push("Duplicate title exists in target section.");
+    if (linkDuplicate) reasons.push("Duplicate checkout link exists in target section.");
+    if (imageDuplicate) reasons.push("Duplicate image exists in target section.");
+    return reasons;
+  };
+
+  const callSuperModeChat = async (input: {
+    message: string;
+    imageUrl?: string;
+    context: {
+      siteUpdatedAt: string;
+      totalProducts: number;
+      subscribers: number;
+      analyticsEvents: number;
+      hasDraft: boolean;
+    };
+  }) => {
+    const runtime = await aiControlStore.getRuntimeSettings();
+    if (runtime.mode !== "super" || !runtime.superMode) return null;
+    const baseUrlValidationError = validateSuperModeBaseUrl(runtime.superMode.baseUrl);
+    if (baseUrlValidationError) {
+      throw new Error(`Super mode base URL is invalid. ${baseUrlValidationError}`);
+    }
+
+    const endpoint = `${runtime.superMode.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+    const systemPrompt =
+      "You are an admin AI copilot for a content + affiliate website. Respond in concise markdown with sections, bullets, and practical actions. Avoid unsafe or misleading claims.";
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${runtime.superMode.apiKey}`
+      },
+      body: JSON.stringify({
+        model: runtime.superMode.model,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: input.imageUrl
+              ? [
+                  {
+                    type: "text",
+                    text: [
+                      `User request: ${input.message}`,
+                      "Current snapshot:",
+                      `- Site updated at: ${input.context.siteUpdatedAt}`,
+                      `- Total products: ${input.context.totalProducts}`,
+                      `- Subscribers: ${input.context.subscribers}`,
+                      `- Analytics events: ${input.context.analyticsEvents}`,
+                      `- Has draft: ${String(input.context.hasDraft)}`
+                    ].join("\n")
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: input.imageUrl }
+                  }
+                ]
+              : [
+                  `User request: ${input.message}`,
+                  "Current snapshot:",
+                  `- Site updated at: ${input.context.siteUpdatedAt}`,
+                  `- Total products: ${input.context.totalProducts}`,
+                  `- Subscribers: ${input.context.subscribers}`,
+                  `- Analytics events: ${input.context.analyticsEvents}`,
+                  `- Has draft: ${String(input.context.hasDraft)}`
+                ].join("\n")
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`Super mode provider error (${response.status}): ${message.slice(0, 240)}`);
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content) {
+      throw new Error("Super mode provider returned an empty response.");
+    }
+    return {
+      provider: runtime.superMode.provider,
+      model: runtime.superMode.model,
+      answer: content
+    };
+  };
+
+  app.get("/api/ai/control/context", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (req, res) => {
+    try {
+      const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
+        siteStore.getMeta(),
+        siteStore.getPublished(),
+        emailStore.getAnalyticsSummary(),
+        analyticsStore.summary(),
+        trafficAiStore.getLatestPlan()
+      ]);
+
+      const sectionCounts = {
+        forex: published.products.forex.length,
+        betting: published.products.betting.length,
+        software: published.products.software.length,
+        social: published.products.social.length,
+        healthGadgets: published.healthPage?.products.gadgets.length ?? 0,
+        healthSupplements: published.healthPage?.products.supplements.length ?? 0,
+        healthUpcoming: published.healthPage?.upcoming.items.length ?? 0
+      };
+      const totalProducts = Object.values(sectionCounts).reduce((acc, value) => acc + value, 0);
+
+      res.status(200).json({
+        snapshotAt: new Date().toISOString(),
+        site: {
+          updatedAt: siteMeta.updatedAt,
+          hasDraft: siteMeta.hasDraft,
+          industries: published.industries.length,
+          testimonials: published.testimonials.length,
+          sectionCounts,
+          totalProducts
+        },
+        email: emailSummary.totals,
+        analytics: {
+          totalEvents: analyticsSummary.totalEvents,
+          topEvents: Object.entries(analyticsSummary.byEvent)
+            .map(([eventName, count]) => ({ eventName, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+        },
+        trafficAi: latestTrafficPlan
+          ? {
+              latestPlanAt: latestTrafficPlan.createdAt,
+              opportunities: latestTrafficPlan.summary.opportunities,
+              avgScore: latestTrafficPlan.summary.avgCompositeScore
+            }
+          : null,
+        role:
+          ((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ?? "viewer") as
+            | "viewer"
+            | "editor"
+            | "publisher"
+            | "owner",
+        capabilities: listCapabilitiesForRole(
+          (((req as express.Request & { adminRole?: "viewer" | "editor" | "publisher" | "owner" }).adminRole ??
+            "viewer") as "viewer" | "editor" | "publisher" | "owner")
+        )
+      });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to build AI control context.") });
+    }
   });
 
-  app.post("/api/analytics/events", async (req, res) => {
+  app.get("/api/ai/control/safety-summary", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (_req, res) => {
+    try {
+      const summary = await aiControlStore.getSafetySummary();
+      res.status(200).json(summary);
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load AI safety summary.") });
+    }
+  });
+
+  app.get("/api/ai/control/settings", requireAdminAuth, requireAiCapability("ai.chat.ask"), async (_req, res) => {
+    try {
+      const settings = await aiControlStore.getSettings();
+      res.status(200).json(settings);
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load AI settings.") });
+    }
+  });
+
+  app.put(
+    "/api/ai/control/settings/mode",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_mode"),
+    async (req, res) => {
+      const mode = req.body?.mode === "super" ? "super" : "current";
+      try {
+        const next = await aiControlStore.setMode(mode);
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update AI mode." });
+      }
+    }
+  );
+
+  app.put(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const apiKey = typeof payload.apiKey === "string" ? payload.apiKey : "";
+      const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl : undefined;
+      const model = typeof payload.model === "string" ? payload.model : undefined;
+      const provider = typeof payload.provider === "string" ? payload.provider : undefined;
+      const baseUrlError = validateSuperModeBaseUrl(baseUrl ?? "");
+      if (baseUrlError) {
+        res.status(400).json({ error: baseUrlError });
+        return;
+      }
+      try {
+        const next = await aiControlStore.upsertSuperMode({ apiKey, baseUrl, model, provider });
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save super mode settings." });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/ai/control/settings/super",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.settings_super_clear"),
+    async (_req, res) => {
+      try {
+        const next = await aiControlStore.clearSuperMode();
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to clear super mode settings." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/chat",
+    requireAdminAuth,
+    aiChatIpLimiter,
+    requireAiCapability("ai.chat.ask"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.chat"),
+    async (req, res) => {
+    const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : "";
+    const rawMessage = typeof req.body?.rawMessage === "string" ? req.body.rawMessage.trim() : "";
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+    const formattingMarkdown = req.body?.formatting?.markdown === true;
+    type HistoryMessage = { role: "user" | "assistant"; content: string };
+    if (sessionId.length > AI_CHAT_MAX_SESSION_ID_CHARS) {
+      res.status(400).json({ error: `sessionId is too long (max ${AI_CHAT_MAX_SESSION_ID_CHARS} chars).` });
+      return;
+    }
+    if (rawMessage.length > AI_CHAT_MAX_MESSAGE_CHARS || message.length > AI_CHAT_MAX_MESSAGE_CHARS) {
+      res.status(400).json({ error: `message is too long (max ${AI_CHAT_MAX_MESSAGE_CHARS} chars).` });
+      return;
+    }
+
+    const incomingMessages: unknown[] = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const historyMessages = incomingMessages
+      .slice(-AI_CHAT_MAX_HISTORY_ITEMS)
+      .map((item: unknown) => {
+        const asRecord = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+        const role = typeof asRecord.role === "string" ? asRecord.role.toLowerCase() : "";
+        const contentRaw = typeof asRecord.content === "string" ? asRecord.content.trim() : "";
+        const content = contentRaw.slice(0, AI_CHAT_MAX_HISTORY_ITEM_CHARS);
+        if (!content || (role !== "user" && role !== "assistant")) return null;
+        return { role: role as "user" | "assistant", content } satisfies HistoryMessage;
+      })
+      .filter((item: HistoryMessage | null): item is HistoryMessage => Boolean(item));
+    const totalHistoryChars = historyMessages.reduce((sum, item) => sum + item.content.length, 0);
+    if (totalHistoryChars > AI_CHAT_MAX_HISTORY_TOTAL_CHARS) {
+      res.status(400).json({ error: `messages payload is too large (max ${AI_CHAT_MAX_HISTORY_TOTAL_CHARS} chars).` });
+      return;
+    }
+    const clientContextPayload = typeof req.body?.clientContext === "object" && req.body.clientContext !== null
+      ? (req.body.clientContext as Record<string, unknown>)
+      : {};
+    const clientContext = {
+      currentMode:
+        clientContextPayload.currentMode === "super" || clientContextPayload.currentMode === "current"
+          ? clientContextPayload.currentMode
+          : "current",
+      productsCount:
+        typeof clientContextPayload.productsCount === "number" && Number.isFinite(clientContextPayload.productsCount)
+          ? clientContextPayload.productsCount
+          : 0,
+      subscribersCount:
+        typeof clientContextPayload.subscribersCount === "number" && Number.isFinite(clientContextPayload.subscribersCount)
+          ? clientContextPayload.subscribersCount
+          : 0,
+      eventsCount:
+        typeof clientContextPayload.eventsCount === "number" && Number.isFinite(clientContextPayload.eventsCount)
+          ? clientContextPayload.eventsCount
+          : 0,
+      snapshotTime: typeof clientContextPayload.snapshotTime === "string" ? clientContextPayload.snapshotTime : "",
+      activeSection: typeof clientContextPayload.activeSection === "string" ? clientContextPayload.activeSection : "marketing"
+    };
+    const sessionContextPayload =
+      typeof req.body?.sessionContext === "object" && req.body.sessionContext !== null
+        ? (req.body.sessionContext as Record<string, unknown>)
+        : {};
+    const sessionContext = {
+      category: typeof sessionContextPayload.category === "string" ? sessionContextPayload.category : "health",
+      platform: typeof sessionContextPayload.platform === "string" ? sessionContextPayload.platform : "web",
+      tone: typeof sessionContextPayload.tone === "string" ? sessionContextPayload.tone : "professional"
+    };
+    const autoRewrite = req.body?.autoRewrite !== false;
+    type NormalizedUserMessage = {
+      cleaned: string;
+      intentHint: string | null;
+      entities: {
+        category?: "forex" | "betting" | "social" | "software" | "other";
+        platform?: "facebook" | "x" | "tiktok" | "youtube" | "website";
+        goal?: "fix" | "research" | "write" | "plan" | "summarize";
+      };
+      isVague: boolean;
+      clarifyingQuestion?: string;
+      options?: string[];
+    };
+    const normalizeUserMessage = (rawInput: string, sessionCtx: typeof sessionContext): NormalizedUserMessage => {
+      const protectedParts: string[] = [];
+      let working = rawInput || "";
+      const protect = (pattern: RegExp) => {
+        working = working.replace(pattern, (segment) => {
+          const token = `__PROTECTED_${protectedParts.length}__`;
+          protectedParts.push(segment);
+          return token;
+        });
+      };
+      protect(/```[\s\S]*?```/g);
+      protect(/`[^`\n]+`/g);
+      protect(/https?:\/\/\S+/g);
+      protect(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi);
+
+      working = working.trim().replace(/\s+/g, " ").replace(/([!?.,])\1{1,}/g, "$1").replace(/([a-zA-Z])\1{2,}/g, "$1$1");
+      const wordFixes: Record<string, string> = {
+        lenguage: "language",
+        reorganise: "reorganize",
+        syetem: "system",
+        frinedly: "friendly",
+        wheather: "whether",
+        visiblity: "visibility",
+        appering: "appearing",
+        clinet: "client",
+        adimin: "admin"
+      };
+      working = working.replace(/\b[a-zA-Z]{3,}\b/g, (word) => {
+        const lower = word.toLowerCase();
+        if (!wordFixes[lower]) return word;
+        if (word === lower) return wordFixes[lower];
+        if (/^[A-Z]/.test(word)) return `${wordFixes[lower].charAt(0).toUpperCase()}${wordFixes[lower].slice(1)}`;
+        return wordFixes[lower];
+      });
+      for (let index = 0; index < protectedParts.length; index += 1) {
+        working = working.replace(`__PROTECTED_${index}__`, protectedParts[index]);
+      }
+      const cleaned = working;
+      const lower = cleaned.toLowerCase();
+      const entities: NormalizedUserMessage["entities"] = {};
+      if (/\bforex\b/.test(lower)) entities.category = "forex";
+      else if (/\bbetting\b/.test(lower)) entities.category = "betting";
+      else if (/\bsocial\b/.test(lower)) entities.category = "social";
+      else if (/\bsoftware\b/.test(lower)) entities.category = "software";
+      else if (/\b(gadget|supplement|health|upcoming)\b/.test(lower)) entities.category = "other";
+      if (/\bfacebook\b/.test(lower)) entities.platform = "facebook";
+      else if (/\bx\b|\btwitter\b/.test(lower)) entities.platform = "x";
+      else if (/\btiktok\b/.test(lower)) entities.platform = "tiktok";
+      else if (/\byoutube\b/.test(lower)) entities.platform = "youtube";
+      else if (/\bweb(site)?\b/.test(lower)) entities.platform = "website";
+      if (/\bfix|bug|issue|error|overflow|layout|scroll|visible|button|ui\b/.test(lower)) entities.goal = "fix";
+      else if (/\bresearch|find|latest|rules|pricing|keyword|rank|google\b/.test(lower)) entities.goal = "research";
+      else if (/\bwrite|generate|create|draft|copy|headline|cta\b/.test(lower)) entities.goal = "write";
+      else if (/\bplan|roadmap|steps|checklist\b/.test(lower)) entities.goal = "plan";
+      else if (/\bsummarize|summary|overview|insights\b/.test(lower)) entities.goal = "summarize";
+
+      let intentHint: string | null = null;
+      if (/\boverflow|visible|scroll|button|layout|ui\b/.test(lower)) intentHint = "UI bug";
+      else if (/\bheadline|hook|cta|copy|emojis?|ad\b/.test(lower)) intentHint = "ad copy";
+      else if (/\bkeywords?|rank|google|content|seo\b/.test(lower)) intentHint = "SEO";
+
+      const words = cleaned.split(/\s+/).filter(Boolean);
+      const wordCount = words.length;
+      const vaguePhrases = /^(help me|help|fix this|what now|make it better|do it|improve|traffic overview|status)$/i;
+      const hasQuestionShape =
+        /\?$/.test(cleaned) ||
+        /\b(what|why|how|when|where|who|which|can|could|should|is|are|do|does|tell me|explain)\b/.test(lower);
+      const followUpCue = /\b(step\s*\d+|more detail|more detailed|expand|continue|next|follow up|that|those|it|same|previous|above|earlier)\b/.test(
+        lower
+      );
+      const hasSignal = Boolean(entities.goal || entities.category || entities.platform || intentHint);
+      const tooShort = wordCount < 2;
+      const missingSignals = !hasSignal && !hasQuestionShape && wordCount < 5;
+      const isVague = vaguePhrases.test(lower) || tooShort || (missingSignals && !followUpCue);
+      if (!isVague) return { cleaned, intentHint, entities, isVague: false };
+
+      const clarifyingQuestion = intentHint === "SEO"
+        ? "Quick question: should I focus on keyword research, ranking fixes, or content structure first?"
+        : intentHint === "ad copy"
+          ? "Quick question: is this for product ads, social captions, or email campaign copy?"
+          : entities.goal === "fix"
+            ? "Quick question: is this a UI layout issue, button behavior issue, or scroll/visibility issue?"
+            : `Quick question: should I focus on ${sessionCtx.category} on ${sessionCtx.platform}, or another category/platform?`;
+      const options =
+        intentHint === "SEO"
+          ? ["Keyword clusters", "Ranking quick wins", "Content rewrite", "Technical SEO checks"]
+          : intentHint === "ad copy"
+            ? ["5 ad headlines", "Short social captions", "Email ad copy", "CTA options"]
+            : entities.goal === "fix"
+              ? ["Fix overflow/layout", "Fix button visibility", "Fix scroll behavior", "Audit mobile UI"]
+              : ["Status summary", "Traffic opportunities", "Compliance check", "Action plan"];
+      return { cleaned, intentHint, entities, isVague: true, clarifyingQuestion, options };
+    };
+    const normalizedApiBase = normalizePublicBaseUrl(API_PUBLIC_BASE_URL);
+    const isUploadsImageUrl =
+      !imageUrl ||
+      imageUrl.startsWith("/uploads/") ||
+      (normalizedApiBase && imageUrl.startsWith(`${normalizedApiBase}/uploads/`));
+    if (!isUploadsImageUrl) {
+      res.status(400).json({ error: "For AI image analysis, image must come from uploads path only." });
+      return;
+    }
+    const userMessage = rawMessage || message;
+    const providerMessage = message || userMessage;
+    const understanding = normalizeUserMessage(userMessage, sessionContext);
+    const normalizedUserMessage = autoRewrite ? understanding.cleaned : userMessage;
+    if (!userMessage) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+    try {
+      const [siteMeta, published, emailSummary, analyticsSummary, latestTrafficPlan] = await Promise.all([
+        siteStore.getMeta(),
+        siteStore.getPublished(),
+        emailStore.getAnalyticsSummary(),
+        analyticsStore.summary(),
+        trafficAiStore.getLatestPlan()
+      ]);
+      const lower = normalizedUserMessage.toLowerCase();
+      const productTotal =
+        published.products.forex.length +
+        published.products.betting.length +
+        published.products.software.length +
+        published.products.social.length +
+        (published.healthPage?.products.gadgets.length ?? 0) +
+        (published.healthPage?.products.supplements.length ?? 0);
+      const effectiveProducts = clientContext.productsCount > 0 ? clientContext.productsCount : productTotal;
+      const effectiveSubscribers =
+        clientContext.subscribersCount > 0 ? clientContext.subscribersCount : emailSummary.totals.subscribers;
+      const effectiveEvents = clientContext.eventsCount > 0 ? clientContext.eventsCount : analyticsSummary.totalEvents;
+      const compactContext = {
+        sessionId: sessionId || "unknown",
+        mode: clientContext.currentMode,
+        activeSection: clientContext.activeSection || "marketing",
+        products: effectiveProducts,
+        subscribers: effectiveSubscribers,
+        events: effectiveEvents,
+        snapshotTime: clientContext.snapshotTime || new Date().toISOString(),
+        siteUpdatedAt: siteMeta.updatedAt,
+        hasDraft: siteMeta.hasDraft
+      };
+      const conversationHistoryBlock = historyMessages
+        .map((item: HistoryMessage) => `${item.role.toUpperCase()}: ${item.content}`)
+        .join("\n");
+      const superSystemPrompt = [
+        "You are the Admin assistant for this product website.",
+        "Always answer specifically using the provided context and conversation history.",
+        formattingMarkdown
+          ? "Return markdown with clear headings, bullet points, and practical next steps."
+          : "Return concise clear text with practical next steps."
+      ].join(" ");
+      const providerPrompt = [
+        superSystemPrompt,
+        "",
+        `ClientContext: ${JSON.stringify(compactContext)}`,
+        conversationHistoryBlock ? `ConversationHistory:\n${conversationHistoryBlock}` : "ConversationHistory: (none)",
+        `CurrentUserMessage: ${autoRewrite ? normalizedUserMessage : providerMessage}`
+      ].join("\n");
+
+      try {
+        const superReply = await callSuperModeChat({
+          message: providerPrompt,
+          imageUrl: imageUrl || undefined,
+          context: {
+            siteUpdatedAt: siteMeta.updatedAt,
+            totalProducts: productTotal,
+            subscribers: emailSummary.totals.subscribers,
+            analyticsEvents: analyticsSummary.totalEvents,
+            hasDraft: siteMeta.hasDraft
+          }
+        });
+        if (superReply) {
+          res.status(200).json({
+            mode: "super",
+            answer: superReply.answer,
+            suggestions: [
+              "Ask: convert this into a weekly action checklist",
+              "Ask: search online sources to verify this plan"
+            ],
+            sources: []
+          });
+          return;
+        }
+      } catch (superError) {
+        await aiControlStore.logAudit({
+          action: "ai.super_mode_fallback",
+          status: "denied",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "unknown").toString(),
+          authSource: (res.locals.authSource ?? "none").toString(),
+          path: req.originalUrl,
+          ip: req.ip ?? "",
+          metadata: { reason: superError instanceof Error ? superError.message : "super mode failed" }
+        });
+      }
+
+      let answer = "";
+      const suggestions: string[] = [];
+      let sources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
+      const isGreeting =
+        /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(lower) ||
+        /\bhow are you\b/i.test(lower) ||
+        /\bwho are you\b/i.test(lower);
+      const isEmailGenerationRequest =
+        /\b(html email|email html|email template|generate email|campaign email|newsletter)\b/i.test(lower);
+      const isCodeRequest =
+        /\b(code|snippet|example code|write code|function|script|typescript|javascript|python|sql|css|html)\b/i.test(lower);
+      const isClientEditRequest =
+        /\b(add|edit|update|create|insert)\b.*\b(item|product|section|card|slider|client side|client page)\b/i.test(lower) ||
+        /\b(client side)\b.*\b(add|edit|update)\b/i.test(lower);
+      const isSearchPrompt =
+        lower.includes("search online") || lower.includes("find online") || lower.includes("where to find") || lower.startsWith("search ");
+      const isImageAdRequest =
+        Boolean(imageUrl) &&
+        (/\b(ad|advert|campaign|copy|message|caption|headline|cta|analy|analyze|analyse)\b/i.test(lower) || !userMessage.trim());
+      const previousUserMessage =
+        [...historyMessages]
+          .reverse()
+          .find((item) => item.role === "user" && item.content.toLowerCase() !== normalizedUserMessage.toLowerCase())?.content ?? "";
+      const followsPreviousContext = /\b(that|those|it|same|previous|above|earlier|q1|follow up|step\s*\d+|now make|expand)\b/i.test(lower);
+      if (understanding.isVague && !isGreeting && !followsPreviousContext) {
+        const followUpQuestion =
+          understanding.clarifyingQuestion ??
+          "Quick question: should I focus on SEO opportunities, compliance, ad copy, or dashboard insights first?";
+        res.status(200).json({
+          mode: "read-only",
+          answer: [
+            "## Clarify First",
+            `I understood you might mean: ${understanding.cleaned}`,
+            "",
+            followUpQuestion,
+            "",
+            `Current context: section=${clientContext.activeSection || "marketing"}, products=${effectiveProducts}, subscribers=${effectiveSubscribers}, events=${effectiveEvents}.`
+          ].join("\n"),
+          suggestions: (understanding.options ?? ["SEO for health supplements", "Paid traffic for betting section", "Quick wins for forex this week"]).slice(0, 5),
+          sources: []
+        });
+        return;
+      }
+
+      const effectiveUserMessage =
+        followsPreviousContext && previousUserMessage
+          ? `${previousUserMessage}\nFollow-up instruction: ${normalizedUserMessage}`
+          : normalizedUserMessage;
+
+      type ChatIntent =
+        | "CODING_HELP"
+        | "AD_COPY"
+        | "SEO_RESEARCH"
+        | "COMPLIANCE"
+        | "DASHBOARD_INSIGHTS"
+        | "PRODUCT_POSITIONING"
+        | "GENERAL_QA";
+      const classifyIntent = (input: string): ChatIntent => {
+        if (understanding.intentHint === "UI bug") return "CODING_HELP";
+        if (understanding.intentHint === "ad copy") return "AD_COPY";
+        if (understanding.intentHint === "SEO") return "SEO_RESEARCH";
+        const text = input.toLowerCase();
+        if (/\b(code|typescript|javascript|python|sql|bug|refactor|api route|function|compile|build|fix error)\b/.test(text)) return "CODING_HELP";
+        if (/\b(ad copy|headline|cta|caption|campaign copy|creative|advert)\b/.test(text)) return "AD_COPY";
+        if (/\b(seo|keyword|ranking|serp|search traffic|backlink|internal link)\b/.test(text)) return "SEO_RESEARCH";
+        if (/\b(compliance|policy|affiliate|disclosure|rule|regulation|legal)\b/.test(text)) return "COMPLIANCE";
+        if (/\b(status|dashboard|kpi|insight|what changed|summary|analytics|subscribers|events)\b/.test(text)) return "DASHBOARD_INSIGHTS";
+        if (/\b(positioning|value proposition|persona|offer|differentiat|feature benefit|product angle)\b/.test(text)) return "PRODUCT_POSITIONING";
+        return "GENERAL_QA";
+      };
+      const intent = classifyIntent(effectiveUserMessage);
+      const followUpStepMatch = effectiveUserMessage.match(/\bstep\s*(\d+)\b/i);
+      const followUpStep = followUpStepMatch ? Number.parseInt(followUpStepMatch[1] ?? "", 10) : Number.NaN;
+      const isDetailedFollowUpRequest =
+        followsPreviousContext &&
+        /\b(more detail|more detailed|expand|break down|elaborate|deepen)\b/i.test(effectiveUserMessage);
+      const adminRole = ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer").toString();
+      const roleCapabilities = listCapabilitiesForRole(
+        (adminRole as "viewer" | "editor" | "publisher" | "owner") === "viewer" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "editor" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "publisher" ||
+          (adminRole as "viewer" | "editor" | "publisher" | "owner") === "owner"
+          ? (adminRole as "viewer" | "editor" | "publisher" | "owner")
+          : "viewer"
+      );
+      const asksCurrentInfo = /\b(latest|most recent|today|rules|regulations?|pricing|price|updated|current)\b/i.test(
+        effectiveUserMessage
+      );
+      const codingNeedsCurrentLibrary = /\b(latest|current|new|recent)\b.*\b(version|library|framework|package)\b/i.test(
+        effectiveUserMessage
+      );
+      const shouldUseWebSearch =
+        ((intent === "SEO_RESEARCH" || intent === "COMPLIANCE") && asksCurrentInfo) ||
+        (asksCurrentInfo && intent !== "CODING_HELP") ||
+        (intent === "CODING_HELP" && codingNeedsCurrentLibrary);
+      const buildCuratedFallbackSources = (
+        activeIntent: ChatIntent
+      ): Array<{ title: string; url: string; snippet: string; source: string }> => {
+        if (activeIntent === "COMPLIANCE") {
+          return [
+            {
+              title: "FTC Endorsement Guides",
+              url: "https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides",
+              snippet: "Primary U.S. guidance for endorsements, testimonials, and material connection disclosures.",
+              source: "curated-fallback"
+            },
+            {
+              title: "FTC Advertising and Marketing Basics",
+              url: "https://www.ftc.gov/business-guidance/advertising-marketing",
+              snippet: "Core truth-in-advertising expectations and compliance references for marketers.",
+              source: "curated-fallback"
+            },
+            {
+              title: "FDA Dietary Supplements",
+              url: "https://www.fda.gov/food/dietary-supplements",
+              snippet: "Regulatory overview for supplements and health-claim boundaries in the U.S.",
+              source: "curated-fallback"
+            }
+          ];
+        }
+        if (activeIntent === "SEO_RESEARCH") {
+          return [
+            {
+              title: "Google Search Essentials",
+              url: "https://developers.google.com/search/docs/fundamentals/creating-helpful-content",
+              snippet: "Google guidance on helpful content and sustainable search visibility.",
+              source: "curated-fallback"
+            },
+            {
+              title: "Google SEO Starter Guide",
+              url: "https://developers.google.com/search/docs/fundamentals/seo-starter-guide",
+              snippet: "Baseline technical and content SEO practices from Google.",
+              source: "curated-fallback"
+            },
+            {
+              title: "Google Search Ranking Systems Guide",
+              url: "https://developers.google.com/search/docs/appearance/ranking-systems-guide",
+              snippet: "High-level overview of ranking systems to align SEO strategy with quality signals.",
+              source: "curated-fallback"
+            }
+          ];
+        }
+        return [];
+      };
+      const collectedSources: Array<{ title: string; url: string; snippet: string; source: string }> = [];
+      if (shouldUseWebSearch) {
+        try {
+          const results = await searchWeb(effectiveUserMessage);
+          collectedSources.push(...results.slice(0, 5));
+        } catch {
+          // Keep response resilient; fallback to local context without failing chat.
+        }
+        if (collectedSources.length === 0) {
+          collectedSources.push(...buildCuratedFallbackSources(intent).slice(0, 5));
+        }
+      }
+      const sourceLines =
+        collectedSources.length > 0
+          ? ["", "### Sources", ...collectedSources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)]
+          : [];
+      const ownerRules = [
+        "## Owner Assistant",
+        `- Role: ${adminRole}`,
+        `- Mode: ${clientContext.currentMode}`,
+        `- Session focus: ${sessionContext.category}/${sessionContext.platform} (${sessionContext.tone})`,
+        `- Context counts: products ${effectiveProducts}, subscribers ${effectiveSubscribers}, events ${effectiveEvents}`
+      ];
+      const addAffiliateDisclaimer = /\b(ad|affiliate|campaign|offer|cta|promotion)\b/i.test(effectiveUserMessage);
+      let routedAnswer = "";
+      const routedSuggestions: string[] = [];
+
+      switch (intent) {
+        case "CODING_HELP":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Action Plan",
+            "- Identify the exact component/route to change.",
+            "- Add minimal typed payload validation first.",
+            "- Implement and run build/tests before deploy.",
+            "",
+            "### Recommended Next Step",
+            "- Share the exact failing snippet or error line so I can provide a targeted patch."
+          ].join("\n");
+          routedSuggestions.push("Provide exact error and file path", "Refactor payload validator", "Generate patch for chat route");
+          break;
+        case "AD_COPY":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Ad Copy Direction",
+            `- Category: ${sessionContext.category}`,
+            `- Platform: ${sessionContext.platform}`,
+            `- Tone: ${sessionContext.tone}`,
+            "- Lead with one clear user benefit and one proof point.",
+            "- Use one CTA only to reduce friction."
+          ].join("\n");
+          routedSuggestions.push("Generate 5 headlines", "Generate 3 CTA variants", "Create short social caption set");
+          break;
+        case "SEO_RESEARCH":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### SEO Research",
+            "- Prioritize high-intent transactional terms by section.",
+            "- Expand weakest-content sections first.",
+            "- Improve internal linking from strong pages to weak pages.",
+            ...(collectedSources.length === 0 && asksCurrentInfo
+              ? ["", "- Note: no live sources found now; retry with narrower query."]
+              : [])
+          ].join("\n");
+          routedSuggestions.push("Cluster keywords by section", "Top 10 quick SEO wins", "Internal link map");
+          break;
+        case "COMPLIANCE":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Compliance Review",
+            "- Validate affiliate disclosure placement near CTA.",
+            "- Remove absolute/guaranteed claims.",
+            "- Keep substantiation-ready language for sensitive categories.",
+            ...(collectedSources.length === 0 && asksCurrentInfo
+              ? ["", "- Note: live rules lookup returned no sources; narrow by country + category."]
+              : [])
+          ].join("\n");
+          routedSuggestions.push("Draft compliant disclosure", "Audit risky claims", "Check latest policy updates");
+          break;
+        case "DASHBOARD_INSIGHTS":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Dashboard Insights",
+            "- Identify lowest-performing section by product count.",
+            "- Compare subscriber trend with recent campaign output.",
+            "- Focus next actions on one section for measurable gains."
+          ].join("\n");
+          routedSuggestions.push("Weakest section breakdown", "7-day priority plan", "Traffic opportunity summary");
+          break;
+        case "PRODUCT_POSITIONING":
+          routedAnswer = [
+            ...ownerRules,
+            "",
+            "### Product Positioning",
+            `- Position around ${sessionContext.category} buyer intent.`,
+            "- Translate features into outcomes and proof.",
+            "- Differentiate against generic alternatives with one strong angle."
+          ].join("\n");
+          routedSuggestions.push("Value proposition draft", "Persona-fit messaging", "Feature-to-benefit rewrite");
+          break;
+        default:
+          if (isDetailedFollowUpRequest) {
+            const stepLabel = Number.isFinite(followUpStep) ? `Step ${followUpStep}` : "the requested step";
+            routedAnswer = [
+              ...ownerRules,
+              "",
+              "### Follow-up Expansion",
+              `- Expanding ${stepLabel} for ${sessionContext.category} on ${sessionContext.platform}.`,
+              "- Objective: turn this step into a measurable execution block this week.",
+              "",
+              "#### Execution Breakdown",
+              "1. Define one target metric and baseline (for example CTR, CVR, or sign-up rate).",
+              "2. Build 2 focused variants (headline/CTA/layout) and keep one variable per variant.",
+              "3. Run a short test window and collect enough signal before deciding a winner.",
+              "4. Roll out winner and document learnings for the next iteration.",
+              "",
+              "#### Owner Checklist",
+              "- Assign owner + deadline for each task.",
+              "- Add pass/fail threshold before launch.",
+              "- Schedule a quick review after initial results."
+            ].join("\n");
+            routedSuggestions.push("Turn this into a 7-day task list", "Add KPI targets per task", "Draft implementation brief for editor");
+          } else {
+            routedAnswer = [
+              ...ownerRules,
+              "",
+              "### Direct Answer",
+              "- I can provide a concise, actionable plan based on your current context.",
+              "- If you want deeper output, specify section + platform + target outcome."
+            ].join("\n");
+            routedSuggestions.push("Summarize next actions", "Focus on one section", "Ask for checklist output");
+          }
+          break;
+      }
+
+      if (addAffiliateDisclaimer) {
+        routedAnswer = `${routedAnswer}\n\n### Compliance Disclaimer\nAffiliate disclosure: we may earn a commission from qualifying purchases.`;
+      }
+      if (sourceLines.length > 0) {
+        routedAnswer = `${routedAnswer}\n${sourceLines.join("\n")}`;
+      }
+      res.status(200).json({
+        mode: "read-only",
+        intent,
+        answer: routedAnswer,
+        suggestions: routedSuggestions.slice(0, 4),
+        sources: collectedSources,
+        capabilities: roleCapabilities
+      });
+      return;
+      if (isGreeting) {
+        answer = [
+          "## Hello",
+          "I am your admin AI copilot for this website.",
+          "",
+          `Current snapshot: products ${effectiveProducts}, subscribers ${effectiveSubscribers}, events ${effectiveEvents}.`,
+          `Active section focus: ${clientContext.activeSection || "marketing"}.`,
+          "",
+          "If you want, ask me one of these now:",
+          "1. What changed on my site today?",
+          "2. Give me top 5 SEO opportunities this week",
+          "3. Check compliance risks on health products",
+          "4. Build a step-by-step growth action plan"
+        ].join("\n");
+        suggestions.push("Ask: what changed on my site today?");
+        suggestions.push("Ask: top 5 SEO opportunities this week");
+      } else if (isImageAdRequest) {
+        const imageHint = decodeURIComponent(imageUrl.split("/").pop() ?? "uploaded-image")
+          .replace(/\.[a-z0-9]+$/i, "")
+          .replace(/[-_]+/g, " ")
+          .trim();
+        answer = [
+          "## Image-Based Ad Copy Pack",
+          `Image reference: ${imageHint || "uploaded visual asset"}`,
+          "",
+          "### Primary angle",
+          `Position this visual as a high-impact solution focused on clarity, trust, and a direct user benefit.`,
+          "",
+          "### Headlines",
+          `- Discover the smarter way with ${imageHint || "this featured product"}`,
+          "- Built for performance, designed for confidence",
+          "- Upgrade your results with one clear next step",
+          "",
+          "### Body copy",
+          `This visual supports a premium campaign message: highlight the core benefit, show social proof, and keep one clear CTA. Use concise value language and avoid unverified claims.`,
+          "",
+          "### CTA options",
+          "- Get Started",
+          "- See How It Works",
+          "- Claim Your Offer",
+          "",
+          "### Compliance line",
+          "Affiliate disclosure: we may earn a commission from qualifying purchases."
+        ].join("\n");
+        suggestions.push("Ask: generate 5 short social captions from this image");
+        suggestions.push("Ask: generate HTML ad email from this image");
+      } else if (isEmailGenerationRequest) {
+        const objective = userMessage.replace(/\b(generate|create|make)\b/gi, "").trim() || "promote featured products";
+        const emailHtml = [
+          "<!doctype html>",
+          '<html lang="en">',
+          "  <head>",
+          '    <meta charset="utf-8" />',
+          '    <meta name="viewport" content="width=device-width,initial-scale=1" />',
+          "    <title>Campaign Email</title>",
+          "  </head>",
+          '  <body style="margin:0;padding:0;background:#0f172a;color:#e2e8f0;font-family:Arial,sans-serif;">',
+          '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f172a;padding:24px 0;">',
+          "      <tr>",
+          '        <td align="center">',
+          '          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#111827;border:1px solid #334155;border-radius:14px;overflow:hidden;">',
+          "            <tr>",
+          '              <td style="padding:24px;">',
+          '                <h1 style="margin:0 0 12px;font-size:24px;color:#ffffff;">New Highlights This Week</h1>',
+          `                <p style="margin:0 0 16px;line-height:1.6;color:#cbd5e1;">${objective}</p>`,
+          '                <p style="margin:0 0 16px;line-height:1.6;color:#cbd5e1;">Explore our latest picks curated for performance and value.</p>',
+          '                <a href="https://bahema.github.io/wokerman/" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;">View Picks</a>',
+          '                <p style="margin:18px 0 0;font-size:12px;color:#94a3b8;">Affiliate disclosure: we may earn a commission from qualifying purchases.</p>',
+          "              </td>",
+          "            </tr>",
+          "          </table>",
+          "        </td>",
+          "      </tr>",
+          "    </table>",
+          "  </body>",
+          "</html>"
+        ].join("\n");
+        answer = [
+          "## HTML Email Draft",
+          "Generated a reusable campaign HTML draft below.",
+          "",
+          "```html",
+          emailHtml,
+          "```"
+        ].join("\n");
+        suggestions.push("Ask: generate a plain-text version");
+        suggestions.push("Ask: rewrite with urgent tone");
+      } else if (isCodeRequest) {
+        answer = [
+          "## Code Example",
+          "Here is a practical TypeScript helper you can reuse for product add/update flows:",
+          "",
+          "```ts",
+          "type ProductInput = { title: string; shortDescription: string; checkoutLink: string; imageUrl?: string };",
+          "type Product = ProductInput & { id: string; updatedAt: string };",
+          "",
+          "export const upsertProduct = (items: Product[], input: ProductInput): Product[] => {",
+          "  const normalizedTitle = input.title.trim().toLowerCase();",
+          "  const nowIso = new Date().toISOString();",
+          "  const existing = items.find((item) => item.title.trim().toLowerCase() === normalizedTitle);",
+          "  if (existing) {",
+          "    return items.map((item) =>",
+          "      item.id === existing.id ? { ...item, ...input, updatedAt: nowIso } : item",
+          "    );",
+          "  }",
+          "  const next: Product = { id: `p-${Date.now()}`, updatedAt: nowIso, ...input };",
+          "  return [next, ...items];",
+          "};",
+          "```"
+        ].join("\n");
+        suggestions.push("Ask: convert this to backend route code");
+        suggestions.push("Ask: add validation and duplicate checks");
+      } else if (isClientEditRequest) {
+        answer = [
+          "## Client-Side Edit/Add Plan",
+          "I can guide and prepare these actions safely:",
+          "",
+          "1. Identify target section (forex, betting, software, social, gadgets, supplements, upcoming).",
+          "2. Prepare item payload (title, descriptions, image, link, compliance warning).",
+          "3. Run duplicate checks (title/link/image) before insert.",
+          "4. Save draft, then publish after review.",
+          "",
+          "Use the **Ads/Product Tool** in AI panel to prepare and execute the item safely with approval phrase."
+        ].join("\n");
+        suggestions.push("Ask: prepare add product to gadgets");
+        suggestions.push("Ask: prepare edit item in supplements");
+      } else if (isSearchPrompt) {
+        const query = effectiveUserMessage
+          .replace(/search online/gi, "")
+          .replace(/find online/gi, "")
+          .replace(/where to find/gi, "")
+          .replace(/^search\s+/i, "")
+          .trim();
+        if (!query) {
+          answer = "Provide a search query, for example: search online affiliate disclosure rules for supplements.";
+        } else {
+          try {
+            const results = await searchWeb(query);
+            if (!results.length) {
+              answer = `No online results found for "${query}". Try a broader phrase.`;
+            } else {
+              const lines = results.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} - ${item.url}`);
+              sources = results.slice(0, 5);
+              answer = `I found these online sources for "${query}":\n${lines.join("\n")}`;
+              suggestions.push("Ask: summarize result 1");
+              suggestions.push("Ask: prepare action plan from these links");
+            }
+          } catch (error) {
+            const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+            answer = `Online search failed for "${query}". ${errorMessage}`;
+          }
+        }
+      } else if (/\b(qa audit|content audit|compliance audit|policy audit|affiliate audit)\b/i.test(lower)) {
+        const sections = [
+          ...published.products.forex,
+          ...published.products.betting,
+          ...published.products.software,
+          ...published.products.social,
+          ...(published.healthPage?.products.gadgets ?? []),
+          ...(published.healthPage?.products.supplements ?? [])
+        ];
+        const missingDisclosure = sections.filter(
+          (item) => {
+            const maybeWarnings = (item as unknown as { complianceWarnings?: string[] }).complianceWarnings ?? [];
+            return !hasAffiliateDisclosureSignal(maybeWarnings, item.shortDescription ?? "", item.longDescription ?? "");
+          }
+        );
+        const riskyClaims = sections.filter((item) =>
+          hasHealthRiskClaims(`${item.title} ${item.shortDescription ?? ""} ${item.longDescription ?? ""}`)
+        );
+        const duplicateTitleCount =
+          sections.length -
+          new Set(sections.map((item) => normalizeForCompare(item.title ?? ""))).size;
+
+        answer = [
+          "## QA / Compliance Audit",
+          `- Total products scanned: ${sections.length}`,
+          `- Missing affiliate disclosure signals: ${missingDisclosure.length}`,
+          `- Risky claim signals: ${riskyClaims.length}`,
+          `- Possible duplicate titles: ${duplicateTitleCount}`,
+          "",
+          "### Priority actions",
+          "1. Add explicit affiliate disclosure text to missing products.",
+          "2. Remove or rewrite risky health/guarantee language.",
+          "3. Resolve duplicate titles to avoid confusion and SEO overlap."
+        ].join("\n");
+        suggestions.push("Ask: list top 10 products missing disclosure");
+        suggestions.push("Ask: generate safe rewrite for risky products");
+      } else if (/\b(seo audit|seo report|keyword audit|ranking|internal links|schema)\b/i.test(lower)) {
+        const bySection = {
+          forex: published.products.forex.length,
+          betting: published.products.betting.length,
+          software: published.products.software.length,
+          social: published.products.social.length,
+          gadgets: published.healthPage?.products.gadgets.length ?? 0,
+          supplements: published.healthPage?.products.supplements.length ?? 0,
+          upcoming: published.healthPage?.upcoming.items.length ?? 0
+        };
+        const weakSections = Object.entries(bySection)
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 3)
+          .map(([name, count]) => `${name} (${count})`);
+        answer = [
+          "## SEO Audit",
+          `- Products indexed in content model: ${Object.values(bySection).reduce((a, b) => a + b, 0)}`,
+          `- Lowest-content sections: ${weakSections.join(", ")}`,
+          latestTrafficPlan
+            ? `- Latest traffic plan: ${latestTrafficPlan.summary.opportunities} opportunities (avg score ${latestTrafficPlan.summary.avgCompositeScore})`
+            : "- Latest traffic plan: not generated yet",
+          "",
+          "### Recommended SEO actions",
+          "1. Expand weak sections with 3-5 high-intent product pages each.",
+          "2. Strengthen internal linking between related sections.",
+          "3. Improve title/meta uniqueness and affiliate disclosure consistency."
+        ].join("\n");
+        suggestions.push("Ask: generate 7-day SEO action checklist");
+        suggestions.push("Ask: build internal-link plan by section");
+      } else if (/\b(playbook|execution plan|weekly plan|action plan)\b/i.test(lower)) {
+        const weakestSections = Object.entries({
+          forex: published.products.forex.length,
+          betting: published.products.betting.length,
+          software: published.products.software.length,
+          social: published.products.social.length,
+          gadgets: published.healthPage?.products.gadgets.length ?? 0,
+          supplements: published.healthPage?.products.supplements.length ?? 0
+        })
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 2)
+          .map(([name]) => name);
+        answer = [
+          "## 7-Day Growth Playbook",
+          "### Day 1",
+          "- Run QA/compliance audit and fix high-risk claims.",
+          "### Day 2",
+          `- Add 2 products to weakest sections: ${weakestSections.join(", ")}.`,
+          "### Day 3",
+          "- Publish one SEO-focused comparison article with affiliate disclosure.",
+          "### Day 4",
+          "- Generate and schedule one HTML campaign per top section.",
+          "### Day 5",
+          "- Review analytics events and optimize lowest-performing CTA.",
+          "### Day 6",
+          "- Expand internal linking across top 3 converting pages.",
+          "### Day 7",
+          "- Generate weekly report and lock next-week priorities."
+        ].join("\n");
+        suggestions.push("Ask: generate day-by-day task checklist");
+        suggestions.push("Ask: prepare products for day 2");
+      } else if (lower.includes("what happened") || lower.includes("status") || lower.includes("summary")) {
+        answer = `Site updated at ${siteMeta.updatedAt}. Total products: ${effectiveProducts}. Subscribers: ${effectiveSubscribers} (confirmed ${emailSummary.totals.confirmed}). Total analytics events: ${effectiveEvents}. Active section: ${clientContext.activeSection || "marketing"}.`;
+        suggestions.push("Ask: show weakest section by product count");
+        suggestions.push("Ask: traffic opportunities overview");
+      } else if (lower.includes("expire") || lower.includes("expir")) {
+        const staleCampaigns = emailSummary.recentCampaigns.filter((item) => {
+          const updatedMs = Date.parse(item.updatedAt);
+          if (!Number.isFinite(updatedMs)) return false;
+          return Date.now() - updatedMs > 14 * 24 * 60 * 60 * 1000;
+        }).length;
+        answer = `No hard expiry registry exists yet. Current proxy signals: stale campaigns older than 14 days = ${staleCampaigns}.`;
+        suggestions.push("Next step: add explicit expiry fields for products and links");
+      } else if (lower.includes("traffic") || lower.includes("seo")) {
+        if (latestTrafficPlan) {
+          answer = `Latest local Traffic AI plan generated at ${latestTrafficPlan.createdAt} with ${latestTrafficPlan.summary.opportunities} opportunities (avg score ${latestTrafficPlan.summary.avgCompositeScore}).`;
+          suggestions.push("Ask: show top 3 transactional opportunities");
+        } else {
+          answer = "No traffic plan generated yet. Open Traffic AI page and click Generate Weekly Plan.";
+        }
+      } else if (lower.includes("add product") || lower.includes("send email") || lower.includes("publish")) {
+        answer =
+          "Action execution is disabled in Phase 1 (read-only). I can prepare recommended steps, but I will not write/publish/send automatically yet.";
+        suggestions.push("Ask: prepare add-product checklist");
+        suggestions.push("Ask: prepare email campaign draft plan");
+      } else if (/^(what is|who is|how to|why|when|where)\b/i.test(lower) || lower.endsWith("?")) {
+        try {
+          const results = await searchWeb(effectiveUserMessage);
+          if (results.length > 0) {
+            sources = results.slice(0, 5);
+            const top = sources.slice(0, 3);
+            answer = [
+              "## Global Answer",
+              top[0]?.snippet || `Here is what I found about "${effectiveUserMessage}":`,
+              "",
+              "### Quick points",
+              ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
+              "",
+              "### Sources",
+              ...sources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)
+            ].join("\n");
+            suggestions.push("Ask: explain this in simple terms");
+            suggestions.push("Ask: compare the top 2 sources");
+          } else {
+            answer = `I could not find strong web sources for "${effectiveUserMessage}" right now. Try rephrasing with more detail.`;
+            suggestions.push("Ask: search online <topic> latest");
+          }
+        } catch (error) {
+          const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+          answer = `I could not fetch global sources right now. ${errorMessage}`;
+          suggestions.push("Ask: try again with a shorter question");
+        }
+      } else {
+        try {
+          const results = await searchWeb(effectiveUserMessage);
+          if (results.length > 0) {
+            sources = results.slice(0, 5);
+            const top = sources.slice(0, 3);
+            answer = [
+              "## Detailed Answer",
+              top[0]?.snippet || `Here is what I found for "${effectiveUserMessage}":`,
+              "",
+              "### Key points",
+              ...top.map((item, index) => `- ${index + 1}. ${item.title}`),
+              "",
+              "### Sources",
+              ...sources.map((item, index) => `${index + 1}. ${item.title} - ${item.url}`)
+            ].join("\n");
+            suggestions.push("Ask: explain this in simple words");
+            suggestions.push("Ask: compare source 1 and source 2");
+          } else {
+            answer = [
+              "I could not find enough external sources for that exact prompt yet.",
+              "Try rephrasing with more context, for example:",
+              `- "Explain ${effectiveUserMessage} with examples"`,
+              `- "Latest best practices for ${effectiveUserMessage}"`
+            ].join("\n");
+            suggestions.push("Ask: explain with examples");
+            suggestions.push("Ask: latest best practices");
+          }
+        } catch (error) {
+          const errorMessage = (error as { message?: string } | null)?.message ?? "Unknown error.";
+          answer = `I could not fetch external sources right now. ${errorMessage}`;
+          suggestions.push("Ask: try again");
+          suggestions.push("Ask: summarize from local context");
+        }
+      }
+
+      res.status(200).json({
+        mode: "read-only",
+        answer,
+        suggestions,
+        sources
+      });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to process AI chat request.") });
+    }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/web-search",
+    requireAdminAuth,
+    aiWebSearchIpLimiter,
+    requireAiCapability("ai.web.search"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.web_search"),
+    async (req, res) => {
+    const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+    if (!query) {
+      res.status(400).json({ error: "query is required." });
+      return;
+    }
+    if (query.length > AI_WEB_SEARCH_MAX_QUERY_CHARS) {
+      res.status(400).json({ error: `query is too long (max ${AI_WEB_SEARCH_MAX_QUERY_CHARS} chars).` });
+      return;
+    }
+    try {
+      const results = await searchWeb(query);
+      res.status(200).json({ query, results });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Web search failed.") });
+    }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/email/generate",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.email_generate"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const objective = typeof payload.objective === "string" ? payload.objective.trim() : "";
+      const sectionRaw = typeof payload.section === "string" ? payload.section.trim().toLowerCase() : "health";
+      const language = normalizeLanguage(typeof payload.language === "string" ? payload.language : "en");
+      const tone = toneLabel(typeof payload.tone === "string" ? payload.tone : "professional");
+      const includeEmojis = payload.includeEmojis === true;
+      const saveDraft = payload.saveDraft !== false;
+
+      if (!objective) {
+        res.status(400).json({ error: "objective is required." });
+        return;
+      }
+
+      try {
+        const published = await siteStore.getPublished();
+        const sectionMap: Record<string, { title: string; products: Array<{ title: string; shortDescription: string; checkoutLink: string }> }> = {
+          forex: { title: "Forex", products: published.products.forex },
+          betting: { title: "Betting", products: published.products.betting },
+          software: { title: "Software", products: published.products.software },
+          social: { title: "Social", products: published.products.social },
+          gadgets: { title: "Health Gadgets", products: published.healthPage?.products.gadgets ?? [] },
+          supplements: { title: "Health Supplements", products: published.healthPage?.products.supplements ?? [] },
+          health: {
+            title: "Health",
+            products: [...(published.healthPage?.products.gadgets ?? []), ...(published.healthPage?.products.supplements ?? [])]
+          },
+          upcoming: {
+            title: "Upcoming",
+            products: (published.healthPage?.upcoming.items ?? []).map((item) => ({
+              title: item.title,
+              shortDescription: item.shortDescription,
+              checkoutLink: "#"
+            }))
+          }
+        };
+        const selectedSection = sectionMap[sectionRaw] ? sectionRaw : "health";
+        const selected = sectionMap[selectedSection];
+        const featured = selected.products.slice(0, 3);
+        const bullets =
+          featured.length > 0
+            ? featured.map((item) => `${item.title}: ${item.shortDescription}`)
+            : [`New curated ${selected.title.toLowerCase()} offers are now available.`];
+        const firstLink = featured.find((item) => /^https?:\/\//i.test(item.checkoutLink))?.checkoutLink ?? "https://example.com";
+        const affiliateDisclosure =
+          published.homeUi?.productCardAffiliateDisclosure?.trim() ||
+          "Affiliate disclosure: we may earn a commission if you buy through our links.";
+
+        const emoji = includeEmojis ? `${toEmoji(selectedSection)} ` : "";
+        const subject = `${emoji}[${selected.title}] ${objective.slice(0, 70)}`;
+        const previewText = `${languageLabel(language)} ${tone} update: ${objective.slice(0, 110)}`;
+        const headline = `${emoji}${selected.title} Picks: ${objective}`;
+        const intro = `This is a ${tone} ${languageLabel(language).toLowerCase()} campaign draft prepared by AI for ${selected.title}.`;
+        const ctaLabel = selectedSection === "upcoming" ? "Notify Me" : "Explore Offers";
+        const emojiBullets = includeEmojis ? bullets.map((item) => `${toEmoji(selectedSection)} ${item}`) : bullets;
+        const bodyHtml = buildAiEmailHtml({
+          headline,
+          intro,
+          ctaLabel,
+          ctaUrl: firstLink,
+          productBullets: emojiBullets,
+          disclaimer: affiliateDisclosure,
+          language
+        });
+        const bodyRich = buildAiEmailRich({
+          headline,
+          intro,
+          ctaLabel,
+          ctaUrl: firstLink,
+          productBullets: emojiBullets,
+          disclaimer: affiliateDisclosure
+        });
+
+        let campaign: Awaited<ReturnType<typeof emailStore.saveCampaign>> | null = null;
+        if (saveDraft) {
+          campaign = await emailStore.saveCampaign({
+            name: `AI ${selected.title} ${new Date().toISOString().slice(0, 10)}`,
+            subject,
+            previewText,
+            bodyMode: EMAIL_CAMPAIGN_BODY_MODE.html,
+            bodyRich,
+            bodyHtml,
+            audienceMode: EMAIL_CAMPAIGN_AUDIENCE_MODE.all,
+            segments: [],
+            exclusions: [],
+            sendMode: EMAIL_CAMPAIGN_SEND_MODE.now,
+            scheduleAt: null,
+            timezone: "UTC",
+            status: EMAIL_CAMPAIGN_STATUS.draft,
+            estimatedRecipients: 0
+          });
+          await emailStore.addEvent({
+            eventType: EMAIL_EVENT_TYPES.campaignSaved,
+            campaignId: campaign.id,
+            meta: { source: "ai_control.email_generate", section: selectedSection, language, tone, objective, includeEmojis }
+          });
+        }
+
+        res.status(200).json({
+          ok: true,
+          mode: "email_generate",
+          language,
+          tone,
+          includeEmojis,
+          section: selectedSection,
+          campaignId: campaign?.id ?? null,
+          draftSaved: Boolean(campaign),
+          email: {
+            subject,
+            previewText,
+            bodyHtml,
+            bodyRich
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate AI email draft.") });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/export",
+    requireAdminAuth,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.export_generate"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const question = typeof payload.question === "string" ? payload.question.trim() : "";
+      const formatRaw = typeof payload.format === "string" ? payload.format.trim().toLowerCase() : "pdf";
+      const format = formatRaw === "doc" || formatRaw === "excel" || formatRaw === "pdf" ? formatRaw : "pdf";
+      if (!question) {
+        res.status(400).json({ error: "question is required." });
+        return;
+      }
+
+      try {
+        const [published, emailSummary, analyticsSummary] = await Promise.all([
+          siteStore.getPublished(),
+          emailStore.getAnalyticsSummary(),
+          analyticsStore.summary()
+        ]);
+        const lines = toExportLines({
+          question,
+          generatedAt: new Date().toISOString(),
+          site: {
+            products:
+              published.products.forex.length +
+              published.products.betting.length +
+              published.products.software.length +
+              published.products.social.length +
+              (published.healthPage?.products.gadgets.length ?? 0) +
+              (published.healthPage?.products.supplements.length ?? 0),
+            industries: published.industries.length,
+            subscribers: emailSummary.totals.subscribers,
+            events: analyticsSummary.totalEvents
+          },
+          suggestions: [
+            "Prioritize sections with low product count but high intent.",
+            "Keep affiliate disclosures visible near CTA buttons.",
+            "Run weekly email campaigns with localized offers.",
+            "Track click outcomes and rotate low-performing creatives."
+          ]
+        });
+
+        const slug = sanitizeFileSlug(question);
+        const baseName = `${Date.now()}-${slug}`;
+        let buffer: Buffer;
+        let ext = "";
+        let mime = "";
+        if (format === "pdf") {
+          buffer = buildSimplePdf(lines);
+          ext = ".pdf";
+          mime = "application/pdf";
+        } else if (format === "doc") {
+          buffer = Buffer.from(buildDocHtml("AI Export Report", lines), "utf8");
+          ext = ".doc";
+          mime = "application/msword";
+        } else {
+          buffer = Buffer.from(buildExcelHtml("AI Export Report", lines), "utf8");
+          ext = ".xls";
+          mime = "application/vnd.ms-excel";
+        }
+
+        const fileName = `${baseName}${ext}`;
+        const fullPath = path.join(mediaStore.uploadsDir, fileName);
+        await fs.writeFile(fullPath, buffer);
+        const url = `${API_PUBLIC_BASE_URL}/uploads/${fileName}`;
+        await mediaStore.add({
+          name: `AI Export ${format.toUpperCase()} - ${question.slice(0, 80)}`,
+          fileName,
+          url,
+          mime,
+          sizeBytes: buffer.byteLength
+        });
+
+        res.status(200).json({
+          ok: true,
+          mode: "export_generate",
+          format,
+          fileName,
+          url,
+          sizeBytes: buffer.byteLength
+        });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate export file.") });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/control/prepare-action",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireAiCapability("ai.action.prepare"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.prepare_action"),
+    async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const imageUrlRaw = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+
+    const lower = message.toLowerCase();
+    const section =
+      lower.includes("upcoming")
+        ? "upcoming"
+        : lower.includes("supplement")
+          ? "supplements"
+          : lower.includes("gadget")
+            ? "gadgets"
+            : lower.includes("forex")
+              ? "forex"
+              : lower.includes("betting")
+                ? "betting"
+                : lower.includes("software")
+                  ? "software"
+                  : lower.includes("social")
+                    ? "social"
+                    : "gadgets";
+    const targetPath =
+      section === "supplements" || section === "gadgets" || section === "upcoming"
+        ? "/health"
+        : `/${section}`;
+
+    const safeImageUrl =
+      imageUrlRaw && imageUrlRaw.includes("/uploads/") && imageUrlRaw.startsWith("http") ? imageUrlRaw : "";
+    const titleBase =
+      section === "upcoming"
+        ? "Upcoming Health Product"
+        : section === "supplements"
+        ? "Smart Wellness Supplement"
+        : section === "gadgets"
+          ? "Smart Health Gadget"
+          : section === "forex"
+            ? "Forex Strategy Toolkit"
+            : section === "betting"
+              ? "Betting Insight Engine"
+              : section === "software"
+                ? "Workflow Automation Suite"
+                : "Social Growth Automation";
+
+    const suggestedTitle = `${titleBase} Pro`;
+    const productDraft = {
+      title: suggestedTitle,
+      shortDescription: `AI-prepared draft for ${section} section based on your command.`,
+      longDescription:
+        "This draft is generated in prepare-only mode. Review product claims, add clear affiliate disclosure, and verify all benefits before publishing.",
+      features: ["Clear value proposition", "Compliance-ready copy scaffold", "Conversion-focused CTA placeholder"],
+      rating: 4.6,
+      isNew: true,
+      imageUrl: safeImageUrl,
+      checkoutLink: "https://example.com/product-link",
+      complianceWarnings: [
+        "Add visible affiliate disclosure near CTA.",
+        "Avoid guaranteed outcomes/earnings or unverified health claims.",
+        "Confirm product source and pricing before publish."
+      ]
+    };
+
+    const approval = await aiControlStore.createApproval({
+      actionType: "add_product",
+      targetSection: section,
+      payloadHash: hashAiPayload({ target: { section, path: targetPath }, productDraft })
+    });
+    await aiControlStore.logAudit({
+      action: "ai.action.prepare",
+      status: "allowed",
+      role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+      authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+      path: req.originalUrl,
+      ip: resolveRequestIp(req),
+      metadata: { section, approvalId: approval.id }
+    });
+
+    res.status(200).json({
+      mode: "preview-only",
+      actionType: "add_product",
+      executeAvailable: true,
+      confirmationRequired: true,
+      target: { section, path: targetPath },
+      productDraft,
+      approval: {
+        id: approval.id,
+        confirmPhrase: approval.confirmPhrase,
+        expiresAt: approval.expiresAt
+      },
+      nextStep:
+        "Draft prepared. You can execute this target section by using exact approval phrase before expiry."
+    });
+    }
+  );
+
+  app.post(
+    "/api/ai/control/execute-action",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireAiCapability("ai.action.execute"),
+    requireCsrfForCookieAuth,
+    auditAdminAction("ai_control.execute_add_product"),
+    async (req, res) => {
+      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const confirmText = typeof payload.confirmText === "string" ? payload.confirmText.trim() : "";
+      const approvalId = typeof payload.approvalId === "string" ? payload.approvalId.trim() : "";
+      const target = typeof payload.target === "object" && payload.target !== null ? (payload.target as Record<string, unknown>) : {};
+      const draft =
+        typeof payload.productDraft === "object" && payload.productDraft !== null
+          ? (payload.productDraft as Record<string, unknown>)
+          : {};
+
+      const section = typeof target.section === "string" ? target.section.trim().toLowerCase() : "";
+      const allowedSections = new Set(["forex", "betting", "software", "social", "gadgets", "supplements", "upcoming"]);
+      if (!allowedSections.has(section)) {
+        res.status(400).json({ error: "Invalid target section." });
+        return;
+      }
+
+      const title = typeof draft.title === "string" ? draft.title.trim() : "";
+      const shortDescription = typeof draft.shortDescription === "string" ? draft.shortDescription.trim() : "";
+      const longDescription = typeof draft.longDescription === "string" ? draft.longDescription.trim() : "";
+      const imageUrl = typeof draft.imageUrl === "string" ? draft.imageUrl.trim() : "";
+      const checkoutLink = typeof draft.checkoutLink === "string" ? draft.checkoutLink.trim() : "";
+      const features =
+        Array.isArray(draft.features) && draft.features.length
+          ? draft.features.map((item) => String(item).trim()).filter(Boolean).slice(0, 8)
+          : [];
+      const ratingRaw = Number(draft.rating ?? 4.6);
+      const rating = Number.isFinite(ratingRaw) ? Math.min(5, Math.max(1, ratingRaw)) : 4.6;
+      const isNew = draft.isNew !== false;
+      const complianceWarnings =
+        Array.isArray(draft.complianceWarnings) && draft.complianceWarnings.length
+          ? draft.complianceWarnings.map((item) => String(item).trim()).filter(Boolean)
+          : [];
+
+      if (!title || !shortDescription || !longDescription) {
+        res.status(400).json({ error: "title, shortDescription, and longDescription are required." });
+        return;
+      }
+      if (!checkoutLink || !/^https?:\/\//i.test(checkoutLink)) {
+        res.status(400).json({ error: "checkoutLink must be a valid http(s) URL." });
+        return;
+      }
+      if (section !== "upcoming" && !features.length) {
+        res.status(400).json({ error: "At least one feature is required." });
+        return;
+      }
+      if (imageUrl && !imageUrl.includes("/uploads/")) {
+        res.status(400).json({ error: "For now, imageUrl must come from uploads path." });
+        return;
+      }
+
+      const preparedPayloadHash = hashAiPayload({
+        target: { section, path: typeof target.path === "string" ? target.path : "" },
+        productDraft: {
+          title,
+          shortDescription,
+          longDescription,
+          features,
+          rating,
+          isNew,
+          imageUrl,
+          checkoutLink,
+          complianceWarnings
+        }
+      });
+      const approvalCheck = await aiControlStore.verifyAndConsumeApproval({
+        approvalId,
+        confirmText,
+        payloadHash: preparedPayloadHash
+      });
+      if (!approvalCheck.ok) {
+        await aiControlStore.logAudit({
+          action: "ai.action.execute",
+          status: "denied",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          path: req.originalUrl,
+          ip: resolveRequestIp(req),
+          metadata: { reason: approvalCheck.error, approvalId }
+        });
+        res.status(400).json({ error: approvalCheck.error });
+        return;
+      }
+
+      try {
+        const published = await siteStore.getPublished();
+        const globalDisclosure = (published.homeUi?.productCardAffiliateDisclosure ?? "").trim();
+        if (!globalDisclosure) {
+          res.status(400).json({
+            error: "Global affiliate disclosure is missing. Set Home UI productCardAffiliateDisclosure before AI execute."
+          });
+          return;
+        }
+        if (!hasAffiliateDisclosureSignal(complianceWarnings, shortDescription, longDescription)) {
+          res.status(400).json({
+            error:
+              "Compliance warning must include affiliate disclosure signal (affiliate/commission/disclosure) in copy or warnings."
+          });
+          return;
+        }
+        if ((section === "gadgets" || section === "supplements" || section === "upcoming") && hasHealthRiskClaims(`${shortDescription} ${longDescription}`)) {
+          res.status(400).json({
+            error: "Health category copy contains restricted claims (e.g., guaranteed/cure/instant). Revise copy first."
+          });
+          return;
+        }
+        const duplicateReasons = getSectionDuplicateReasons(published, section as "forex" | "betting" | "software" | "social" | "gadgets" | "supplements" | "upcoming", {
+          title,
+          checkoutLink,
+          imageUrl
+        });
+        if (duplicateReasons.length) {
+          await aiControlStore.logAudit({
+            action: "ai.action.execute",
+            status: "denied",
+            role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+            authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+            path: req.originalUrl,
+            ip: resolveRequestIp(req),
+            metadata: { reason: "duplicate_detected", duplicateReasons, section, title }
+          });
+          res.status(409).json({ error: "Duplicate detected in target section.", duplicateReasons });
+          return;
+        }
+        const rollback = await aiControlStore.captureRollbackSnapshot({
+          reason: "ai_execute_add_product",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          content: published
+        });
+        const healthFallback: NonNullable<SiteContent["healthPage"]> = {
+          hero2: {
+            eyebrow: "Health",
+            headline: "Health Picks",
+            subtext: "Curated gadgets and supplements",
+            ctaPrimary: { label: "Explore", target: "/health" },
+            ctaSecondary: { label: "Learn more", target: "/health" },
+            imageUrl: "",
+            imageAlt: "Health section image",
+            imageLink: ""
+          },
+          sections: {
+            gadgets: { title: "Healthy Gadgets", description: "Top device picks for wellness routines." },
+            supplements: { title: "Healthy Supplements", description: "Top supplement picks for daily support." }
+          },
+          products: {
+            gadgets: [],
+            supplements: []
+          },
+          upcoming: {
+            title: "Upcoming",
+            subtitle: "Upcoming health drops",
+            items: []
+          }
+        };
+        const currentHealth = published.healthPage ?? defaultPublishedContent.healthPage ?? healthFallback;
+        const healthPage: NonNullable<SiteContent["healthPage"]> = {
+          ...currentHealth,
+          products: {
+            gadgets: [...currentHealth.products.gadgets],
+            supplements: [...currentHealth.products.supplements]
+          }
+        };
+
+        let insertedSection = section;
+        let productsInSection = 0;
+        let nextContent: SiteContent = published;
+        if (section === "gadgets" || section === "supplements") {
+          const nextPosition = healthPage.products[section].length + 1;
+          const category = section === "gadgets" ? "Gadgets" : "Supplements";
+          healthPage.products[section].push({
+            id: `health-${section}-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            longDescription,
+            features,
+            rating,
+            isNew,
+            category,
+            imageUrl,
+            checkoutLink
+          });
+          productsInSection = healthPage.products[section].length;
+          nextContent = {
+            ...published,
+            healthPage
+          };
+        } else if (section === "upcoming") {
+          const nextPosition = healthPage.upcoming.items.length + 1;
+          healthPage.upcoming.items.push({
+            id: `health-upcoming-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            imageUrl,
+            active: true,
+            notifyLabel: "Notify me"
+          });
+          productsInSection = healthPage.upcoming.items.length;
+          nextContent = {
+            ...published,
+            healthPage
+          };
+        } else {
+          const categoryMap = {
+            forex: "Forex",
+            betting: "Betting",
+            software: "Software",
+            social: "Social"
+          } as const;
+          const nextPosition = published.products[section as "forex" | "betting" | "software" | "social"].length + 1;
+          const nextProduct = {
+            id: `${section}-${randomUUID().slice(0, 8)}`,
+            position: nextPosition,
+            title,
+            shortDescription,
+            longDescription,
+            features,
+            rating,
+            isNew,
+            category: categoryMap[section as "forex" | "betting" | "software" | "social"],
+            imageUrl,
+            checkoutLink
+          };
+          const nextSectionProducts = [...published.products[section as "forex" | "betting" | "software" | "social"], nextProduct];
+          productsInSection = nextSectionProducts.length;
+          nextContent = {
+            ...published,
+            products: {
+              ...published.products,
+              [section]: nextSectionProducts
+            }
+          };
+        }
+
+        await siteStore.saveDraft(nextContent);
+        const content = await siteStore.publish(nextContent);
+        await aiControlStore.logAudit({
+          action: "ai.action.execute",
+          status: "executed",
+          role: ((req as express.Request & { adminRole?: string }).adminRole ?? "viewer") as string,
+          authSource: ((req as express.Request & { authSource?: string }).authSource ?? "unknown") as string,
+          path: req.originalUrl,
+          ip: resolveRequestIp(req),
+          metadata: { section: insertedSection, insertedTitle: title, rollbackId: rollback.id }
+        });
+        const sectionCounts: Record<string, number> = {
+          forex: content.products.forex.length,
+          betting: content.products.betting.length,
+          software: content.products.software.length,
+          social: content.products.social.length,
+          gadgets: content.healthPage?.products.gadgets.length ?? 0,
+          supplements: content.healthPage?.products.supplements.length ?? 0,
+          upcoming: content.healthPage?.upcoming.items.length ?? 0
+        };
+        res.status(200).json({
+          ok: true,
+          mode: "execute",
+          section: insertedSection,
+          insertedTitle: title,
+          productsInSection: sectionCounts[insertedSection] ?? productsInSection,
+          rollbackId: rollback.id
+        });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to execute add product action.") });
+      }
+    }
+  );
+
+  app.get("/api/traffic-ai/plan/latest", requireAdminAuth, async (_req, res) => {
+    try {
+      const latest = await trafficAiStore.getLatestPlan();
+      res.status(200).json({ plan: latest });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load traffic AI plan.") });
+    }
+  });
+
+  app.get("/api/traffic-ai/plans", requireAdminAuth, async (_req, res) => {
+    try {
+      const plans = await trafficAiStore.listPlans();
+      res.status(200).json({ items: plans, total: plans.length });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load traffic AI plan history.") });
+    }
+  });
+
+  app.post(
+    "/api/traffic-ai/plan/generate",
+    requireAdminAuth,
+    requireCsrfForCookieAuth,
+    auditAdminAction("traffic_ai.generate_plan"),
+    async (_req, res) => {
+      try {
+        const [publishedContent, emailSummary] = await Promise.all([
+          siteStore.getPublished(),
+          emailStore.getAnalyticsSummary()
+        ]);
+        const nextPlan = generateTrafficAiPlan({
+          content: publishedContent,
+          emailSummary
+        });
+        const saved = await trafficAiStore.addPlan(nextPlan);
+        res.status(201).json({ plan: saved });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to generate traffic AI plan.") });
+      }
+    }
+  );
+
+  app.post("/api/analytics/events", analyticsIpLimiter, async (req, res) => {
     const eventName = typeof req.body?.eventName === "string" ? req.body.eventName.trim() : "";
     const payload = typeof req.body?.payload === "object" && req.body.payload !== null ? (req.body.payload as Record<string, unknown>) : {};
 
@@ -1123,12 +3330,31 @@ const bootstrap = async () => {
       res.status(400).json({ error: "eventName is required." });
       return;
     }
+    if (eventName.length > ANALYTICS_EVENT_NAME_MAX_CHARS) {
+      res.status(400).json({ error: `eventName is too long (max ${ANALYTICS_EVENT_NAME_MAX_CHARS} chars).` });
+      return;
+    }
+    if (!/^[a-zA-Z0-9._:-]+$/.test(eventName)) {
+      res.status(400).json({ error: "eventName contains unsupported characters." });
+      return;
+    }
+    let payloadSize = 0;
+    try {
+      payloadSize = JSON.stringify(payload).length;
+    } catch {
+      res.status(400).json({ error: "payload must be JSON-serializable." });
+      return;
+    }
+    if (payloadSize > ANALYTICS_PAYLOAD_MAX_CHARS) {
+      res.status(400).json({ error: `payload is too large (max ${ANALYTICS_PAYLOAD_MAX_CHARS} chars).` });
+      return;
+    }
 
     const created = await analyticsStore.add(eventName, payload);
     res.status(201).json({ item: created });
   });
 
-  app.post("/api/cookies/consent", async (req, res) => {
+  app.post("/api/cookies/consent", cookieConsentIpLimiter, async (req, res) => {
     const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
     const consentId = typeof payload.consentId === "string" ? payload.consentId.trim().toLowerCase() : "";
     const versionRaw = typeof payload.version === "number" ? payload.version : Number(payload.version ?? 1);
@@ -1162,7 +3388,7 @@ const bootstrap = async () => {
         }
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save cookie consent." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save cookie consent.") });
     }
   });
 
@@ -1190,8 +3416,16 @@ const bootstrap = async () => {
         }
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to read cookie consent." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to read cookie consent.") });
     }
+  });
+
+  app.use("/api/email", (_req, res, next) => {
+    // Email dashboards should reflect new subscriptions immediately.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
   });
 
   app.post("/api/email/subscribe", subscribeIpLimiter, async (req, res) => {
@@ -1217,6 +3451,18 @@ const bootstrap = async () => {
     }
     if (!EMAIL_PATTERN.test(email)) {
       res.status(400).json({ error: "email must be valid." });
+      return;
+    }
+    if (name.length > SUBSCRIBE_NAME_MAX_CHARS) {
+      res.status(400).json({ error: `name is too long (max ${SUBSCRIBE_NAME_MAX_CHARS} chars).` });
+      return;
+    }
+    if (email.length > SUBSCRIBE_EMAIL_MAX_CHARS) {
+      res.status(400).json({ error: `email is too long (max ${SUBSCRIBE_EMAIL_MAX_CHARS} chars).` });
+      return;
+    }
+    if (phone.length > SUBSCRIBE_PHONE_MAX_CHARS) {
+      res.status(400).json({ error: `phone is too long (max ${SUBSCRIBE_PHONE_MAX_CHARS} chars).` });
       return;
     }
 
@@ -1332,7 +3578,7 @@ const bootstrap = async () => {
         });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to subscribe." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to subscribe.") });
     }
   });
 
@@ -1405,7 +3651,7 @@ const bootstrap = async () => {
         });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to resend confirmation email." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to resend confirmation email.") });
     }
   });
 
@@ -1424,11 +3670,11 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, deletedId: deleted.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to delete subscriber." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to delete subscriber.") });
     }
   });
 
-  app.get("/api/email/confirm", async (req, res) => {
+  app.get("/api/email/confirm", emailLinkActionIpLimiter, async (req, res) => {
     const redirectToConfirm = (status: "success" | "error", reason?: "invalid" | "failed") => {
       const query = new URLSearchParams({ status });
       if (reason) query.set("reason", reason);
@@ -1436,7 +3682,7 @@ const bootstrap = async () => {
     };
 
     const token = typeof req.query?.token === "string" ? req.query.token : "";
-    if (!token.trim()) {
+    if (!token.trim() || token.length > EMAIL_TOKEN_MAX_CHARS) {
       res.redirect(303, redirectToConfirm("error", "invalid"));
       return;
     }
@@ -1457,7 +3703,7 @@ const bootstrap = async () => {
     }
   });
 
-  app.get("/api/email/unsubscribe", async (req, res) => {
+  app.get("/api/email/unsubscribe", emailLinkActionIpLimiter, async (req, res) => {
     const redirectToUnsubscribe = (status: "success" | "error", reason?: "invalid" | "failed") => {
       const query = new URLSearchParams({ status });
       if (reason) query.set("reason", reason);
@@ -1465,7 +3711,7 @@ const bootstrap = async () => {
     };
 
     const token = typeof req.query?.token === "string" ? req.query.token : "";
-    if (!token.trim()) {
+    if (!token.trim() || token.length > EMAIL_TOKEN_MAX_CHARS) {
       res.redirect(303, redirectToUnsubscribe("error", "invalid"));
       return;
     }
@@ -1623,309 +3869,6 @@ const bootstrap = async () => {
     }
   });
 
-  app.post(
-    "/api/email/settings/verify-smtp",
-    requireAdminAuth,
-    requireCsrfForCookieAuth,
-    auditAdminAction("email.verify_smtp"),
-    async (_req, res) => {
-      try {
-        const senderProfile = await emailStore.getSenderProfile();
-        const result = await verifySmtpConnection({
-          smtpHost: senderProfile.smtpHost,
-          smtpPort: senderProfile.smtpPort,
-          smtpUser: senderProfile.smtpUser,
-          smtpPass: senderProfile.smtpPass,
-          smtpSecure: resolveSmtpSecureForPort(Number(senderProfile.smtpPort), senderProfile.smtpSecure)
-        });
-        res.status(200).json({
-          ok: true,
-          verified: true,
-          provider: result.provider
-        });
-      } catch (error) {
-        if (error instanceof EmailDeliveryError) {
-          res.status(502).json({
-            error: "SMTP_VERIFY_FAILED",
-            message: error.message,
-            detailCode: error.detailCode ?? error.code
-          });
-          return;
-        }
-        res.status(500).json({ error: error instanceof Error ? error.message : "SMTP verification failed." });
-      }
-    }
-  );
-
-  app.get("/api/ai/control/settings", requireAdminAuth, async (_req, res) => {
-    try {
-      const settings = await aiControlStore.getSettings();
-      res.status(200).json(settings);
-    } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load AI settings." });
-    }
-  });
-
-  app.put("/api/ai/control/settings/mode", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.settings_mode"), async (req, res) => {
-    const mode = req.body?.mode === "super" ? "super" : "current";
-    try {
-      await aiControlStore.setMode(mode);
-      const settings = await aiControlStore.getSettings();
-      res.status(200).json(settings);
-    } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save AI mode." });
-    }
-  });
-
-  app.put(
-    "/api/ai/control/settings/super",
-    requireAdminAuth,
-    requireCsrfForCookieAuth,
-    auditAdminAction("ai_control.settings_super"),
-    async (req, res) => {
-      const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
-      const provider = payload.provider === "openai_compatible" ? "openai_compatible" : "openai_compatible";
-      const baseUrlRaw = typeof payload.baseUrl === "string" ? payload.baseUrl : "";
-      const model = typeof payload.model === "string" ? payload.model.trim() : "";
-      const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
-      if (!model) {
-        res.status(400).json({ error: "model is required." });
-        return;
-      }
-      try {
-        const baseUrl = parseSuperBaseUrl(baseUrlRaw);
-        await aiControlStore.upsertSuperMode({ provider, baseUrl, model, apiKey });
-        const settings = await aiControlStore.getSettings();
-        res.status(200).json(settings);
-      } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save super mode settings." });
-      }
-    }
-  );
-
-  app.delete(
-    "/api/ai/control/settings/super",
-    requireAdminAuth,
-    requireCsrfForCookieAuth,
-    auditAdminAction("ai_control.settings_super_clear"),
-    async (_req, res) => {
-      try {
-        await aiControlStore.clearSuperMode();
-        const settings = await aiControlStore.getSettings();
-        res.status(200).json(settings);
-      } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to clear super mode settings." });
-      }
-    }
-  );
-
-  app.post("/api/ai/control/health", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.health"), async (_req, res) => {
-    const startedAt = Date.now();
-    try {
-      const runtimeSettings = await aiControlStore.getRuntimeSettings();
-      if (!runtimeSettings.superMode) {
-        res.status(400).json({ ok: false, error: "Super mode is not configured." });
-        return;
-      }
-      const result = await callSuperModeChat({
-        baseUrl: runtimeSettings.superMode.baseUrl,
-        apiKey: runtimeSettings.superMode.apiKey,
-        model: runtimeSettings.superMode.model,
-        message: "Health check: reply with OK only."
-      });
-      res.status(200).json({
-        ok: true,
-        modelUsed: result.modelUsed,
-        attemptedModels: result.attemptedModels,
-        responseTimeMs: Date.now() - startedAt,
-        answer: result.answer.slice(0, 120)
-      });
-    } catch (error) {
-      res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "AI provider health check failed." });
-    }
-  });
-
-  app.post("/api/ai/control/chat", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("ai_control.chat"), async (req, res) => {
-    const messageRaw = typeof req.body?.message === "string" ? req.body.message : "";
-    const message = messageRaw.trim();
-    if (!message) {
-      res.status(400).json({ error: "message is required." });
-      return;
-    }
-    if (message.length > AI_CHAT_MAX_MESSAGE_CHARS) {
-      res.status(400).json({ error: `message is too long (max ${AI_CHAT_MAX_MESSAGE_CHARS} chars).` });
-      return;
-    }
-
-    try {
-      const runtimeSettings = await aiControlStore.getRuntimeSettings();
-      if (!runtimeSettings.superMode || runtimeSettings.mode !== "super") {
-        res.status(400).json({ error: "Super mode is not configured or enabled." });
-        return;
-      }
-      const [siteDraft, emailSummary, analyticsSummary] = await Promise.all([
-        siteStore.getDraft(),
-        emailStore.getAnalyticsSummary(),
-        analyticsStore.summary()
-      ]);
-      const productGroups = siteDraft?.products ?? {};
-      let productsTotal = 0;
-      for (const group of Object.values(productGroups as Record<string, unknown>)) {
-        if (Array.isArray(group)) productsTotal += group.length;
-      }
-      const contextMessage = [
-        "System context snapshot:",
-        `- Products total: ${productsTotal}`,
-        `- Email subscribers: ${emailSummary.totals.subscribers}`,
-        `- Email confirmed: ${emailSummary.totals.confirmed}`,
-        `- Email campaigns sent: ${emailSummary.totals.campaignsSent}`,
-        `- Analytics events total: ${analyticsSummary.totalEvents}`
-      ].join("\n");
-      const answer = await callSuperModeChat({
-        baseUrl: runtimeSettings.superMode.baseUrl,
-        apiKey: runtimeSettings.superMode.apiKey,
-        model: runtimeSettings.superMode.model,
-        message: `${contextMessage}\n\nUser request:\n${message}`
-      });
-      res.status(200).json({
-        ok: true,
-        mode: "super",
-        answer: answer.answer,
-        modelUsed: answer.modelUsed,
-        attemptedModels: answer.attemptedModels,
-        suggestions: [
-          "Ask it to edit email campaign copy",
-          "Ask it to generate product section updates",
-          "Ask it to propose backend route refactors"
-        ]
-      });
-    } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "AI chat failed." });
-    }
-  });
-
-  app.post(
-    "/api/ai/control/prepare-action",
-    requireAdminAuth,
-    requireCsrfForCookieAuth,
-    auditAdminAction("ai_control.prepare_action"),
-    async (req, res) => {
-      const promptRaw = typeof req.body?.prompt === "string" ? req.body.prompt : "";
-      const prompt = promptRaw.trim();
-      if (!prompt) {
-        res.status(400).json({ error: "prompt is required." });
-        return;
-      }
-      if (prompt.length > AI_ACTION_MAX_PROMPT_CHARS) {
-        res.status(400).json({ error: `prompt is too long (max ${AI_ACTION_MAX_PROMPT_CHARS} chars).` });
-        return;
-      }
-
-      try {
-        const runtimeSettings = await aiControlStore.getRuntimeSettings();
-        if (!runtimeSettings.superMode || runtimeSettings.mode !== "super") {
-          res.status(400).json({ error: "Super mode is not configured or enabled." });
-          return;
-        }
-        const [siteDraft, sitePublished, confirmationTemplate] = await Promise.all([
-          siteStore.getDraft(),
-          siteStore.getPublished(),
-          emailStore.getConfirmationTemplate()
-        ]);
-        const activeSite = siteDraft ?? sitePublished;
-        const aiPrompt = [
-          "You convert admin requests into one safe JSON action.",
-          "Allowed actions only:",
-          '1) {"kind":"update_hero","summary":"...","payload":{"headline?":"...","subtext?":"...","ctaPrimaryLabel?":"...","ctaPrimaryTarget?":"...","ctaSecondaryLabel?":"...","ctaSecondaryTarget?":"..."}}',
-          '2) {"kind":"update_confirmation_template","summary":"...","payload":{"mode?":"rich|html","subject?":"...","previewText?":"...","bodyRich?":"...","bodyHtml?":"..."}}',
-          "Return valid JSON only. No markdown.",
-          "Use only fields that change. Keep summary under 120 chars.",
-          `Current hero: ${JSON.stringify(activeSite.hero)}`,
-          `Current confirmation template: ${JSON.stringify(confirmationTemplate)}`,
-          `Admin request: ${prompt}`
-        ].join("\n");
-
-        const response = await callSuperModeChat({
-          baseUrl: runtimeSettings.superMode.baseUrl,
-          apiKey: runtimeSettings.superMode.apiKey,
-          model: runtimeSettings.superMode.model,
-          message: aiPrompt
-        });
-        const rawAction = parseJsonFromModelOutput<unknown>(response.answer);
-        const action = parsePreparedAction(rawAction);
-        res.status(200).json({
-          ok: true,
-          action,
-          modelUsed: response.modelUsed,
-          attemptedModels: response.attemptedModels
-        });
-      } catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to prepare action." });
-      }
-    }
-  );
-
-  app.post(
-    "/api/ai/control/apply-action",
-    requireAdminAuth,
-    requireCsrfForCookieAuth,
-    auditAdminAction("ai_control.apply_action"),
-    async (req, res) => {
-      try {
-        const action = parsePreparedAction(req.body?.action);
-        if (action.kind === "update_hero") {
-          const [draft, published] = await Promise.all([siteStore.getDraft(), siteStore.getPublished()]);
-          const base = draft ?? published;
-          const next: SiteContent = {
-            ...base,
-            hero: {
-              ...base.hero,
-              headline: action.payload.headline?.trim() || base.hero.headline,
-              subtext: action.payload.subtext?.trim() || base.hero.subtext,
-              ctaPrimary: {
-                ...base.hero.ctaPrimary,
-                label: action.payload.ctaPrimaryLabel?.trim() || base.hero.ctaPrimary.label,
-                target: action.payload.ctaPrimaryTarget?.trim() || base.hero.ctaPrimary.target
-              },
-              ctaSecondary: {
-                ...base.hero.ctaSecondary,
-                label: action.payload.ctaSecondaryLabel?.trim() || base.hero.ctaSecondary.label,
-                target: action.payload.ctaSecondaryTarget?.trim() || base.hero.ctaSecondary.target
-              }
-            }
-          };
-          const savedDraft = await siteStore.saveDraft(next);
-          res.status(200).json({
-            ok: true,
-            applied: action.kind,
-            summary: action.summary,
-            draftSaved: true,
-            hero: savedDraft.hero
-          });
-          return;
-        }
-
-        const currentTemplate = await emailStore.getConfirmationTemplate();
-        const nextMode = action.payload.mode ?? currentTemplate.mode;
-        const nextTemplate = await emailStore.saveConfirmationTemplate({
-          mode: nextMode,
-          subject: action.payload.subject ?? currentTemplate.subject,
-          previewText: action.payload.previewText ?? currentTemplate.previewText,
-          bodyRich: action.payload.bodyRich ?? currentTemplate.bodyRich,
-          bodyHtml: action.payload.bodyHtml ?? currentTemplate.bodyHtml
-        });
-        res.status(200).json({
-          ok: true,
-          applied: action.kind,
-          summary: action.summary,
-          template: nextTemplate
-        });
-      } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to apply action." });
-      }
-    }
-  );
-
   app.get("/api/email/subscribers", requireAdminAuth, async (req, res) => {
     const statusRaw = typeof req.query?.status === "string" ? req.query.status.trim().toLowerCase() : "";
     const status =
@@ -1941,35 +3884,54 @@ const bootstrap = async () => {
     }
 
     const q = typeof req.query?.q === "string" ? req.query.q : "";
-    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
-    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
-    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
-    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+    if (q.length > LIST_QUERY_TEXT_MAX_CHARS) {
+      res.status(400).json({ error: `q is too long (max ${LIST_QUERY_TEXT_MAX_CHARS} chars).` });
+      return;
+    }
+    const pagination = parsePagination(req.query);
+    if ("error" in pagination) {
+      res.status(400).json({ error: pagination.error });
+      return;
+    }
+    const { page, pageSize } = pagination;
 
     try {
       const result = await emailStore.listSubscribers({ status, q, page, pageSize });
       res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list subscribers." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to list subscribers.") });
     }
   });
 
   app.get("/api/email/campaigns", requireAdminAuth, async (req, res) => {
-    const pageRaw = typeof req.query?.page === "string" ? Number(req.query.page) : undefined;
-    const pageSizeRaw = typeof req.query?.pageSize === "string" ? Number(req.query.pageSize) : undefined;
-    const page = Number.isFinite(pageRaw) ? Number(pageRaw) : 1;
-    const pageSize = Number.isFinite(pageSizeRaw) ? Number(pageSizeRaw) : 25;
+    const pagination = parsePagination(req.query);
+    if ("error" in pagination) {
+      res.status(400).json({ error: pagination.error });
+      return;
+    }
+    const { page, pageSize } = pagination;
 
     try {
       const result = await emailStore.listCampaigns({ page, pageSize });
       res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list campaigns." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to list campaigns.") });
     }
   });
 
-  app.post("/api/email/campaigns/draft", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.save_campaign_draft"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.save_campaign_draft"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
@@ -1995,11 +3957,18 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, campaign });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save draft campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save draft campaign.") });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/test", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_test"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/test",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.send_test"),
+    async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
     const bodyMode =
@@ -2008,6 +3977,17 @@ const bootstrap = async () => {
         : EMAIL_CAMPAIGN_BODY_MODE.rich;
     const bodyRich = typeof req.body?.bodyRich === "string" ? req.body.bodyRich : "";
     const bodyHtml = typeof req.body?.bodyHtml === "string" ? req.body.bodyHtml : "";
+    const sizeError = validateCampaignInputLimits({
+      name: "smtp-test",
+      subject,
+      previewText: "",
+      bodyRich,
+      bodyHtml
+    });
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: "Valid email is required." });
@@ -2033,12 +4013,24 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, queuedTo: email });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to queue test email." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to queue test email.") });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/schedule", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.schedule_campaign"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/schedule",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.schedule_campaign"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
@@ -2078,12 +4070,24 @@ const bootstrap = async () => {
       });
       res.status(200).json({ ok: true, campaign });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to schedule campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to schedule campaign.") });
     }
-  });
+    }
+  );
 
-  app.post("/api/email/campaigns/send", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("email.send_campaign"), async (req, res) => {
+  app.post(
+    "/api/email/campaigns/send",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("email.send_campaign"),
+    async (req, res) => {
     const input = parseCampaignInput(req.body);
+    const sizeError = validateCampaignInputLimits(input);
+    if (sizeError) {
+      res.status(400).json({ error: sizeError });
+      return;
+    }
     if (!input.name) {
       res.status(400).json({ error: "name is required." });
       return;
@@ -2164,7 +4168,7 @@ const bootstrap = async () => {
         res.status(500).json({ error: error.code, message: error.message });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to send campaign." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to send campaign.") });
     }
   });
 
@@ -2173,7 +4177,7 @@ const bootstrap = async () => {
       const template = await emailStore.getConfirmationTemplate();
       res.status(200).json({ template });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load confirmation template." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load confirmation template.") });
     }
   });
 
@@ -2211,7 +4215,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ template });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save confirmation template." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save confirmation template.") });
     }
   });
 
@@ -2220,7 +4224,7 @@ const bootstrap = async () => {
       const profile = await emailStore.getSenderProfile();
       res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load sender profile." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load sender profile.") });
     }
   });
 
@@ -2289,7 +4293,7 @@ const bootstrap = async () => {
       });
       res.status(200).json({ profile: toPublicSenderProfile(profile) });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to save sender profile." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to save sender profile.") });
     }
   });
 
@@ -2298,13 +4302,56 @@ const bootstrap = async () => {
       const summary = await emailStore.getAnalyticsSummary();
       res.status(200).json(summary);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load email analytics summary." });
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load email analytics summary.") });
     }
   });
 
   app.get("/api/analytics/summary", requireAdminAuth, async (_req, res) => {
     const summary = await analyticsStore.summary();
     res.status(200).json(summary);
+    }
+  );
+
+  app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: `File too large. Max size is ${Math.floor(maxUploadFileBytes / (1024 * 1024))}MB.` });
+        return;
+      }
+      if (error.code === "LIMIT_FILE_COUNT") {
+        res.status(400).json({ error: `Too many files. Max files per request is ${maxUploadFiles}.` });
+        return;
+      }
+      res.status(400).json({ error: error.message || "Invalid upload payload." });
+      return;
+    }
+    if (error instanceof Error && /Unsupported file type/i.test(error.message)) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    next(error);
+  });
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Not found." });
+  });
+  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    if (!req.path.startsWith("/api/")) {
+      next(error);
+      return;
+    }
+    const statusRaw = typeof error === "object" && error !== null && "status" in error ? (error as { status?: unknown }).status : undefined;
+    const statusCode = typeof statusRaw === "number" && Number.isFinite(statusRaw) ? Math.max(400, Math.floor(statusRaw)) : 500;
+    if (statusCode >= 500) {
+      res.status(statusCode).json({ error: safeServerErrorMessage(error, "Internal server error.") });
+      return;
+    }
+    const message =
+      error instanceof Error && error.message.trim() ? error.message : statusCode === 404 ? "Not found." : "Request failed.";
+    res.status(statusCode).json({ error: message });
   });
 
   const startupSenderProfile = await emailStore.getSenderProfile();
@@ -2328,15 +4375,19 @@ const bootstrap = async () => {
     console.log(`API running on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(
-      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRM_MODE} smtp startup ready=${String(startupSmtpReady)} host=${startupSenderProfile.smtpHost || "(empty)"} port=${String(
+      `[email] subscriptionsEnabled=${String(EMAIL_SUBSCRIPTIONS_ENABLED)} confirmationSendMode=${EMAIL_CONFIRM_MODE} smtp startup ready=${String(startupSmtpReady)} hostSet=${String(
+        Boolean(startupSenderProfile.smtpHost.trim())
+      )} port=${String(
         startupSenderProfile.smtpPort
       )} secure=${String(startupSenderProfile.smtpSecure)} effectiveSecure=${String(startupEffectiveSecure)} userSet=${String(
         Boolean(startupSenderProfile.smtpUser.trim())
       )} tlsRejectUnauthorized=${String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== "false")} authCookieSameSite=${authCookieSameSite} authCookieSecure=${String(authCookieSecure)} fromEmail=${
-        startupSenderProfile.fromEmail || "(empty)"
+        startupSenderProfile.fromEmail ? maskEmailForLog(startupSenderProfile.fromEmail) : "(empty)"
       } missing=${startupMissingFields.length ? startupMissingFields.join(",") : "none"}`
     );
   });
 };
 
+installProcessFailureHandlers();
 void bootstrap();
+

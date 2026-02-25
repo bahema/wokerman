@@ -1,9 +1,8 @@
 /* eslint-disable no-console */
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes, scryptSync } from "node:crypto";
 
 const HOST = "127.0.0.1";
 const PORT = 4120;
@@ -11,46 +10,10 @@ const BASE = `http://${HOST}:${PORT}`;
 const OWNER_EMAIL = "site-validation-test@example.com";
 const OWNER_PASSWORD = "BossPass123!";
 const CSRF_COOKIE_NAME = "autohub_admin_csrf";
-const AUTH_PASSWORD_PEPPER = (process.env.AUTH_PASSWORD_PEPPER ?? "").trim();
 
 type JsonRecord = Record<string, unknown>;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const hashOwnerPassword = (password: string) => {
-  const salt = randomBytes(16).toString("hex");
-  const input = AUTH_PASSWORD_PEPPER ? `${password}:${AUTH_PASSWORD_PEPPER}` : password;
-  const passwordHash = scryptSync(input, salt, 64, {
-    N: 32768,
-    r: 8,
-    p: 1,
-    maxmem: 96 * 1024 * 1024
-  }).toString("hex");
-  return { passwordHash, passwordSalt: salt };
-};
-
-const seedOwnerAuthState = async (mediaDir: string) => {
-  const authDir = path.join(mediaDir, "auth");
-  await mkdir(authDir, { recursive: true });
-  const { passwordHash, passwordSalt } = hashOwnerPassword(OWNER_PASSWORD);
-  const nowIso = new Date().toISOString();
-  const state = {
-    owner: {
-      email: OWNER_EMAIL.toLowerCase(),
-      fullName: "Site Validation Owner",
-      role: "Owner",
-      timezone: "UTC",
-      passwordHash,
-      passwordSalt,
-      createdAt: nowIso
-    },
-    sessions: [],
-    trustedDevices: [],
-    attemptState: {},
-    updatedAt: nowIso
-  };
-  await writeFile(path.join(authDir, "state.json"), JSON.stringify(state, null, 2), "utf-8");
-};
 
 const assertCondition = (condition: unknown, message: string) => {
   if (!condition) throw new Error(message);
@@ -194,7 +157,6 @@ const run = async () => {
   let child: ChildProcess | null = null;
 
   try {
-    await seedOwnerAuthState(mediaDir);
     child = await startBackend(mediaDir);
     const client = new CookieSessionClient();
 

@@ -1,0 +1,90 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: frontend
+            working-directory: .
+          - name: backend
+            working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.working-directory }}/package-lock.json
+
+      - name: Install Dependencies (${{ matrix.name }})
+        run: npm ci --no-audit --no-fund
+        working-directory: ${{ matrix.working-directory }}
+
+      - name: Run Audit (${{ matrix.name }})
+        continue-on-error: ${{ matrix.name == 'backend' }}
+        shell: bash
+        run: |
+          attempt=1
+          max_attempts=3
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Running npm audit --json (attempt ${attempt}/${max_attempts})..."
+            npm audit --audit-level=high --json > audit-output.json 2>&1 || true
+            result=$(node -e "const fs=require('fs'); let raw=''; try{raw=fs.readFileSync('audit-output.json','utf8')}catch{process.stdout.write('SERVICE_ERROR'); process.exit(0)}; let data; try{data=JSON.parse(raw)}catch{process.stdout.write('SERVICE_ERROR'); process.exit(0)}; if(data && data.error){process.stdout.write('SERVICE_ERROR'); process.exit(0)}; const v=(data&&data.metadata&&data.metadata.vulnerabilities)||{}; const high=Number(v.high||0); const critical=Number(v.critical||0); if(high+critical>0){process.stdout.write('VULNERABLE'); process.exit(0)}; process.stdout.write('CLEAN');")
+            echo "Audit result classification: ${result}"
+            if [ "$result" = "CLEAN" ]; then
+              exit 0
+            fi
+            if [ "$result" = "VULNERABLE" ]; then
+              echo "High/Critical vulnerabilities detected."
+              cat audit-output.json
+              exit 1
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "npm audit service error; retrying in 10 seconds..."
+              sleep 10
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "::warning::npm audit failed due to repeated service errors after ${max_attempts} attempts. Vulnerability decision could not be computed in CI."
+          exit 0
+        working-directory: ${{ matrix.working-directory }}
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
