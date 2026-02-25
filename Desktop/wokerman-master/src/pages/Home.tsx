@@ -331,7 +331,7 @@ const Home = (_props: HomeProps) => {
 
   const resolveImage = (input: string) => (input.startsWith("http") ? input : withBasePath(input));
 
-  const industriesForTrack = content.industries;
+  const industriesForTrack = content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
 
   const renderProductGrid = (products: Product[], sourceCount: number) => {
     if (sourceCount === 0) {
@@ -735,14 +735,12 @@ const Home = (_props: HomeProps) => {
               {homeUi.industriesEmptyMessage}
             </div>
           ) : (
-            <div
-              className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
-            >
-              <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
-                {industriesForTrack.map((industry) => {
+            <div className="scrollbar-none overflow-hidden py-4">
+              <div className={`flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8 ${content.industries.length > 1 ? "marquee-track" : ""}`}>
+                {industriesForTrack.map((industry, index) => {
                   return (
                   <div
-                    key={industry.id}
+                    key={`${industry.id}-${index}`}
                     className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3"
                   >
                     {industry.link?.trim() ? (
