@@ -1,0 +1,226 @@
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 26px 80px -42px rgba(24, 18, 12, 0.55);
+  aspect-ratio: 16 / 9;
+  touch-action: pan-y;
+  background: #17120e;
+}
+
+.hero-carousel:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 4px;
+}
+
+.hero-carousel__track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+}
+
+.hero-carousel__slide {
+  position: relative;
+  flex: 0 0 100%;
+  min-width: 100%;
+  height: 100%;
+}
+
+.hero-carousel__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  pointer-events: none;
+}
+
+.hero-carousel__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 20%, rgba(0, 0, 0, 0.28) 45%, rgba(0, 0, 0, 0.8) 100%);
+}
+
+.hero-carousel__content {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 20px 22px 22px;
+  color: #fff;
+  z-index: 2;
+}
+
+.hero-carousel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hero-carousel__headline {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.9vw, 2.35rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  max-width: 90%;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.hero-carousel__likes {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.hero-carousel__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.8rem;
+}
+
+.hero-carousel__like-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.hero-carousel__like-button .hero-carousel__icon {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.hero-carousel__like-button--active .hero-carousel__icon {
+  background: rgba(245, 65, 94, 0.28);
+  color: #ff4569;
+}
+
+.hero-carousel__notice {
+  position: absolute;
+  right: 16px;
+  bottom: 52px;
+  z-index: 4;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 190, 198, 0.65);
+  background: rgba(43, 16, 21, 0.82);
+  color: #ffeaf0;
+  padding: 8px 12px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.hero-carousel__control {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.42);
+  color: #fff;
+  cursor: pointer;
+  transform: translateY(-50%);
+  backdrop-filter: blur(10px);
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.hero-carousel__control:hover {
+  background: rgba(10, 10, 10, 0.58);
+}
+
+.hero-carousel__control:focus-visible,
+.hero-carousel__dot:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.hero-carousel__control--prev {
+  left: 14px;
+}
+
+.hero-carousel__control--next {
+  right: 14px;
+}
+
+.hero-carousel__dots {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.hero-carousel__dot {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+  transition: width 180ms ease, background 180ms ease;
+}
+
+.hero-carousel__dot--active {
+  width: 24px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.hero-carousel__link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .hero-carousel {
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+  }
+
+  .hero-carousel__content {
+    padding: 16px 16px 18px;
+  }
+
+  .hero-carousel__headline {
+    max-width: 100%;
+  }
+
+  .hero-carousel__control {
+    width: 44px;
+    height: 44px;
+  }
+
+  .hero-carousel__control--prev {
+    left: 10px;
+  }
+
+  .hero-carousel__control--next {
+    right: 10px;
+  }
+}

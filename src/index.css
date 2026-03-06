@@ -149,3 +149,398 @@ body {
   color: var(--event-ad-overlay-button-text);
   border: 1px solid color-mix(in srgb, var(--event-ad-overlay-button-text) 26%, transparent);
 }
+
+/* Fashion Admin Design Tokens */
+:root {
+  /* Base surfaces */
+  --fa-bg-base: #f7f1e8;
+  --fa-bg-muted: #efe6da;
+  --fa-surface-card: #fffdf9;
+  --fa-surface-card-warm: #faf4ea;
+  --fa-surface-elevated: #f2e7d7;
+
+  /* Text */
+  --fa-text-primary: #2f2923;
+  --fa-text-secondary: #6f6459;
+  --fa-text-tertiary: #8e8378;
+  --fa-text-on-dark: #f9f4ec;
+
+  /* Actions and accents */
+  --fa-action-primary: #3b2b22;
+  --fa-action-primary-hover: #4a372c;
+  --fa-action-secondary: #ddc9ac;
+  --fa-action-secondary-hover: #d3bd9f;
+
+  /* Borders and shadows */
+  --fa-border-soft: #ded2c3;
+  --fa-border-strong: #cdbfae;
+  --fa-shadow-soft: 0 10px 30px -20px rgba(43, 31, 22, 0.28);
+  --fa-shadow-card: 0 20px 46px -32px rgba(43, 31, 22, 0.34);
+  --fa-shadow-elevated: 0 28px 70px -40px rgba(43, 31, 22, 0.44);
+
+  /* Status colors - refined, muted */
+  --fa-success-bg: #e6efe3;
+  --fa-success-border: #b8cab1;
+  --fa-success-text: #3d5b3a;
+  --fa-warning-bg: #f4ecde;
+  --fa-warning-border: #d9c7a6;
+  --fa-warning-text: #6f5938;
+  --fa-error-bg: #f4e8e4;
+  --fa-error-border: #d8b8ac;
+  --fa-error-text: #74463c;
+
+  /* Radius */
+  --fa-radius-sm: 10px;
+  --fa-radius-md: 14px;
+  --fa-radius-lg: 20px;
+  --fa-radius-xl: 28px;
+
+  /* Typography */
+  --fa-title-xl-size: clamp(1.75rem, 2.1vw, 2.5rem);
+  --fa-title-xl-line: 1.08;
+  --fa-title-lg-size: clamp(1.3rem, 1.45vw, 1.8rem);
+  --fa-title-lg-line: 1.14;
+  --fa-label-size: 0.68rem;
+  --fa-label-track: 0.18em;
+
+  /* Spacing scale */
+  --fa-space-1: 0.25rem;
+  --fa-space-2: 0.5rem;
+  --fa-space-3: 0.75rem;
+  --fa-space-4: 1rem;
+  --fa-space-5: 1.25rem;
+  --fa-space-6: 1.5rem;
+  --fa-space-8: 2rem;
+  --fa-space-10: 2.5rem;
+}
+
+.dark {
+  --fa-bg-base: #15100d;
+  --fa-bg-muted: #1d1713;
+  --fa-surface-card: #1b1511;
+  --fa-surface-card-warm: #221a14;
+  --fa-surface-elevated: #2a2018;
+  --fa-text-primary: #f2e6d7;
+  --fa-text-secondary: #c9b7a4;
+  --fa-text-tertiary: #a5927f;
+  --fa-text-on-dark: #1b120d;
+  --fa-action-primary: #e7d3ba;
+  --fa-action-primary-hover: #eddcc5;
+  --fa-action-secondary: #5a4736;
+  --fa-action-secondary-hover: #66523f;
+  --fa-border-soft: #3e3127;
+  --fa-border-strong: #574436;
+  --fa-shadow-soft: 0 10px 30px -20px rgba(0, 0, 0, 0.45);
+  --fa-shadow-card: 0 20px 46px -30px rgba(0, 0, 0, 0.55);
+  --fa-shadow-elevated: 0 28px 70px -38px rgba(0, 0, 0, 0.66);
+  --fa-success-bg: #253126;
+  --fa-success-border: #425843;
+  --fa-success-text: #c8ddc8;
+  --fa-warning-bg: #32281f;
+  --fa-warning-border: #5f4b35;
+  --fa-warning-text: #e4d3bc;
+  --fa-error-bg: #352521;
+  --fa-error-border: #6d4940;
+  --fa-error-text: #e5c8bf;
+}
+
+/* Fashion Admin Primitive Classes */
+.fa-admin-root {
+  background: var(--fa-bg-base);
+  color: var(--fa-text-primary);
+}
+
+.fa-admin-muted-bg {
+  background: var(--fa-bg-muted);
+}
+
+.fa-admin-label {
+  font-size: var(--fa-label-size);
+  letter-spacing: var(--fa-label-track);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--fa-text-secondary);
+}
+
+.fa-admin-title-xl {
+  font-size: var(--fa-title-xl-size);
+  line-height: var(--fa-title-xl-line);
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.fa-admin-title-lg {
+  font-size: var(--fa-title-lg-size);
+  line-height: var(--fa-title-lg-line);
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+
+.fa-card {
+  border: 1px solid var(--fa-border-soft);
+  border-radius: var(--fa-radius-lg);
+  background: var(--fa-surface-card);
+  box-shadow: var(--fa-shadow-card);
+}
+
+.fa-card-warm {
+  border: 1px solid var(--fa-border-soft);
+  border-radius: var(--fa-radius-lg);
+  background: var(--fa-surface-card-warm);
+  box-shadow: var(--fa-shadow-card);
+}
+
+.fa-sidebar-item-active {
+  box-shadow: 0 14px 28px -18px rgba(20, 14, 9, 0.55);
+}
+
+.fa-sidebar-item-active .fa-sidebar-note {
+  color: color-mix(in srgb, var(--fa-text-on-dark) 82%, transparent);
+}
+
+.fa-sidebar-item-active .fa-pill {
+  background: color-mix(in srgb, var(--fa-text-on-dark) 18%, transparent);
+  border-color: color-mix(in srgb, var(--fa-text-on-dark) 38%, transparent);
+  color: var(--fa-text-on-dark);
+}
+
+.fa-panel-elevated {
+  border: 1px solid var(--fa-border-strong);
+  border-radius: var(--fa-radius-xl);
+  background: var(--fa-surface-elevated);
+  box-shadow: var(--fa-shadow-elevated);
+}
+
+.fa-input {
+  width: 100%;
+  border: 1px solid var(--fa-border-soft);
+  border-radius: var(--fa-radius-md);
+  background: var(--fa-surface-card);
+  color: var(--fa-text-primary);
+  padding: 0.7rem 0.9rem;
+  outline: none;
+}
+
+.fa-input::placeholder {
+  color: var(--fa-text-tertiary);
+}
+
+.fa-input:focus {
+  border-color: var(--fa-border-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fa-action-secondary) 45%, transparent);
+}
+
+.fa-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, color-mix(in srgb, var(--fa-text-secondary) 85%, transparent) 50%),
+    linear-gradient(135deg, color-mix(in srgb, var(--fa-text-secondary) 85%, transparent) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2.35rem;
+  font-weight: 600;
+}
+
+.fa-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--fa-border-soft);
+  background: color-mix(in srgb, var(--fa-surface-card) 70%, transparent);
+  color: var(--fa-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.26rem 0.62rem;
+}
+
+.fa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fa-radius-md);
+  border: 1px solid var(--fa-border-soft);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.58rem 0.9rem;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.fa-btn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.fa-btn:focus-visible,
+.fa-tab-btn:focus-visible,
+.fa-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-action-primary) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-btn-primary {
+  background: var(--fa-action-primary);
+  border-color: var(--fa-action-primary);
+  color: var(--fa-text-on-dark);
+}
+
+.fa-btn-primary:hover:not(:disabled) {
+  background: var(--fa-action-primary-hover);
+  border-color: var(--fa-action-primary-hover);
+}
+
+.fa-btn-secondary {
+  background: var(--fa-action-secondary);
+  border-color: var(--fa-action-secondary);
+  color: var(--fa-text-primary);
+}
+
+.fa-btn-secondary:hover:not(:disabled) {
+  background: var(--fa-action-secondary-hover);
+  border-color: var(--fa-action-secondary-hover);
+}
+
+.fa-btn-ghost {
+  background: var(--fa-surface-card);
+  color: var(--fa-text-primary);
+}
+
+.fa-btn-ghost:hover:not(:disabled) {
+  background: var(--fa-surface-card-warm);
+}
+
+.fa-btn-danger-soft {
+  border-color: var(--fa-error-border);
+  color: var(--fa-error-text);
+  background: color-mix(in srgb, var(--fa-error-bg) 35%, var(--fa-surface-card));
+}
+
+.fa-btn-danger-soft:hover:not(:disabled) {
+  background: var(--fa-error-bg);
+}
+
+.fa-state-success {
+  background: var(--fa-success-bg);
+  border-color: var(--fa-success-border);
+  color: var(--fa-success-text);
+}
+
+.fa-state-warning {
+  background: var(--fa-warning-bg);
+  border-color: var(--fa-warning-border);
+  color: var(--fa-warning-text);
+}
+
+.fa-state-error {
+  background: var(--fa-error-bg);
+  border-color: var(--fa-error-border);
+  color: var(--fa-error-text);
+}
+
+.fa-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--fa-border-soft);
+  border-radius: var(--fa-radius-lg);
+  background: var(--fa-surface-card);
+}
+
+.fa-table thead th {
+  background: var(--fa-surface-card-warm);
+  color: var(--fa-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0.72rem 0.86rem;
+  border-bottom: 1px solid var(--fa-border-soft);
+}
+
+.fa-table tbody td {
+  padding: 0.86rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--fa-border-soft) 75%, transparent);
+  color: var(--fa-text-primary);
+}
+
+.fa-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Fashion Boss workspace harmonization */
+.fashion-boss-premium {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--fa-action-secondary) 26%, transparent), transparent 34%),
+    linear-gradient(180deg, var(--fa-bg-base) 0%, color-mix(in srgb, var(--fa-bg-base) 74%, white) 52%, var(--fa-bg-muted) 100%);
+}
+
+.fashion-boss-premium input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.fashion-boss-premium select,
+.fashion-boss-premium textarea {
+  border: 1px solid var(--fa-border-soft) !important;
+  border-radius: var(--fa-radius-md) !important;
+  background: var(--fa-surface-card) !important;
+  color: var(--fa-text-primary) !important;
+  -webkit-text-fill-color: var(--fa-text-primary);
+}
+
+.fashion-boss-premium select option,
+.fashion-boss-premium select optgroup {
+  background: var(--fa-surface-card);
+  color: var(--fa-text-primary);
+}
+
+.fashion-boss-premium select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-action-primary) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.fashion-boss-premium .bg-white\/80,
+.fashion-boss-premium .bg-white\/70,
+.fashion-boss-premium .bg-white\/65 {
+  background: var(--fa-surface-card) !important;
+}
+
+.fashion-boss-premium .border-black\/8,
+.fashion-boss-premium .border-black\/10,
+.fashion-boss-premium .border-black\/12,
+.fashion-boss-premium .border-black\/6 {
+  border-color: var(--fa-border-soft) !important;
+}
+
+.fashion-boss-premium .bg-slate-900 {
+  background: var(--fa-action-primary) !important;
+  color: var(--fa-text-on-dark) !important;
+}
+
+.fashion-boss-premium .text-slate-500,
+.fashion-boss-premium .text-slate-600 {
+  color: var(--fa-text-secondary) !important;
+}
+
+.fashion-boss-premium .fa-tab-btn {
+  border: 1px solid var(--fa-border-soft);
+  border-radius: 999px;
+  background: var(--fa-surface-card);
+  color: var(--fa-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.fashion-boss-premium .fa-tab-btn:hover {
+  background: var(--fa-surface-card-warm);
+}
+
+.fashion-boss-premium .fa-tab-btn-active {
+  background: var(--fa-action-primary);
+  border-color: var(--fa-action-primary);
+  color: var(--fa-text-on-dark);
+}

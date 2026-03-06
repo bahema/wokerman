@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import type { FashionContent } from "../../shared/fashionTypes";
 import type { SiteContent } from "../../shared/siteTypes";
 import multer from "multer";
 import path from "node:path";
@@ -8,6 +9,17 @@ import { promises as fs } from "node:fs";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
+import { createFashionStore } from "./fashion/store.js";
+import { createFashionWhatsAppStore, type FashionWhatsAppApiSettings } from "./fashion/whatsAppStore.js";
+import { createFashionInquiryStore } from "./fashion/inquiryStore.js";
+import { createFashionLikesStore, type FashionSlideLikeScope } from "./fashion/likesStore.js";
+import {
+  type FashionInquiryPayload,
+  type FashionInquiryRecord,
+  type FashionInquiryStatus,
+  type FashionInquiryType
+} from "./fashion/inquiryTypes.js";
+import { buildFallbackWaMeUrl, sendFashionWhatsAppMessage } from "./fashion/inquirySend.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { createEmailStore } from "./email/store.js";
@@ -347,6 +359,10 @@ const bootstrap = async () => {
   await resetSecurityStateIfRequested(MEDIA_DIR);
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
+  const fashionStore = await createFashionStore(MEDIA_DIR);
+  const fashionWhatsAppStore = await createFashionWhatsAppStore(MEDIA_DIR);
+  const fashionInquiryStore = await createFashionInquiryStore(MEDIA_DIR);
+  const fashionLikesStore = await createFashionLikesStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
@@ -438,6 +454,11 @@ const bootstrap = async () => {
       path === "/api/site/draft" ||
       path === "/api/site/publish" ||
       path === "/api/site/reset" ||
+      path === "/api/fashion/draft" ||
+      path === "/api/fashion/publish" ||
+      path === "/api/fashion/reset" ||
+      path === "/api/fashion/whatsapp/settings" ||
+      path.startsWith("/api/fashion/whatsapp/inquiries") ||
       path.startsWith("/api/media") ||
       path.startsWith("/api/email/subscribers") ||
       path.startsWith("/api/email/campaigns") ||
@@ -824,6 +845,177 @@ const bootstrap = async () => {
   const exposeInternalErrors = !isProduction || process.env.EXPOSE_INTERNAL_ERRORS === "true";
   const safeServerErrorMessage = (error: unknown, fallbackMessage: string) =>
     exposeInternalErrors && error instanceof Error && error.message.trim() ? error.message : fallbackMessage;
+  const asNonEmptyString = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : "");
+  const asOptionalString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const normalizePhoneDigits = (value: string) => value.replace(/\D/g, "");
+  const allowedInquiryTypes = new Set<FashionInquiryType>(["product", "fit", "look", "collection", "editorial-story", "style-set"]);
+  const validateInquiryPayload = (body: unknown): { ok: true; payload: FashionInquiryPayload } | { ok: false; error: string } => {
+    const raw = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+    if (!raw) return { ok: false, error: "Inquiry payload is required." };
+
+    const typeCandidate = asNonEmptyString(raw.type);
+    if (!allowedInquiryTypes.has(typeCandidate as FashionInquiryType)) {
+      return { ok: false, error: "Inquiry type is invalid." };
+    }
+    const source = asNonEmptyString(raw.source);
+    if (!source) return { ok: false, error: "Inquiry source is required." };
+    const message = asNonEmptyString(raw.message);
+    if (!message) return { ok: false, error: "Inquiry message is required." };
+
+    const rawProducts = Array.isArray(raw.products) ? raw.products : [];
+    const products = rawProducts
+      .map((item) => {
+        if (typeof item !== "object" || item === null) return null;
+        const value = item as Record<string, unknown>;
+        const id = asNonEmptyString(value.id);
+        const name = asNonEmptyString(value.name);
+        if (!id || !name) return null;
+        const collection = asOptionalString(value.collection) || undefined;
+        const category = asOptionalString(value.category) || undefined;
+        const currency = asOptionalString(value.currency) || undefined;
+        const imageUrl = asOptionalString(value.imageUrl) || undefined;
+        const priceRaw = typeof value.price === "number" ? value.price : Number(value.price);
+        const price = Number.isFinite(priceRaw) ? priceRaw : undefined;
+        return { id, name, collection, category, currency, imageUrl, price };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .slice(0, 12);
+
+    const rawCustomer = typeof raw.customerMeta === "object" && raw.customerMeta !== null ? (raw.customerMeta as Record<string, unknown>) : null;
+    if (!rawCustomer) return { ok: false, error: "customerMeta is required." };
+    const phoneNumber = normalizePhoneDigits(asNonEmptyString(rawCustomer.phoneNumber));
+    if (!phoneNumber) return { ok: false, error: "Phone number is required." };
+    const customerMeta = {
+      name: asOptionalString(rawCustomer.name) || undefined,
+      phoneNumber,
+      countryCode: asOptionalString(rawCustomer.countryCode) || undefined,
+      preferredContactMethod: asOptionalString(rawCustomer.preferredContactMethod) || undefined,
+      notes: asOptionalString(rawCustomer.notes) || undefined
+    };
+
+    const rawConsent = typeof raw.consent === "object" && raw.consent !== null ? (raw.consent as Record<string, unknown>) : null;
+    if (!rawConsent || rawConsent.accepted !== true) {
+      return { ok: false, error: "Consent must be accepted before sending an inquiry." };
+    }
+    const consent = {
+      accepted: true,
+      text: asOptionalString(rawConsent.text) || undefined
+    };
+
+    const imageUrl = asOptionalString(raw.imageUrl) || undefined;
+    const fallbackPhoneNumber = normalizePhoneDigits(asOptionalString(raw.fallbackPhoneNumber));
+
+    return {
+      ok: true,
+      payload: {
+        type: typeCandidate as FashionInquiryType,
+        source,
+        message,
+        imageUrl,
+        products,
+        customerMeta,
+        consent,
+        fallbackPhoneNumber: fallbackPhoneNumber || undefined
+      }
+    };
+  };
+  const mapSendResultToInquiryStatus = (result: { ok: boolean; deliveryMode: "api-image" | "api-text" | "fallback-required" }) => {
+    if (result.deliveryMode === "api-image") return "api-image" as const;
+    if (result.deliveryMode === "api-text") return "api-text" as const;
+    return "fallback-required" as const;
+  };
+  const inferFallbackPhoneNumber = (payload: FashionInquiryPayload, published: FashionContent | null) =>
+    payload.fallbackPhoneNumber ||
+    normalizePhoneDigits(published?.whatsapp?.phoneNumber ?? "") ||
+    "";
+  const allowedInquiryStatuses = new Set<FashionInquiryStatus>(["queued", "api-image", "api-text", "fallback-required", "failed"]);
+  const validateInquiryAdminPatch = (
+    body: unknown
+  ):
+    | {
+        ok: true;
+        patch: Partial<
+          Pick<FashionInquiryRecord, "source" | "message" | "status" | "fallbackRequired" | "customerMeta" | "providerResponse">
+        >;
+      }
+    | { ok: false; error: string } => {
+    const raw = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+    if (!raw) return { ok: false, error: "Patch payload is required." };
+
+    const patch: Partial<
+      Pick<FashionInquiryRecord, "source" | "message" | "status" | "fallbackRequired" | "customerMeta" | "providerResponse">
+    > = {};
+
+    if ("source" in raw) {
+      const source = asNonEmptyString(raw.source);
+      if (!source) return { ok: false, error: "source must be a non-empty string." };
+      patch.source = source;
+    }
+    if ("message" in raw) {
+      const message = asNonEmptyString(raw.message);
+      if (!message) return { ok: false, error: "message must be a non-empty string." };
+      patch.message = message;
+    }
+    if ("status" in raw) {
+      const status = asNonEmptyString(raw.status);
+      if (!allowedInquiryStatuses.has(status as FashionInquiryStatus)) {
+        return { ok: false, error: "status is invalid." };
+      }
+      patch.status = status as FashionInquiryStatus;
+    }
+    if ("fallbackRequired" in raw) {
+      if (typeof raw.fallbackRequired !== "boolean") {
+        return { ok: false, error: "fallbackRequired must be a boolean." };
+      }
+      patch.fallbackRequired = raw.fallbackRequired;
+    }
+    if ("customerMeta" in raw) {
+      const customerRaw =
+        typeof raw.customerMeta === "object" && raw.customerMeta !== null ? (raw.customerMeta as Record<string, unknown>) : null;
+      if (!customerRaw) return { ok: false, error: "customerMeta must be an object." };
+      const phoneNumber = "phoneNumber" in customerRaw ? normalizePhoneDigits(asOptionalString(customerRaw.phoneNumber)) : "";
+      patch.customerMeta = {
+        name: "name" in customerRaw ? asOptionalString(customerRaw.name) || undefined : undefined,
+        phoneNumber,
+        countryCode: "countryCode" in customerRaw ? asOptionalString(customerRaw.countryCode) || undefined : undefined,
+        preferredContactMethod:
+          "preferredContactMethod" in customerRaw ? asOptionalString(customerRaw.preferredContactMethod) || undefined : undefined,
+        notes: "notes" in customerRaw ? asOptionalString(customerRaw.notes) || undefined : undefined
+      };
+    }
+    if ("providerResponse" in raw) {
+      const providerRaw =
+        typeof raw.providerResponse === "object" && raw.providerResponse !== null
+          ? (raw.providerResponse as Record<string, unknown>)
+          : null;
+      if (!providerRaw) return { ok: false, error: "providerResponse must be an object." };
+      const deliveryModeRaw = "deliveryMode" in providerRaw ? asOptionalString(providerRaw.deliveryMode) : "";
+      if (deliveryModeRaw && !["api-image", "api-text", "fallback-required"].includes(deliveryModeRaw)) {
+        return { ok: false, error: "providerResponse.deliveryMode is invalid." };
+      }
+      patch.providerResponse = {
+        statusCode:
+          "statusCode" in providerRaw
+            ? Number.isFinite(Number(providerRaw.statusCode))
+              ? Number(providerRaw.statusCode)
+              : undefined
+            : undefined,
+        deliveryMode: deliveryModeRaw
+          ? (deliveryModeRaw as "api-image" | "api-text" | "fallback-required")
+          : undefined,
+        detail: "detail" in providerRaw ? asOptionalString(providerRaw.detail) || undefined : undefined,
+        recipientPhoneNumber:
+          "recipientPhoneNumber" in providerRaw ? normalizePhoneDigits(asOptionalString(providerRaw.recipientPhoneNumber)) || undefined : undefined,
+        rawBody: "rawBody" in providerRaw ? asOptionalString(providerRaw.rawBody) || undefined : undefined
+      };
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { ok: false, error: "Patch payload is empty." };
+    }
+
+    return { ok: true, patch };
+  };
 
   const parseCampaignInput = (body: unknown) => {
     const payload = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
@@ -1466,6 +1658,343 @@ const bootstrap = async () => {
     res.status(200).json({ published: next.published, draft: next.draft });
     }
   );
+
+  app.get("/api/fashion/published", async (_req, res) => {
+    const content = await fashionStore.getPublished();
+    res.status(200).json({ content });
+  });
+
+  app.get("/api/fashion/draft", requireAdminAuth, async (_req, res) => {
+    const content = await fashionStore.getDraft();
+    res.status(200).json({ content });
+  });
+
+  app.get("/api/fashion/meta", async (_req, res) => {
+    const meta = await fashionStore.getMeta();
+    res.status(200).json(meta);
+  });
+
+  const parseLikeScope = (value: unknown): FashionSlideLikeScope | null => {
+    if (value === "homepage" || value === "editorial") return value;
+    return null;
+  };
+  const normalizeClientLikeId = (value: unknown) => {
+    if (typeof value !== "string") return "";
+    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "");
+    return normalized.slice(0, 80);
+  };
+
+  app.post("/api/fashion/likes/summary", analyticsIpLimiter, async (req, res) => {
+    const scope = parseLikeScope(req.body?.scope);
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const slidesRaw = Array.isArray(req.body?.slides) ? (req.body.slides as Array<Record<string, unknown>>) : [];
+    if (!scope || !clientId) {
+      res.status(400).json({ error: "scope and clientId are required." });
+      return;
+    }
+    const slides = slidesRaw
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id.trim() : "",
+        seedLikes: typeof item.seedLikes === "number" && Number.isFinite(item.seedLikes) ? Math.max(0, Math.floor(item.seedLikes)) : 0
+      }))
+      .filter((item) => Boolean(item.id));
+    const summary = await fashionLikesStore.getSummary(scope, clientId, slides);
+    res.status(200).json(summary);
+  });
+
+  app.post("/api/fashion/likes/toggle", analyticsIpLimiter, async (req, res) => {
+    const scope = parseLikeScope(req.body?.scope);
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const slideId = typeof req.body?.slideId === "string" ? req.body.slideId.trim() : "";
+    const seedLikes =
+      typeof req.body?.seedLikes === "number" && Number.isFinite(req.body.seedLikes) ? Math.max(0, Math.floor(req.body.seedLikes)) : 0;
+    if (!scope || !clientId || !slideId) {
+      res.status(400).json({ error: "scope, clientId, and slideId are required." });
+      return;
+    }
+    const result = await fashionLikesStore.toggle(scope, slideId, clientId, seedLikes);
+    res.status(200).json(result);
+  });
+
+  app.put(
+    "/api/fashion/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.save_draft"),
+    async (req, res) => {
+    const payload = req.body?.content as FashionContent | undefined;
+    if (!payload || typeof payload !== "object") {
+      res.status(400).json({ error: "content payload is required." });
+      return;
+    }
+    try {
+      const content = await fashionStore.saveDraft(payload);
+      await fashionLikesStore.syncSlides(
+        "homepage",
+        (content.homepageSlides ?? []).map((slide) => slide.id)
+      );
+      await fashionLikesStore.syncSlides(
+        "editorial",
+        (content.editorialSlides ?? []).map((slide) => slide.id)
+      );
+      res.status(200).json({ content });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion content payload." });
+    }
+    }
+  );
+
+  app.post(
+    "/api/fashion/publish",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.publish"),
+    async (req, res) => {
+    const payload = req.body?.content as FashionContent | undefined;
+    try {
+      const content = await fashionStore.publish(payload);
+      await fashionLikesStore.syncSlides(
+        "homepage",
+        (content.homepageSlides ?? []).map((slide) => slide.id)
+      );
+      await fashionLikesStore.syncSlides(
+        "editorial",
+        (content.editorialSlides ?? []).map((slide) => slide.id)
+      );
+      res.status(200).json({ content });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion content payload." });
+    }
+    }
+  );
+
+  app.post(
+    "/api/fashion/reset",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.reset"),
+    async (_req, res) => {
+    const next = await fashionStore.reset();
+    await fashionLikesStore.syncSlides(
+      "homepage",
+      (next.published.homepageSlides ?? []).map((slide) => slide.id)
+    );
+    await fashionLikesStore.syncSlides(
+      "editorial",
+      (next.published.editorialSlides ?? []).map((slide) => slide.id)
+    );
+    res.status(200).json({ published: next.published, draft: next.draft });
+    }
+  );
+
+  app.get("/api/fashion/whatsapp/settings", requireAdminAuth, async (_req, res) => {
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      res.status(200).json({ settings });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load WhatsApp API settings.") });
+    }
+  });
+
+  app.put(
+    "/api/fashion/whatsapp/settings",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.update_whatsapp_settings"),
+    async (req, res) => {
+    const payload =
+      typeof req.body?.settings === "object" && req.body?.settings !== null ? (req.body.settings as FashionWhatsAppApiSettings) : null;
+    if (!payload) {
+      res.status(400).json({ error: "settings payload is required." });
+      return;
+    }
+    try {
+      const settings = await fashionWhatsAppStore.saveSettings(payload);
+      res.status(200).json({ settings });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid WhatsApp API settings payload." });
+    }
+    }
+  );
+
+  app.post("/api/fashion/whatsapp/inquiries", async (req, res) => {
+    const validation = validateInquiryPayload(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ ok: false, error: validation.error, deliveryMode: "fallback-required" });
+      return;
+    }
+
+    const payload = validation.payload;
+    const publishedFashion = await fashionStore.getPublished();
+    const inquiryId = `inq-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const fallbackPhoneNumber = inferFallbackPhoneNumber(payload, publishedFashion);
+    const fallbackWaMeUrl = buildFallbackWaMeUrl(fallbackPhoneNumber, payload.message);
+    const baseRecord: FashionInquiryRecord = {
+      id: inquiryId,
+      createdAt: new Date().toISOString(),
+      type: payload.type,
+      source: payload.source,
+      products: payload.products,
+      message: payload.message,
+      imageUrl: payload.imageUrl,
+      customerMeta: payload.customerMeta,
+      consent: payload.consent,
+      sendMode: "rich-inquiry",
+      status: "queued",
+      fallbackRequired: false
+    };
+
+    await fashionInquiryStore.add(baseRecord);
+
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      const sendResult = await sendFashionWhatsAppMessage(settings, {
+        message: payload.message,
+        imageUrl: payload.imageUrl
+      });
+
+      const fallbackRequired = sendResult.deliveryMode === "fallback-required";
+      const status = mapSendResultToInquiryStatus(sendResult);
+      await fashionInquiryStore.updateStatus(inquiryId, {
+        status,
+        fallbackRequired,
+        providerResponse: sendResult.providerResponse
+      });
+
+      if (!sendResult.ok && fallbackRequired) {
+        res.status(200).json({
+          ok: false,
+          inquiryId,
+          deliveryMode: "fallback-required",
+          fallbackWaMeUrl: fallbackWaMeUrl || undefined,
+          error: sendResult.error || sendResult.providerResponse?.detail || "API send unavailable. Fallback required."
+        });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        inquiryId,
+        deliveryMode: sendResult.deliveryMode,
+        fallbackWaMeUrl: fallbackRequired ? fallbackWaMeUrl || undefined : undefined,
+        recipientPhoneNumber: sendResult.recipientPhoneNumber
+      });
+    } catch (error) {
+      const detail = safeServerErrorMessage(error, "Failed to process rich fashion inquiry.");
+      await fashionInquiryStore.updateStatus(inquiryId, {
+        status: "failed",
+        fallbackRequired: true,
+        providerResponse: {
+          deliveryMode: "fallback-required",
+          detail
+        }
+      });
+      res.status(500).json({
+        ok: false,
+        inquiryId,
+        deliveryMode: "fallback-required",
+        fallbackWaMeUrl: fallbackWaMeUrl || undefined,
+        error: detail
+      });
+    }
+  });
+
+  app.get("/api/fashion/whatsapp/inquiries", requireAdminAuth, async (req, res) => {
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const parsedLimit =
+      typeof rawLimit === "string" && rawLimit.trim() ? Number.parseInt(rawLimit.trim(), 10) : Number.NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 200)) : 20;
+    const records = await fashionInquiryStore.listLatest(limit);
+    res.status(200).json({ records });
+  });
+
+  app.put(
+    "/api/fashion/whatsapp/inquiries/:id",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.update_whatsapp_inquiry"),
+    async (req, res) => {
+      const inquiryId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+      if (!inquiryId) {
+        res.status(400).json({ error: "Inquiry id is required." });
+        return;
+      }
+      const validation = validateInquiryAdminPatch(req.body);
+      if (!validation.ok) {
+        res.status(400).json({ error: validation.error });
+        return;
+      }
+      try {
+        const updated = await fashionInquiryStore.updateById(inquiryId, validation.patch);
+        if (!updated) {
+          res.status(404).json({ error: "Inquiry not found." });
+          return;
+        }
+        res.status(200).json({ ok: true, record: updated });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to update inquiry.") });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/fashion/whatsapp/inquiries/:id",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.delete_whatsapp_inquiry"),
+    async (req, res) => {
+      const inquiryId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+      if (!inquiryId) {
+        res.status(400).json({ error: "Inquiry id is required." });
+        return;
+      }
+      try {
+        const removed = await fashionInquiryStore.removeById(inquiryId);
+        if (!removed) {
+          res.status(404).json({ error: "Inquiry not found." });
+          return;
+        }
+        res.status(200).json({ ok: true, id: inquiryId });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to delete inquiry.") });
+      }
+    }
+  );
+
+  app.post("/api/fashion/whatsapp/checkout", async (req, res) => {
+    const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+    const message = typeof payload.message === "string" ? payload.message.trim() : "";
+    const imageUrl = typeof payload.imageUrl === "string" ? payload.imageUrl.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      const sendResult = await sendFashionWhatsAppMessage(settings, { message, imageUrl });
+      if (!sendResult.ok) {
+        const detail = sendResult.providerResponse?.detail || sendResult.error || "WhatsApp API is not configured.";
+        const statusCode = sendResult.providerResponse?.statusCode ?? (sendResult.deliveryMode === "fallback-required" ? 503 : 502);
+        res.status(statusCode).json({ error: detail, delivery: sendResult.deliveryMode === "fallback-required" ? "disabled" : sendResult.deliveryMode });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        delivery: sendResult.deliveryMode,
+        recipientPhoneNumber: sendResult.recipientPhoneNumber
+      });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to send WhatsApp checkout request.") });
+    }
+  });
 
   const normalizeForCompare = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
   const hasHealthRiskClaims = (value: string) => /(cure|guaranteed|100%|no risk|instant results|instant)/i.test(value);

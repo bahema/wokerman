@@ -365,6 +365,14 @@ export const defaultProductSections: ProductSections = {
 };
 
 export const defaultHomeUi: HomeUiWithOptionalAdPrices = {
+  navLabels: {
+    fashion: "Fashion",
+    forex: "Forex",
+    betting: "Betting",
+    software: "Software",
+    social: "Social",
+    health: "Health"
+  },
   heroEyebrow: "Smart automation for modern operators",
   heroQuickGrabsLabel: "Quick Grabs",
   performanceSnapshotTitle: "Performance Snapshot",

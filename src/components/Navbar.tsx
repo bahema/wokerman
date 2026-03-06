@@ -14,10 +14,12 @@ type NavbarProps = {
   onThemeToggle: () => void;
   logoText: string;
   socials: { facebookUrl: string; whatsappUrl: string; other?: Array<{ name: string; url: string }> };
+  navLabels?: Partial<Record<"fashion" | "forex" | "betting" | "software" | "social" | "health", string>>;
   eventThemeActive?: boolean;
 };
 
 const navLinks = [
+  { id: "fashion", key: "navbar.fashion", mode: "route" },
   { id: "forex", key: "navbar.forex", mode: "section" },
   { id: "betting", key: "navbar.betting", mode: "section" },
   { id: "software", key: "navbar.software", mode: "section" },
@@ -25,7 +27,7 @@ const navLinks = [
   { id: "health", key: "navbar.health", mode: "route" }
 ] as const;
 
-const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventThemeActive = false }: NavbarProps) => {
+const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, navLabels, eventThemeActive = false }: NavbarProps) => {
   const { t } = useI18n();
   const [openPopover, setOpenPopover] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -144,7 +146,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                         : "text-slate-600 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
                   }`}
                 >
-                  {t(link.key)}
+                  {(navLabels?.[link.id] ?? "").trim() || t(link.key)}
                 </a>
               );
             })}
@@ -230,7 +232,7 @@ const Navbar = ({ activeSection, theme, onThemeToggle, logoText, socials, eventT
                           : "bg-slate-900/80 text-slate-100 hover:bg-slate-800"
                     }`}
                   >
-                    {t(link.key)}
+                    {(navLabels?.[link.id] ?? "").trim() || t(link.key)}
                   </a>
                 );
               })}

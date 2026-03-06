@@ -86,6 +86,14 @@ export type SiteContent = {
     };
   };
   homeUi?: {
+    navLabels?: {
+      fashion: string;
+      forex: string;
+      betting: string;
+      software: string;
+      social: string;
+      health: string;
+    };
     heroEyebrow: string;
     heroQuickGrabsLabel: string;
     performanceSnapshotTitle: string;

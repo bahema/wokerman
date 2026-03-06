@@ -25,6 +25,7 @@ import TestimonialManager from "../components/admin/TestimonialManager";
 import TrafficAiEditor from "../components/admin/TrafficAiEditor";
 import TopBar from "../components/admin/TopBar";
 import Drawer from "../components/admin/Drawer";
+import TopNavLinksEditor from "../components/admin/TopNavLinksEditor";
 import ProductCard from "../components/ProductCard";
 import {
   getAdminInitialContentAsync,
@@ -47,6 +48,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/traffic-ai": "traffic-ai",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
+  "/boss/top-nav-links": "top-nav-links",
   "/boss/hero-2": "hero-2",
   "/boss/products-supplements": "products-supplements",
   "/boss/products-gadgets": "products-gadgets",
@@ -62,6 +64,7 @@ const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "traffic-ai": "/boss/traffic-ai",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
+  "top-nav-links": "/boss/top-nav-links",
   "hero-2": "/boss/hero-2",
   "products-supplements": "/boss/products-supplements",
   "products-gadgets": "/boss/products-gadgets",
@@ -87,16 +90,79 @@ const Admin = () => {
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
   const autoPublishTimerRef = useRef<number | null>(null);
+  const pendingAutoPublishRef = useRef<{
+    content: typeof content;
+    successMessage: string;
+    fallbackErrorMessage: string;
+  } | null>(null);
+  const autoPublishQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     updateTheme(theme);
   }, [theme]);
 
-  useEffect(() => {
-    return () => {
-      if (autoPublishTimerRef.current !== null) {
-        window.clearTimeout(autoPublishTimerRef.current);
+  const runAutoPublish = async (
+    payload: { content: typeof content; successMessage: string; fallbackErrorMessage: string },
+    opts?: { avoidStateUpdates?: boolean }
+  ) => {
+    const avoidStateUpdates = opts?.avoidStateUpdates ?? false;
+    try {
+      if (!avoidStateUpdates && isMountedRef.current) {
+        setActionError("");
       }
+      await saveDraftContent(payload.content);
+      await publishContent(payload.content);
+      if (!avoidStateUpdates && isMountedRef.current) {
+        setStatus("Published");
+        setActionMessage(payload.successMessage);
+      }
+    } catch (error) {
+      if (!avoidStateUpdates && isMountedRef.current) {
+        setActionError(error instanceof Error ? error.message : payload.fallbackErrorMessage);
+      }
+    }
+  };
+
+  const enqueueAutoPublish = (
+    payload: { content: typeof content; successMessage: string; fallbackErrorMessage: string },
+    opts?: { avoidStateUpdates?: boolean }
+  ) => {
+    autoPublishQueueRef.current = autoPublishQueueRef.current.then(async () => {
+      await runAutoPublish(payload, opts);
+    });
+    return autoPublishQueueRef.current;
+  };
+
+  const flushPendingAutoPublish = (opts?: { avoidStateUpdates?: boolean }) => {
+    if (autoPublishTimerRef.current !== null) {
+      window.clearTimeout(autoPublishTimerRef.current);
+      autoPublishTimerRef.current = null;
+    }
+    const pending = pendingAutoPublishRef.current;
+    pendingAutoPublishRef.current = null;
+    if (!pending) return;
+    void enqueueAutoPublish(pending, opts);
+  };
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingAutoPublish({ avoidStateUpdates: true });
+      }
+    };
+    const onBeforeUnload = () => {
+      flushPendingAutoPublish({ avoidStateUpdates: true });
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    return () => {
+      isMountedRef.current = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      flushPendingAutoPublish({ avoidStateUpdates: true });
     };
   }, []);
 
@@ -176,21 +242,16 @@ const Admin = () => {
   const queueAutoPublish = (nextContent: typeof content, successMessage: string, fallbackErrorMessage: string) => {
     setContent(nextContent);
     setStatus("Draft");
+    pendingAutoPublishRef.current = { content: nextContent, successMessage, fallbackErrorMessage };
     if (autoPublishTimerRef.current !== null) {
       window.clearTimeout(autoPublishTimerRef.current);
     }
     autoPublishTimerRef.current = window.setTimeout(() => {
-      void (async () => {
-        try {
-          setActionError("");
-          await saveDraftContent(nextContent);
-          await publishContent(nextContent);
-          setStatus("Published");
-          setActionMessage(successMessage);
-        } catch (error) {
-          setActionError(error instanceof Error ? error.message : fallbackErrorMessage);
-        }
-      })();
+      const pending = pendingAutoPublishRef.current;
+      pendingAutoPublishRef.current = null;
+      autoPublishTimerRef.current = null;
+      if (!pending) return;
+      void enqueueAutoPublish(pending);
     }, 500);
   };
 
@@ -306,6 +367,32 @@ const Admin = () => {
             description="Compose campaigns, preview output, and manage scheduling controls."
           >
             <EmailSenderEditor />
+          </EditorShell>
+        );
+      case "top-nav-links":
+        return (
+          <EditorShell title="Top Nav Links" description="Edit labels used in the main website top navigation.">
+            <TopNavLinksEditor
+              value={{
+                fashion: content.homeUi?.navLabels?.fashion ?? "Fashion",
+                forex: content.homeUi?.navLabels?.forex ?? "Forex",
+                betting: content.homeUi?.navLabels?.betting ?? "Betting",
+                software: content.homeUi?.navLabels?.software ?? "Software",
+                social: content.homeUi?.navLabels?.social ?? "Social",
+                health: content.homeUi?.navLabels?.health ?? "Health"
+              }}
+              onChange={(nextLabels) => {
+                const nextContent = {
+                  ...content,
+                  homeUi: {
+                    ...defaultHomeUi,
+                    ...(content.homeUi ?? {}),
+                    navLabels: nextLabels
+                  }
+                };
+                queueAutoPublish(nextContent, "Top nav labels updated and published.", "Failed to publish top nav labels.");
+              }}
+            />
           </EditorShell>
         );
       case "product-media":

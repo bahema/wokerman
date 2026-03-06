@@ -3,7 +3,8 @@ import { apiGet, apiJson } from "../api/client";
 
 export const PUBLISHED_KEY = "site:published";
 export const DRAFT_KEY = "site:draft";
-const PUBLISHED_CACHE_KEY = "site:published:cache";
+export const PUBLISHED_CACHE_KEY = "site:published:cache";
+export const PUBLISHED_UPDATED_EVENT = "site:published:updated";
 
 const cloneDefaultAsync = async (): Promise<SiteContent> => {
   const { defaultSiteContent } = await import("../data/siteData");
@@ -25,6 +26,7 @@ const writePublishedCache = (content: SiteContent) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PUBLISHED_CACHE_KEY, JSON.stringify(content));
+    window.dispatchEvent(new CustomEvent<SiteContent>(PUBLISHED_UPDATED_EVENT, { detail: content }));
   } catch {
     // Ignore storage quota/privacy errors.
   }

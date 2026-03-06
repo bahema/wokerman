@@ -22,6 +22,7 @@ const enMessages = {
   "signup.errorAuthFailed": "Failed to authenticate.",
   "signup.invalidCredentials": "Invalid email or password.",
   "signup.ownerMissing": "Owner account is not configured on this environment.",
+  "navbar.fashion": "Fashion",
   "navbar.forex": "Forex",
   "navbar.health": "Health",
   "navbar.betting": "Betting",
@@ -180,6 +181,7 @@ export const messages: Record<AppLocale, Record<MessageKey, string>> = {
     "signup.errorAuthFailed": "فشل التحقق من الهوية.",
     "signup.invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
     "signup.ownerMissing": "حساب المالك غير مهيأ في هذه البيئة.",
+    "navbar.fashion": "Fashion",
     "navbar.forex": "فوركس",
     "navbar.health": "الصحة",
     "navbar.betting": "مراهنات",
@@ -307,6 +309,7 @@ export const messages: Record<AppLocale, Record<MessageKey, string>> = {
     "backToTop.aria": "العودة للأعلى"
   },
   es: withFallback({
+    "navbar.fashion": "Fashion",
     "navbar.forex": "Forex",
     "navbar.health": "Salud",
     "navbar.betting": "Apuestas",
@@ -436,3 +439,5 @@ export const messages: Record<AppLocale, Record<MessageKey, string>> = {
     "backToTop.aria": "Naverh"
   })
 };
+
+
