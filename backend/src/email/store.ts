@@ -161,7 +161,8 @@ const buildToken = () => randomUUID().replace(/-/g, "");
 const isSubscriberStatus = (value: unknown): value is EmailSubscriberStatus =>
   value === EMAIL_SUBSCRIBER_STATUS.pending || value === EMAIL_SUBSCRIBER_STATUS.confirmed || value === EMAIL_SUBSCRIBER_STATUS.unsubscribed;
 
-const isSubscriberSource = (value: unknown): value is EmailSubscriberSource => value === EMAIL_SUBSCRIBER_SOURCE.quickGrabs;
+const isSubscriberSource = (value: unknown): value is EmailSubscriberSource =>
+  value === EMAIL_SUBSCRIBER_SOURCE.quickGrabs || value === EMAIL_SUBSCRIBER_SOURCE.fashionVideosAdvertise;
 const isCampaignBodyMode = (value: unknown): value is EmailCampaignBodyMode => value === EMAIL_CAMPAIGN_BODY_MODE.rich || value === EMAIL_CAMPAIGN_BODY_MODE.html;
 const isCampaignAudienceMode = (value: unknown): value is EmailCampaignAudienceMode =>
   value === EMAIL_CAMPAIGN_AUDIENCE_MODE.all || value === EMAIL_CAMPAIGN_AUDIENCE_MODE.segments;
@@ -302,12 +303,13 @@ export const createEmailStore = async (baseDir: string) => {
     return next;
   };
 
-  const upsertPendingSubscriber = async (input: { name: string; email: string; phone?: string }) => {
+  const upsertPendingSubscriber = async (input: { name: string; email: string; phone?: string; source?: EmailSubscriberSource }) => {
     return runExclusive(async () => {
       const record = await read();
       const normalizedEmail = input.email.trim().toLowerCase();
       const normalizedName = input.name.trim();
       const normalizedPhone = (input.phone ?? "").trim();
+      const normalizedSource = isSubscriberSource(input.source) ? input.source : EMAIL_SUBSCRIBER_SOURCE.quickGrabs;
       const nowIso = new Date().toISOString();
 
       const existingIndex = record.subscribers.findIndex((item) => item.email === normalizedEmail);
@@ -320,7 +322,7 @@ export const createEmailStore = async (baseDir: string) => {
           name: normalizedName || existing.name,
           phone: normalizedPhone,
           status: EMAIL_SUBSCRIBER_STATUS.pending,
-          source: EMAIL_SUBSCRIBER_SOURCE.quickGrabs,
+          source: normalizedSource,
           confirmToken: buildToken(),
           unsubscribeToken: existing.unsubscribeToken || buildToken(),
           updatedAt: nowIso
@@ -337,7 +339,7 @@ export const createEmailStore = async (baseDir: string) => {
         email: normalizedEmail,
         phone: normalizedPhone,
         status: EMAIL_SUBSCRIBER_STATUS.pending,
-        source: EMAIL_SUBSCRIBER_SOURCE.quickGrabs,
+        source: normalizedSource,
         confirmToken: buildToken(),
         unsubscribeToken: buildToken(),
         createdAt: nowIso,
