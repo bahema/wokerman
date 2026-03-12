@@ -9,6 +9,8 @@ const isValidUrl = (input: string) => {
   }
 };
 
+const isValidWhatsAppNumber = (input: string) => /^\+?\d[\d\s()-]{5,}$/.test(input.trim());
+
 const isUploadMediaUrl = (input: string) => {
   const trimmed = input.trim();
   if (!trimmed) return true;
@@ -154,7 +156,11 @@ export const validateContentForSave = (content: SiteContent) => {
         if (!Number.isFinite(normalized) || normalized < 1) return `${group.key} product #${i + 1}: Position must be >= 1.`;
       }
       if (!Number.isFinite(item.rating) || item.rating < 1 || item.rating > 5) return `${group.key} product #${i + 1}: Rating must be between 1 and 5.`;
-      if (!isValidUrl(item.checkoutLink)) return `${group.key} product #${i + 1}: Checkout URL is invalid.`;
+      const checkoutLink = item.checkoutLink.trim();
+      const whatsappNumber = item.whatsappNumber?.trim() ?? "";
+      if (!checkoutLink && !whatsappNumber) return `${group.key} product #${i + 1}: Provide checkout URL or WhatsApp number.`;
+      if (checkoutLink && !isValidUrl(checkoutLink)) return `${group.key} product #${i + 1}: Checkout URL is invalid.`;
+      if (whatsappNumber && !isValidWhatsAppNumber(whatsappNumber)) return `${group.key} product #${i + 1}: WhatsApp number is invalid.`;
       if (!item.features.map((feature) => feature.trim()).filter(Boolean).length) {
         return `${group.key} product #${i + 1}: At least one feature is required.`;
       }

@@ -7,12 +7,19 @@ import QuickGrabsModal from "../components/QuickGrabsModal";
 import SectionHeader from "../components/SectionHeader";
 import { type HealthUpcomingItem, type Product, type SiteContent } from "../../shared/siteTypes";
 import { defaultHealthPage, defaultHomeUi, defaultSiteContent } from "../data/siteData";
-import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
+import {
+  getDraftContentAsync,
+  getPublishedContentAsync,
+  getSiteMetaAsync,
+  PUBLISHED_CACHE_KEY,
+  PUBLISHED_UPDATED_EVENT
+} from "../utils/adminStorage";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { useProductFilters } from "../utils/useProductFilters";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { withBasePath } from "../utils/basePath";
+import { openProductCheckout } from "../utils/productCheckout";
 import { useI18n } from "../i18n/provider";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
@@ -113,6 +120,28 @@ const Health = () => {
   }, [siteUpdatedAt]);
 
   useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== PUBLISHED_CACHE_KEY || !event.newValue) return;
+      try {
+        const parsed = JSON.parse(event.newValue) as SiteContent;
+        setContent(parsed);
+      } catch {
+        // Ignore invalid payloads.
+      }
+    };
+    const onPublishedUpdate = (event: Event) => {
+      const next = (event as CustomEvent<SiteContent>).detail;
+      if (next) setContent(next);
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(PUBLISHED_UPDATED_EVENT, onPublishedUpdate);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(PUBLISHED_UPDATED_EVENT, onPublishedUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!newProductsNotice) return;
     const timer = window.setTimeout(() => setNewProductsNotice(""), 60000);
     return () => window.clearTimeout(timer);
@@ -158,6 +187,7 @@ const Health = () => {
     ...defaultHomeUi,
     ...(content.homeUi ?? {})
   };
+  const industriesForTrack = content.industries.length > 1 ? [...content.industries, ...content.industries] : content.industries;
 
   const runTarget = (target: string) => {
     const normalized = target.trim().toLowerCase().replace("#", "");
@@ -275,7 +305,9 @@ const Health = () => {
           moreInfoLabel: homeUi.productCardMoreInfoLabel,
           affiliateDisclosure: homeUi.productCardAffiliateDisclosure
         }}
-        onCheckout={(item) => window.open(item.checkoutLink, "_blank", "noopener,noreferrer")}
+        onCheckout={(item) => {
+          openProductCheckout(item, content);
+        }}
         onMoreInfo={(item, trigger) => {
           setInfoProduct(item);
           setInfoTrigger(trigger);
@@ -297,6 +329,7 @@ const Health = () => {
         onThemeToggle={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
         logoText={content.branding.logoText}
         socials={content.socials}
+        navLabels={homeUi.navLabels}
         eventThemeActive={eventThemeActive}
       />
 
@@ -492,12 +525,10 @@ const Health = () => {
               {content.homeUi?.industriesEmptyMessage ?? "No industries published yet."}
             </div>
           ) : (
-            <div
-              className="scrollbar-none overflow-x-auto overflow-y-hidden py-4"
-            >
-              <div className="flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8">
-                {content.industries.map((industry) => (
-                  <div key={industry.id} className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3">
+            <div className="scrollbar-none overflow-hidden py-4">
+              <div className={`flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8 ${content.industries.length > 1 ? "marquee-track" : ""}`}>
+                {industriesForTrack.map((industry, index) => (
+                  <div key={`${industry.id}-${index}`} className="flex min-w-[96px] items-center justify-center px-2 py-2 md:px-3">
                     {industry.link?.trim() ? (
                       <a href={industry.link.trim()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${industry.label}`}>
                         {industry.imageUrl ? (

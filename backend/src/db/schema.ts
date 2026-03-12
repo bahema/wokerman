@@ -24,7 +24,8 @@ export const EMAIL_SUBSCRIBER_STATUS = {
 export type EmailSubscriberStatus = (typeof EMAIL_SUBSCRIBER_STATUS)[keyof typeof EMAIL_SUBSCRIBER_STATUS];
 
 export const EMAIL_SUBSCRIBER_SOURCE = {
-  quickGrabs: "quick_grabs"
+  quickGrabs: "quick_grabs",
+  fashionVideosAdvertise: "fashion_videos_advertise"
 } as const;
 
 export type EmailSubscriberSource = (typeof EMAIL_SUBSCRIBER_SOURCE)[keyof typeof EMAIL_SUBSCRIBER_SOURCE];

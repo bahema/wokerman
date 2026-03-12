@@ -28,7 +28,8 @@ const createNewProduct = (category: ProductCategory): Product => ({
   isNew: false,
   category,
   imageUrl: "",
-  checkoutLink: "https://example.com/checkout/new"
+  checkoutLink: "https://example.com/checkout/new",
+  whatsappNumber: ""
 });
 
 const normalizePosition = (value: unknown, fallback: number) => {
@@ -139,12 +140,19 @@ const ProductManager = ({
     }
   };
 
+  const isValidWhatsAppNumber = (value: string) => /^\+?\d[\d\s()-]{5,}$/.test(value.trim());
+
   const validateDraftItem = (item: Product) => {
     if (!item.title.trim()) return "Title is required.";
     if (!item.shortDescription.trim()) return "Short description is required.";
     if (!item.longDescription.trim()) return "Long description is required.";
     if (!Number.isFinite(item.rating) || item.rating < 1 || item.rating > 5) return "Rating must be between 1 and 5.";
-    if (!isValidUrl(item.checkoutLink)) return "Checkout URL must be a valid http(s) URL.";
+    const checkoutLink = item.checkoutLink.trim();
+    const whatsappNumber = item.whatsappNumber?.trim() ?? "";
+    if (!checkoutLink && !whatsappNumber) return "Provide either a Checkout URL or a WhatsApp number.";
+    if (checkoutLink && !isValidUrl(checkoutLink)) return "Checkout URL must be a valid http(s) URL.";
+    if (whatsappNumber && /^https?:\/\//i.test(whatsappNumber)) return "WhatsApp number must be a number, not a link.";
+    if (whatsappNumber && !isValidWhatsAppNumber(whatsappNumber)) return "WhatsApp number must be valid digits, optionally with +, spaces, or parentheses.";
     if (!Number.isFinite(item.position) || Number(item.position) < 1) return "Position must be a number greater than or equal to 1.";
     const normalizedPrice = normalizePrice(item.price);
     if (Number.isNaN(normalizedPrice)) return "Price must be a valid number.";
@@ -351,6 +359,9 @@ const ProductManager = ({
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-950/40">
               <p className="text-lg font-semibold leading-tight">{item.title}</p>
               <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{item.checkoutLink}</p>
+              {item.whatsappNumber?.trim() ? (
+                <p className="mt-1 truncate text-xs text-emerald-600 dark:text-emerald-400">WhatsApp: {item.whatsappNumber}</p>
+              ) : null}
               <p className="mt-2 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">{item.shortDescription || "No short description yet."}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-950/40">
@@ -555,8 +566,20 @@ const ProductManager = ({
               <input
                 value={draftItem.checkoutLink}
                 onChange={(event) => setDraftItem((prev) => ({ ...prev, checkoutLink: event.target.value }))}
+                placeholder="https://example.com/checkout/product"
                 className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
               />
+              <p className="text-xs text-slate-500 dark:text-slate-400">Use a normal http(s) checkout link here. If you want WhatsApp instead, leave this blank and use the WhatsApp number field.</p>
+            </label>
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span>WhatsApp number</span>
+              <input
+                value={draftItem.whatsappNumber ?? ""}
+                onChange={(event) => setDraftItem((prev) => ({ ...prev, whatsappNumber: event.target.value }))}
+                placeholder="+250700000000"
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">Put digits here only. If this field is filled, checkout can route to this product number. If empty, the site falls back to the current Fashion/global WhatsApp number when no checkout URL is set.</p>
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
               <span>Image URL (optional)</span>

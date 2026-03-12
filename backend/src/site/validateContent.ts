@@ -14,6 +14,8 @@ const isHttpUrl = (value: unknown) => {
   }
 };
 
+const isPhoneDigits = (value: unknown) => typeof value === "string" && /^\+?\d[\d\s()-]{5,}$/.test(value.trim());
+
 const isProductCategory = (value: unknown): value is Product["category"] =>
   value === "Forex" || value === "Betting" || value === "Software" || value === "Social";
 
@@ -37,9 +39,18 @@ const validateProduct = (product: unknown, groupName: string, index: number) => 
   }
   if (typeof product.isNew !== "boolean") return `${groupName} product #${index + 1}: isNew must be boolean.`;
   if (!isProductCategory(product.category)) return `${groupName} product #${index + 1}: category is invalid.`;
-  if (!isHttpUrl(product.checkoutLink)) return `${groupName} product #${index + 1}: checkoutLink must be a valid http(s) URL.`;
+  const checkoutLink = asNonEmptyString(product.checkoutLink);
+  const whatsappNumber = asNonEmptyString(product.whatsappNumber);
+  if (!checkoutLink && !whatsappNumber) {
+    return `${groupName} product #${index + 1}: provide either checkoutLink or whatsappNumber.`;
+  }
+  if (checkoutLink && !isHttpUrl(checkoutLink)) return `${groupName} product #${index + 1}: checkoutLink must be a valid http(s) URL.`;
+  if (whatsappNumber && !isPhoneDigits(whatsappNumber)) return `${groupName} product #${index + 1}: whatsappNumber must be a valid phone number.`;
   if (product.imageUrl !== undefined && product.imageUrl !== null && typeof product.imageUrl !== "string") {
     return `${groupName} product #${index + 1}: imageUrl must be a string when provided.`;
+  }
+  if (product.whatsappNumber !== undefined && product.whatsappNumber !== null && typeof product.whatsappNumber !== "string") {
+    return `${groupName} product #${index + 1}: whatsappNumber must be a string when provided.`;
   }
   return "";
 };

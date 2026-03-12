@@ -1,5 +1,6 @@
 import type { Product } from "../data/siteData";
 import ModalShell from "./ModalShell";
+import { resolveProductCheckoutTarget } from "../utils/productCheckout";
 
 type CheckoutModalProps = {
   product: Product | null;
@@ -22,12 +23,16 @@ const CheckoutModal = ({ product, onClose, returnFocusTo }: CheckoutModalProps) 
     >
       {product ? (
         <>
+          {(() => {
+            const resolved = resolveProductCheckoutTarget(product);
+            return (
+              <>
           <p className="mb-6 break-words text-sm text-slate-300">
             Confirm checkout for <span className="font-semibold text-white">{product.title}</span>.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <a
-              href={product.checkoutLink}
+              href={resolved.target || product.checkoutLink}
               target="_blank"
               rel="sponsored nofollow noopener noreferrer"
               onClick={onClose}
@@ -43,6 +48,9 @@ const CheckoutModal = ({ product, onClose, returnFocusTo }: CheckoutModalProps) 
               Cancel
             </button>
           </div>
+              </>
+            );
+          })()}
         </>
       ) : null}
     </ModalShell>

@@ -38,6 +38,7 @@ export type Product = {
   category: ProductCategory;
   imageUrl?: string;
   checkoutLink: string;
+  whatsappNumber?: string;
 };
 
 export type PricingConfig = {
@@ -86,6 +87,14 @@ export type SiteContent = {
     };
   };
   homeUi?: {
+    navLabels?: {
+      fashion: string;
+      forex: string;
+      betting: string;
+      software: string;
+      social: string;
+      health: string;
+    };
     heroEyebrow: string;
     heroQuickGrabsLabel: string;
     performanceSnapshotTitle: string;

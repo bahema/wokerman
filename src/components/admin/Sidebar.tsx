@@ -5,6 +5,7 @@ export type AdminSection =
   | "traffic-ai"
   | "email-analytics"
   | "email-sender"
+  | "top-nav-links"
   | "account-settings"
   | "analytics"
   | "product-media"
@@ -29,7 +30,9 @@ type SidebarProps = {
   onSelect: (section: AdminSection) => void;
 };
 
-const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: string }> }> = [
+type SidebarItem = { label: string; key?: AdminSection; href?: string };
+
+const groups: Array<{ title: string; items: SidebarItem[] }> = [
   {
     title: "Operations",
     items: [
@@ -76,6 +79,9 @@ const groups: Array<{ title: string; items: Array<{ key: AdminSection; label: st
     items: [
       { key: "email-analytics", label: "Email Analytics" },
       { key: "email-sender", label: "Email Sender" },
+      { key: "top-nav-links", label: "Top Nav Links" },
+      { href: "/boss/fashion/videos", label: "Fashion videos" },
+      { href: "/boss/fashion", label: "Fashion" },
       { key: "account-settings", label: "Account Settings" }
     ]
   }
@@ -90,11 +96,21 @@ const Sidebar = ({ active, onSelect }: SidebarProps) => (
           <div className="space-y-1">
             {group.items.map((item) => (
               <button
-                key={item.key}
+                key={item.key ?? item.href ?? item.label}
                 type="button"
-                onClick={() => onSelect(item.key)}
+                onClick={() => {
+                  if (item.href) {
+                    window.open(item.href, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  if (item.key) {
+                    onSelect(item.key);
+                  }
+                }}
                 className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                  active === item.key
+                  item.href
+                    ? "bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/40 dark:text-rose-100 dark:hover:bg-rose-900/60"
+                    : item.key && active === item.key
                     ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm"
                     : "text-slate-700 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-700"
                 }`}

@@ -7,9 +7,10 @@ type QuickGrabsModalProps = {
   open: boolean;
   onClose: () => void;
   returnFocusTo: HTMLElement | null;
+  subscribeSource?: "quick_grabs" | "fashion_videos_advertise";
 };
 
-const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps) => {
+const QuickGrabsModal = ({ open, onClose, returnFocusTo, subscribeSource = "quick_grabs" }: QuickGrabsModalProps) => {
   const { t } = useI18n();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -43,7 +44,8 @@ const QuickGrabsModal = ({ open, onClose, returnFocusTo }: QuickGrabsModalProps)
         {
         name,
         email,
-        phone: contact
+        phone: contact,
+        source: subscribeSource
         }
       );
       setSubmitted(true);
