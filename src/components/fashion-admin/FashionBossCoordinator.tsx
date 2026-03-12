@@ -122,6 +122,8 @@ type MediaAsset = {
   url: string;
 };
 
+type MediaUsageMap = Record<string, string[]>;
+
 type ProductPickerContext = {
   title: string;
   subtitle: string;
@@ -161,6 +163,59 @@ const formatBadgeLabel = (value: string) =>
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+
+const getPublishValidationIssues = (draft: FashionBossDraft) => {
+  const issues: string[] = [];
+
+  if (!draft.productCatalog.length) {
+    issues.push("Product catalog must contain at least one item.");
+  }
+
+  const productIds = new Set<string>();
+  draft.productCatalog.forEach((product, index) => {
+    const label = product.name?.trim() ? `Product ${index + 1} (${product.name.trim()})` : `Product ${index + 1}`;
+    const productId = product.id?.trim() ?? "";
+    if (!productId) issues.push(`${label}: id is required.`);
+    if (productId) {
+      if (productIds.has(productId)) {
+        issues.push(`${label}: duplicate product id "${productId}".`);
+      }
+      productIds.add(productId);
+    }
+    if (!product.name?.trim()) issues.push(`${label}: name is required.`);
+    if (!product.collection?.trim()) issues.push(`${label}: collection is required.`);
+    if (!product.category?.trim()) issues.push(`${label}: category is required.`);
+    if (!Number.isFinite(product.price) || product.price < 0) issues.push(`${label}: price must be a number >= 0.`);
+    if (!product.tone?.trim()) issues.push(`${label}: tone is required.`);
+    if (!product.note?.trim()) issues.push(`${label}: note is required.`);
+    if (!product.palette?.trim()) issues.push(`${label}: palette is required.`);
+    if (!product.material?.trim()) issues.push(`${label}: material is required.`);
+    if (!product.fit?.trim()) issues.push(`${label}: fit is required.`);
+    if (!product.occasion?.trim()) issues.push(`${label}: occasion is required.`);
+    if (!product.availabilityLabel?.trim()) issues.push(`${label}: availability label is required.`);
+    if (!Array.isArray(product.styleTags) || product.styleTags.filter((tag) => tag?.trim()).length === 0) {
+      issues.push(`${label}: add at least one style tag.`);
+    }
+  });
+
+  if (!draft.collectionFilters.length) {
+    issues.push("Collections: add at least one collection filter.");
+  }
+  if (!draft.homepageSlides.length) {
+    issues.push("Homepage: add at least one hero slide.");
+  }
+  if (!draft.editorialSlides.length) {
+    issues.push("Editorial: add at least one campaign slide.");
+  }
+  if (!draft.trustPoints.length) {
+    issues.push("Homepage: add at least one trust point.");
+  }
+  if (!draft.styleNotes.introNotes.length) {
+    issues.push("Style Notes: add at least one intro note.");
+  }
+
+  return issues;
+};
 
 const buildProductDraft = (product: FashionProduct | null): ProductDraftState => ({
   id: product?.id ?? NEW_PRODUCT_ID,
@@ -514,6 +569,113 @@ const FashionBoss = () => {
         .includes(query)
     );
   }, [allProducts, productSearch]);
+
+  const getProductUsageReferences = (productId: string) => {
+    const references: string[] = [];
+
+    Object.entries(homepageAssignments).forEach(([blockId, ids]) => {
+      if (ids.includes(productId)) {
+        const blockTitle = homepageBlockDefinitions.find((block) => block.id === blockId)?.title ?? blockId;
+        references.push(`Homepage: ${blockTitle}`);
+      }
+    });
+
+    if (selectedCollectionSpotlightId === productId) {
+      references.push("Collections: Spotlight");
+    }
+
+    Object.entries(styleSetAssignments).forEach(([setId, ids]) => {
+      if (ids.includes(productId)) {
+        const setTitle = draft.styleNotes.setMeta[setId as FashionBossDraft["styleNotes"]["defaultSet"]]?.title ?? setId;
+        references.push(`Style Notes: ${setTitle}`);
+      }
+    });
+
+    if (editorialStoryProductIds.includes(productId)) references.push("Editorial: Story picks");
+    if (editorialChapterProductIds.includes(productId)) references.push("Editorial: Chapter products");
+    if (editorialRelatedProductIds.includes(productId)) references.push("Editorial: Related strip");
+
+    Object.entries(bundleAssignments).forEach(([bundleId, ids]) => {
+      if (ids.includes(productId)) {
+        const bundleTitle = draft.bundleMeta[bundleId]?.title ?? bundleId;
+        references.push(`Bundle: ${bundleTitle}`);
+      }
+    });
+
+    return references;
+  };
+
+  const selectedProductUsage = useMemo(() => {
+    if (!selectedProduct || selectedProductId === NEW_PRODUCT_ID) return [];
+    return getProductUsageReferences(selectedProduct.id);
+  }, [
+    bundleAssignments,
+    draft.bundleMeta,
+    draft.styleNotes.setMeta,
+    editorialChapterProductIds,
+    editorialRelatedProductIds,
+    editorialStoryProductIds,
+    homepageAssignments,
+    selectedCollectionSpotlightId,
+    selectedProduct,
+    selectedProductId,
+    styleSetAssignments
+  ]);
+
+  const mediaUsageMap = useMemo<MediaUsageMap>(() => {
+    const usage = new Map<string, Set<string>>();
+    const addUsage = (url: string | undefined, label: string) => {
+      const normalized = url?.trim();
+      if (!normalized) return;
+      if (!usage.has(normalized)) usage.set(normalized, new Set<string>());
+      usage.get(normalized)?.add(label);
+    };
+
+    allProducts.forEach((product) => {
+      addUsage(product.primaryImage, `Product "${product.name}" primary image`);
+      addUsage(product.detailImage, `Product "${product.name}" detail image`);
+      addUsage(product.stylingImage, `Product "${product.name}" styling image`);
+    });
+
+    homepageSlides.forEach((slide, index) => addUsage(slide.imageUrl, `Homepage slide ${index + 1}`));
+    editorialSlides.forEach((slide, index) => addUsage(slide.imageUrl, `Editorial slide ${index + 1}`));
+
+    addUsage(draft.styleNotes.heroImage, "Style Notes hero image");
+    addUsage(draft.styleNotes.panelImage, "Style Notes panel image");
+
+    addUsage(draft.editorial.introPrimaryImage, "Editorial intro primary image");
+    addUsage(draft.editorial.introSecondaryImage, "Editorial intro secondary image");
+    addUsage(draft.editorial.introTertiaryImage, "Editorial intro tertiary image");
+    addUsage(draft.editorial.campaignNotesImage, "Editorial campaign notes image");
+    addUsage(draft.editorial.chapterTwoPrimaryImage, "Editorial chapter two primary image");
+    addUsage(draft.editorial.chapterTwoSecondaryImage, "Editorial chapter two secondary image");
+    addUsage(draft.editorial.chapterTwoTertiaryImage, "Editorial chapter two tertiary image");
+    addUsage(draft.editorial.finalChapterPrimaryImage, "Editorial final chapter primary image");
+    addUsage(draft.editorial.finalChapterSecondaryImage, "Editorial final chapter secondary image");
+    addUsage(draft.editorial.finalChapterTertiaryImage, "Editorial final chapter tertiary image");
+
+    return Object.fromEntries(Array.from(usage.entries()).map(([url, refs]) => [url, Array.from(refs)]));
+  }, [allProducts, draft.editorial, draft.styleNotes, editorialSlides, homepageSlides]);
+
+  const productDraftIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (!productDraft.name.trim()) issues.push("Product name is required.");
+    if (!productDraft.collection.trim()) issues.push("Collection is required.");
+    if (!productDraft.category.trim()) issues.push("Category is required.");
+    const price = Number(productDraft.price);
+    if (!productDraft.price.trim() || !Number.isFinite(price) || price < 0) {
+      issues.push("Price must be a number greater than or equal to 0.");
+    }
+    if (!productDraft.material.trim()) issues.push("Material is required.");
+    if (!productDraft.fit.trim()) issues.push("Fit is required.");
+    if (!productDraft.occasion.trim()) issues.push("Occasion is required.");
+    if (!productDraft.availabilityLabel.trim()) issues.push("Availability is required.");
+    if (!productDraft.note.trim()) issues.push("Promotion note is required.");
+    if (productDraft.styleTags.split(",").map((tag) => tag.trim()).filter(Boolean).length === 0) {
+      issues.push("At least one style tag is required.");
+    }
+    return issues;
+  }, [productDraft]);
 
   const productFieldOptions = useMemo(() => {
     const uniqueSorted = (values: string[]) =>
@@ -1049,6 +1211,33 @@ const FashionBoss = () => {
     setProductDraftSavedAt(null);
   };
 
+  const removeProductReferences = (productId: string) => {
+    const nextHomepageAssignments = dedupeRecordIds(
+      Object.fromEntries(
+        Object.entries(homepageAssignments).map(([blockId, ids]) => [blockId, ids.filter((id) => id !== productId)])
+      ) as Record<string, string[]>
+    ) as Record<HomepageBlockId, string[]>;
+    const nextStyleSetAssignments = dedupeRecordIds(
+      Object.fromEntries(
+        Object.entries(styleSetAssignments).map(([setId, ids]) => [setId, ids.filter((id) => id !== productId)])
+      ) as Record<string, string[]>
+    ) as FashionBossDraft["styleSetAssignments"];
+    const nextBundleAssignments = dedupeRecordIds(
+      Object.fromEntries(
+        Object.entries(bundleAssignments).map(([bundleId, ids]) => [bundleId, ids.filter((id) => id !== productId)])
+      ) as Record<string, string[]>
+    );
+
+    return {
+      homepageAssignments: nextHomepageAssignments,
+      styleSetAssignments: nextStyleSetAssignments,
+      bundleAssignments: nextBundleAssignments,
+      editorialStoryProductIds: editorialStoryProductIds.filter((id) => id !== productId),
+      editorialChapterProductIds: editorialChapterProductIds.filter((id) => id !== productId),
+      editorialRelatedProductIds: editorialRelatedProductIds.filter((id) => id !== productId)
+    };
+  };
+
   const commitProductDraft = () => {
     const fallbackProduct = selectedProduct ?? allProducts[0] ?? null;
     const normalizedBadgeType = productDraft.badgeType.trim();
@@ -1088,6 +1277,10 @@ const FashionBoss = () => {
   };
 
   const saveProductDraft = () => {
+    if (productDraftIssues.length > 0) {
+      setRequestError(productDraftIssues[0]);
+      return;
+    }
     const { nextProduct, nextCatalogProducts } = commitProductDraft();
     setCatalogProducts(nextCatalogProducts);
     setSelectedProductId(nextProduct.id);
@@ -1245,29 +1438,64 @@ const FashionBoss = () => {
     setProductPickerTarget(null);
   };
 
+  const persistDraftChange = async (next: FashionBossDraft, successMessage: string) => {
+    setRequestError(null);
+    setIsSavingRemote(true);
+    try {
+      const saved = await saveFashionDraftContent(next);
+      applyDraftState(saved);
+      setFashionMeta(await getFashionMetaAsync());
+      setSavedAt(formatAdminTime());
+      setActionMessage(successMessage);
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Failed to save fashion draft.");
+    } finally {
+      setIsSavingRemote(false);
+    }
+  };
+
   const applyPickedMedia = (imageUrl: string) => {
     if (mediaPickerSlot) {
       patchProductDraft({ [mediaPickerSlot]: imageUrl } as Partial<ProductDraftState>);
+      if (selectedProduct) {
+        const nextCatalogProducts = allProducts.map((product) =>
+          product.id === selectedProduct.id ? { ...product, [mediaPickerSlot]: imageUrl || undefined } : product
+        );
+        void persistDraftChange(buildPersistedDraft({ productCatalog: nextCatalogProducts }), "Product image saved.");
+      }
       closeMediaPicker();
       return;
     }
     if (editorialMediaField) {
+      const nextEditorial = { ...draft.editorial, [editorialMediaField]: imageUrl };
       patchDraft("editorial", { [editorialMediaField]: imageUrl } as Partial<FashionBossDraft["editorial"]>);
       closeMediaPicker();
+      void persistDraftChange({ ...buildPersistedDraft(), editorial: nextEditorial }, "Editorial image saved.");
       return;
     }
     if (styleNotesMediaField) {
+      const nextStyleNotes = { ...draft.styleNotes, [styleNotesMediaField]: imageUrl };
       patchDraft("styleNotes", { [styleNotesMediaField]: imageUrl } as Partial<FashionBossDraft["styleNotes"]>);
       closeMediaPicker();
+      void persistDraftChange({ ...buildPersistedDraft(), styleNotes: nextStyleNotes }, "Style Notes image saved.");
       return;
     }
     if (slideMediaTarget) {
       if (slideMediaTarget.scope === "homepage") {
-        patchHomepageSlide(slideMediaTarget.slideId, { imageUrl });
+        const nextHomepageSlides = homepageSlides.map((slide) =>
+          slide.id === slideMediaTarget.slideId ? { ...slide, imageUrl } : slide
+        );
+        setHomepageSlides(nextHomepageSlides);
+        closeMediaPicker();
+        void persistDraftChange({ ...buildPersistedDraft(), homepageSlides: nextHomepageSlides }, "Homepage slide image saved.");
       } else {
-        patchEditorialSlide(slideMediaTarget.slideId, { imageUrl });
+        const nextEditorialSlides = editorialSlides.map((slide) =>
+          slide.id === slideMediaTarget.slideId ? { ...slide, imageUrl } : slide
+        );
+        setEditorialSlides(nextEditorialSlides);
+        closeMediaPicker();
+        void persistDraftChange({ ...buildPersistedDraft(), editorialSlides: nextEditorialSlides }, "Editorial slide image saved.");
       }
-      closeMediaPicker();
     }
   };
   const closeMediaPicker = () => {
@@ -1280,26 +1508,45 @@ const FashionBoss = () => {
   const clearPickedMediaTarget = () => {
     if (mediaPickerSlot) {
       patchProductDraft({ [mediaPickerSlot]: "" } as Partial<ProductDraftState>);
+      if (selectedProduct) {
+        const nextCatalogProducts = allProducts.map((product) =>
+          product.id === selectedProduct.id ? { ...product, [mediaPickerSlot]: undefined } : product
+        );
+        void persistDraftChange(buildPersistedDraft({ productCatalog: nextCatalogProducts }), "Product image cleared.");
+      }
       closeMediaPicker();
       return;
     }
     if (editorialMediaField) {
       patchDraft("editorial", { [editorialMediaField]: "" } as Partial<FashionBossDraft["editorial"]>);
+      const nextEditorial = { ...draft.editorial, [editorialMediaField]: "" };
       closeMediaPicker();
+      void persistDraftChange({ ...buildPersistedDraft(), editorial: nextEditorial }, "Editorial image cleared.");
       return;
     }
     if (styleNotesMediaField) {
       patchDraft("styleNotes", { [styleNotesMediaField]: "" } as Partial<FashionBossDraft["styleNotes"]>);
+      const nextStyleNotes = { ...draft.styleNotes, [styleNotesMediaField]: "" };
       closeMediaPicker();
+      void persistDraftChange({ ...buildPersistedDraft(), styleNotes: nextStyleNotes }, "Style Notes image cleared.");
       return;
     }
     if (slideMediaTarget) {
       if (slideMediaTarget.scope === "homepage") {
-        patchHomepageSlide(slideMediaTarget.slideId, { imageUrl: undefined });
+        const nextHomepageSlides = homepageSlides.map((slide) =>
+          slide.id === slideMediaTarget.slideId ? { ...slide, imageUrl: undefined } : slide
+        );
+        setHomepageSlides(nextHomepageSlides);
+        closeMediaPicker();
+        void persistDraftChange({ ...buildPersistedDraft(), homepageSlides: nextHomepageSlides }, "Homepage slide image cleared.");
       } else {
-        patchEditorialSlide(slideMediaTarget.slideId, { imageUrl: undefined });
+        const nextEditorialSlides = editorialSlides.map((slide) =>
+          slide.id === slideMediaTarget.slideId ? { ...slide, imageUrl: undefined } : slide
+        );
+        setEditorialSlides(nextEditorialSlides);
+        closeMediaPicker();
+        void persistDraftChange({ ...buildPersistedDraft(), editorialSlides: nextEditorialSlides }, "Editorial slide image cleared.");
       }
-      closeMediaPicker();
     }
   };
 
@@ -1330,6 +1577,12 @@ const FashionBoss = () => {
     setRequestError(null);
     setMediaStatusMessage(null);
     try {
+      const targetAsset = mediaAssets.find((asset) => asset.id === assetId);
+      const usageReferences = targetAsset ? mediaUsageMap[targetAsset.url] ?? [] : [];
+      if (usageReferences.length > 0) {
+        setRequestError(`This media asset is still used in Fashion: ${usageReferences.join(", ")}.`);
+        return;
+      }
       await deleteMediaItem(assetId);
       await refreshMediaLibrary();
       setMediaStatusMessage("Media item removed.");
@@ -1490,7 +1743,18 @@ const FashionBoss = () => {
     }));
   };
 
-  const buildPersistedDraft = (overrides?: { productCatalog?: FashionProduct[] }): FashionBossDraft => ({
+  const buildPersistedDraft = (
+    overrides?: {
+      productCatalog?: FashionProduct[];
+      homepageAssignments?: Record<HomepageBlockId, string[]>;
+      styleSetAssignments?: FashionBossDraft["styleSetAssignments"];
+      editorialStoryProductIds?: string[];
+      editorialChapterProductIds?: string[];
+      editorialRelatedProductIds?: string[];
+      bundleAssignments?: Record<string, string[]>;
+      collectionSpotlightProductId?: string;
+    }
+  ): FashionBossDraft => ({
     ...draft,
     productCatalog: overrides?.productCatalog ?? allProducts,
     homepageSlides,
@@ -1499,16 +1763,100 @@ const FashionBoss = () => {
       ...draft.collectionFilters.filter((filter) => filter.kind !== "custom"),
       ...customCollectionChips.map(({ id, label, kind }) => ({ id, label, kind }))
     ],
-    collectionSpotlightProductId: selectedCollectionSpotlightId,
-    styleSetAssignments: dedupeRecordIds(styleSetAssignments as Record<string, string[]>) as FashionBossDraft["styleSetAssignments"],
-    editorialStoryProductIds: dedupeIds(editorialStoryProductIds),
-    editorialChapterProductIds: dedupeIds(editorialChapterProductIds),
-    editorialRelatedProductIds: dedupeIds(editorialRelatedProductIds),
-    bundleAssignments: dedupeRecordIds(bundleAssignments),
-    homepageAssignments: dedupeRecordIds(homepageAssignments)
+    collectionSpotlightProductId: overrides?.collectionSpotlightProductId ?? selectedCollectionSpotlightId,
+    styleSetAssignments:
+      (overrides?.styleSetAssignments
+        ? dedupeRecordIds(overrides.styleSetAssignments as Record<string, string[]>)
+        : dedupeRecordIds(styleSetAssignments as Record<string, string[]>)) as FashionBossDraft["styleSetAssignments"],
+    editorialStoryProductIds: dedupeIds(overrides?.editorialStoryProductIds ?? editorialStoryProductIds),
+    editorialChapterProductIds: dedupeIds(overrides?.editorialChapterProductIds ?? editorialChapterProductIds),
+    editorialRelatedProductIds: dedupeIds(overrides?.editorialRelatedProductIds ?? editorialRelatedProductIds),
+    bundleAssignments: dedupeRecordIds(overrides?.bundleAssignments ?? bundleAssignments),
+    homepageAssignments: dedupeRecordIds(overrides?.homepageAssignments ?? homepageAssignments)
   });
 
+  const publishValidationIssues = useMemo(() => getPublishValidationIssues(buildPersistedDraft()), [
+    allProducts,
+    bundleAssignments,
+    customCollectionChips,
+    draft,
+    editorialChapterProductIds,
+    editorialRelatedProductIds,
+    editorialSlides,
+    editorialStoryProductIds,
+    homepageAssignments,
+    homepageSlides,
+    selectedCollectionSpotlightId,
+    styleSetAssignments
+  ]);
+
+  const deleteProductFromRemote = async (productId: string) => {
+    const targetProduct = allProducts.find((product) => product.id === productId);
+    if (!targetProduct) return;
+    const usageReferences = getProductUsageReferences(productId);
+    const confirmationMessage =
+      usageReferences.length > 0
+        ? `Delete "${targetProduct.name}" and publish removal live?\n\nThis will also remove it from:\n- ${usageReferences.join("\n- ")}`
+        : `Delete "${targetProduct.name}" from Fashion and publish the removal live?`;
+    if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    const nextCatalogProducts = allProducts.filter((product) => product.id !== productId);
+    const nextReferences = removeProductReferences(productId);
+    const nextSpotlightProductId =
+      selectedCollectionSpotlightId === productId ? nextCatalogProducts[0]?.id ?? "" : selectedCollectionSpotlightId;
+    const next = buildPersistedDraft({
+      productCatalog: nextCatalogProducts,
+      homepageAssignments: nextReferences.homepageAssignments,
+      styleSetAssignments: nextReferences.styleSetAssignments,
+      editorialStoryProductIds: nextReferences.editorialStoryProductIds,
+      editorialChapterProductIds: nextReferences.editorialChapterProductIds,
+      editorialRelatedProductIds: nextReferences.editorialRelatedProductIds,
+      bundleAssignments: nextReferences.bundleAssignments,
+      collectionSpotlightProductId: nextSpotlightProductId
+    });
+    const nextIssues = getPublishValidationIssues(next);
+    if (nextIssues.length > 0) {
+      setDraft(next);
+      setRequestError(`Resolve publish validation issues first. ${nextIssues[0]}`);
+      return;
+    }
+
+    setCatalogProducts(nextCatalogProducts);
+    setHomepageAssignments(nextReferences.homepageAssignments);
+    setStyleSetAssignments(nextReferences.styleSetAssignments);
+    setEditorialStoryProductIds(nextReferences.editorialStoryProductIds);
+    setEditorialChapterProductIds(nextReferences.editorialChapterProductIds);
+    setEditorialRelatedProductIds(nextReferences.editorialRelatedProductIds);
+    setBundleAssignments(nextReferences.bundleAssignments);
+    setSelectedCollectionSpotlightId(nextSpotlightProductId);
+    setSelectedProductId("");
+    setProductDraft(buildProductDraft(null));
+    setDraft(next);
+    setRequestError(null);
+    setIsPublishingRemote(true);
+
+    try {
+      const published = await publishFashionContent(next);
+      applyDraftState(published);
+      setFashionMeta(await getFashionMetaAsync());
+      const now = formatAdminTime();
+      setPublishedAt(now);
+      setSavedAt(now);
+      setActionMessage("Product deleted and unpublished from client pages.");
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Failed to delete product.");
+    } finally {
+      setIsPublishingRemote(false);
+    }
+  };
+
   const saveCurrentProductToRemote = async (mode: "save" | "publish") => {
+    if (productDraftIssues.length > 0) {
+      setRequestError(productDraftIssues[0]);
+      return;
+    }
     const { nextProduct, nextCatalogProducts } = commitProductDraft();
     const timestamp = formatAdminTime();
     setCatalogProducts(nextCatalogProducts);
@@ -1520,6 +1868,11 @@ const FashionBoss = () => {
     setRequestError(null);
 
     if (mode === "publish") {
+      const nextIssues = getPublishValidationIssues(next);
+      if (nextIssues.length > 0) {
+        setRequestError(`Resolve publish validation issues first. ${nextIssues[0]}`);
+        return;
+      }
       setIsPublishingRemote(true);
       try {
         const published = await publishFashionContent(next);
@@ -1573,6 +1926,11 @@ const FashionBoss = () => {
     const next = buildPersistedDraft();
     setDraft(next);
     setRequestError(null);
+    const nextIssues = getPublishValidationIssues(next);
+    if (nextIssues.length > 0) {
+      setRequestError(`Resolve publish validation issues first. ${nextIssues[0]}`);
+      return;
+    }
     setIsPublishingRemote(true);
     try {
       const published = await publishFashionContent(next);
@@ -1994,6 +2352,9 @@ const FashionBoss = () => {
                   NEW_PRODUCT_ID={NEW_PRODUCT_ID}
                   renderEditorOverlay={renderEditorOverlay}
                   saveCurrentProductToRemote={saveCurrentProductToRemote}
+                  deleteProductFromRemote={deleteProductFromRemote}
+                  productDraftIssues={productDraftIssues}
+                  selectedProductUsage={selectedProductUsage}
                   formatBadgeLabel={formatBadgeLabel}
                   productBadgeOptions={productBadgeOptions}
                   productFieldOptions={productFieldOptions}
@@ -2005,6 +2366,7 @@ const FashionBoss = () => {
                   workspaceCounts={workspaceCounts}
                   saveDraft={saveDraft}
                   publishDraft={publishDraft}
+                  publishValidationIssues={publishValidationIssues}
                   resetDraft={resetDraft}
                   isBootstrapping={isBootstrapping}
                   isSavingRemote={isSavingRemote}
@@ -2033,6 +2395,7 @@ const FashionBoss = () => {
                   imageUploadInputRef={imageUploadInputRef}
                   handleMediaUpload={handleMediaUpload}
                   mediaAssets={mediaAssets}
+                  mediaUsageMap={mediaUsageMap}
                   removeMediaAsset={removeMediaAsset}
                   isUploadingMedia={isUploadingMedia}
                   mediaStatusMessage={mediaStatusMessage}

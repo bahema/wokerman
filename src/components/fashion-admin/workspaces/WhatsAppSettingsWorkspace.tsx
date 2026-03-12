@@ -3,6 +3,7 @@ import { formatAdminTime } from "../../../utils/adminTime";
 import type { FashionInquiryAdminRecord, FashionInquiryAdminUpdatePayload } from "../../../utils/fashionInquiryAdmin";
 import type { FashionBossDraft } from "../../../utils/fashionDraft";
 import type { FashionWhatsAppApiSettings } from "../../../utils/fashionWhatsAppApi";
+import { buildWhatsAppPreviewMessages } from "../../../utils/fashionWhatsApp";
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 type DraftSection = "homepage" | "collections" | "editorial" | "styleNotes" | "pricing" | "whatsapp";
@@ -24,11 +25,34 @@ type WhatsAppSettingsWorkspaceProps = {
   isMutatingInquiry: boolean;
 };
 
-const defaultWhatsAppTemplateValues: Pick<FashionBossDraft["whatsapp"], "productCta" | "fitCta" | "lookCta" | "storyCta"> = {
+const defaultWhatsAppTemplateValues: Pick<
+  FashionBossDraft["whatsapp"],
+  | "productCta"
+  | "fitCta"
+  | "lookCta"
+  | "storyCta"
+  | "generalMessageTemplate"
+  | "productMessageTemplate"
+  | "fitMessageTemplate"
+  | "lookMessageTemplate"
+  | "pairMessageTemplate"
+  | "storyMessageTemplate"
+> = {
   productCta: "Order on WhatsApp",
   fitCta: "Ask about size",
   lookCta: "Send this look on WhatsApp",
-  storyCta: "Shop this story on WhatsApp"
+  storyCta: "Shop this story on WhatsApp",
+  generalMessageTemplate: "Hello, I want help with your fashion selections.\n{{disclaimer}}",
+  productMessageTemplate:
+    "{{product_note}}\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nCategory: {{category}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nTone: {{tone}}.\nOccasion: {{occasion}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+  fitMessageTemplate:
+    "Hello, I need fit and sizing guidance for {{product_name}}.\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nFit: {{fit}}.\nOccasion: {{occasion}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+  lookMessageTemplate:
+    "Hello, I want this look: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+  pairMessageTemplate:
+    "Hello, I want to order {{lead_product}} with these paired items.\nReference total: {{total_price}}.\nLead item: {{lead_product}}.\nLead image preview: {{lead_image_link}}.\nSelected pairings:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+  storyMessageTemplate:
+    "Hello, I want this story set: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}."
 };
 
 const defaultWhatsAppDestinationValues: Pick<FashionBossDraft["whatsapp"], "phoneNumber" | "disclaimer"> = {
@@ -69,6 +93,7 @@ const WhatsAppSettingsWorkspace = ({
     () => recentInquiries.find((item) => item.id === editingInquiryId) ?? null,
     [editingInquiryId, recentInquiries]
   );
+  const previewMessages = useMemo(() => buildWhatsAppPreviewMessages(draft.whatsapp), [draft.whatsapp]);
 
   const startEditInquiry = (record: FashionInquiryAdminRecord) => {
     setEditingInquiryId(record.id);
@@ -216,6 +241,27 @@ const WhatsAppSettingsWorkspace = ({
                 </div>
               </label>
             </div>
+            <div className="mt-5 grid gap-4">
+              {([
+                ["generalMessageTemplate", "General message template", "Use {{disclaimer}} for the shared support note."],
+                ["productMessageTemplate", "Product message template", "Use {{product_name}}, {{price}}, {{product_link}}, {{source}}, {{customer_notes}}."],
+                ["fitMessageTemplate", "Fit message template", "Use {{fit}}, {{occasion}}, {{product_link}}, {{customer_notes}}."],
+                ["lookMessageTemplate", "Look message template", "Use {{title}}, {{items_summary}}, {{total_price}}, {{source}}."],
+                ["pairMessageTemplate", "Pairing message template", "Use {{lead_product}}, {{lead_image_link}}, {{items_summary}}."],
+                ["storyMessageTemplate", "Story message template", "Use {{title}}, {{items_summary}}, {{total_price}}, {{source}}."]
+              ] as const).map(([key, label, note]) => (
+                <label key={key} className="space-y-2">
+                  <span className="text-sm font-semibold">{label}</span>
+                  <textarea
+                    value={draft.whatsapp[key]}
+                    onChange={(e) => patchDraft("whatsapp", { [key]: e.target.value } as Partial<FashionBossDraft["whatsapp"]>)}
+                    rows={5}
+                    className="fa-input w-full font-mono text-xs"
+                  />
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{note}</div>
+                </label>
+              ))}
+            </div>
             <div className="mt-4">
               <button
                 type="button"
@@ -231,6 +277,7 @@ const WhatsAppSettingsWorkspace = ({
             <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
               <div className="fa-card p-4">Keep CTA labels short, clear, and action-first so the client sees clean WhatsApp intent.</div>
               <div className="fa-card p-4">Use distinct labels for products, grouped looks, and stories so the public fashion pages convert with less friction.</div>
+              <div className="fa-card p-4">Available tokens: <span className="font-mono text-xs">{"{{product_name}}"}</span>, <span className="font-mono text-xs">{"{{price}}"}</span>, <span className="font-mono text-xs">{"{{product_link}}"}</span>, <span className="font-mono text-xs">{"{{items_summary}}"}</span>, <span className="font-mono text-xs">{"{{total_price}}"}</span>, <span className="font-mono text-xs">{"{{source}}"}</span>, <span className="font-mono text-xs">{"{{customer_notes}}"}</span>.</div>
             </div>
           </div>
         </div>
@@ -242,14 +289,16 @@ const WhatsAppSettingsWorkspace = ({
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-amber-700 dark:text-amber-300">Message previews</p>
             <div className="mt-4 max-h-[50dvh] md:max-h-[28rem] space-y-3 overflow-y-auto pr-1">
               {[
-                ["Product inquiry", `Hello, I want this fashion piece. CTA: ${draft.whatsapp.productCta}.`],
-                ["Fit inquiry", `Hello, I need help with fit and sizing. CTA: ${draft.whatsapp.fitCta}.`],
-                ["Look inquiry", `Hello, I want the full outfit set. CTA: ${draft.whatsapp.lookCta}.`],
-                ["Story inquiry", `Hello, I want the featured story bundle. CTA: ${draft.whatsapp.storyCta}.`]
+                ["General inquiry", previewMessages.general],
+                ["Product inquiry", previewMessages.product],
+                ["Fit inquiry", previewMessages.fit],
+                ["Look inquiry", previewMessages.look],
+                ["Pairing inquiry", previewMessages.pair],
+                ["Story inquiry", previewMessages.story]
               ].map(([label, body]) => (
                 <div key={label} className="fa-card p-4">
                   <div className="text-sm font-semibold">{label}</div>
-                  <div className="mt-3 rounded-2xl border border-black/8 bg-white px-4 py-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">{body}</div>
+                  <pre className="mt-3 whitespace-pre-wrap rounded-2xl border border-black/8 bg-white px-4 py-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">{body}</pre>
                 </div>
               ))}
             </div>

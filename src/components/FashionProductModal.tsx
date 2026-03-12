@@ -35,16 +35,19 @@ const FashionProductModal = ({ product, relatedProducts, onClose, returnFocusTo,
         ? [
             {
               id: "front",
+              variant: "primary" as const,
               label: "Front view",
               description: "Main campaign framing for immediate visual recall."
             },
             {
               id: "detail",
+              variant: "detail" as const,
               label: "Detail view",
               description: `Closer emphasis on ${product.material.toLowerCase()} and finish.`
             },
             {
               id: "styling",
+              variant: "styling" as const,
               label: "Styling view",
               description: `Positioned for ${product.occasion.toLowerCase()} and ${product.fit.toLowerCase()}.`
             }
@@ -59,7 +62,7 @@ const FashionProductModal = ({ product, relatedProducts, onClose, returnFocusTo,
     setIsInquirySheetOpen(false);
   }, [product?.id]);
 
-  useFashionPublishedSync(setFashionViewModel, { pollIntervalMs: 0 });
+  useFashionPublishedSync(setFashionViewModel, undefined, { pollIntervalMs: 0 });
 
   if (!product) return null;
 
@@ -88,7 +91,15 @@ const FashionProductModal = ({ product, relatedProducts, onClose, returnFocusTo,
       <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-4">
           <div className="relative min-h-[19rem] overflow-hidden rounded-[1.8rem]">
-            <FashionProductImage product={product} alt={product.name} className="absolute inset-0 h-full w-full" fallbackClassName={product.palette} />
+            <FashionProductImage
+              product={product}
+              alt={product.name}
+              variant={activePanel.variant}
+              className="absolute inset-0 h-full w-full"
+              fallbackClassName={product.palette}
+              useCrossSlotFallback={false}
+              missingLabel={`${activePanel.label} not added`}
+            />
             <div className="relative z-10 flex h-full flex-col justify-between rounded-[1.4rem] border border-white/10 bg-black/30 p-4">
               <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/70">{activePanel.label}</span>
               <p className="max-w-full text-sm font-semibold leading-6 text-white/86 sm:max-w-[15rem]">{activePanel.description}</p>
@@ -106,7 +117,15 @@ const FashionProductModal = ({ product, relatedProducts, onClose, returnFocusTo,
                     : "border-white/10 bg-black/10 hover:bg-white/5"
                 }`}
               >
-                <FashionProductImage product={product} alt={product.name} className="mb-3 h-16 w-full rounded-xl" fallbackClassName={product.palette} />
+                <FashionProductImage
+                  product={product}
+                  alt={product.name}
+                  variant={panel.variant}
+                  className="mb-3 h-16 w-full rounded-xl"
+                  fallbackClassName={product.palette}
+                  useCrossSlotFallback={false}
+                  missingLabel={`${panel.label} missing`}
+                />
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300">{panel.label}</p>
               </button>
             ))}

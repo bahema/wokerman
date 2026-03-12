@@ -380,7 +380,20 @@ export const validateFashionContent = (
   }
 
   if (!isObject(whatsapp)) return { ok: false, error: "whatsapp is required." };
-  for (const key of ["phoneNumber", "productCta", "fitCta", "lookCta", "storyCta", "disclaimer"] as const) {
+  for (const key of [
+    "phoneNumber",
+    "productCta",
+    "fitCta",
+    "lookCta",
+    "storyCta",
+    "generalMessageTemplate",
+    "productMessageTemplate",
+    "fitMessageTemplate",
+    "lookMessageTemplate",
+    "pairMessageTemplate",
+    "storyMessageTemplate",
+    "disclaimer"
+  ] as const) {
     if (!asNonEmptyString(whatsapp[key])) return { ok: false, error: `whatsapp.${key} is required.` };
   }
 

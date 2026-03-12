@@ -1,25 +1,17 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import {
-  buildFashionClientViewModel,
-  getFashionClientViewModelState,
-  getPublishedFashionContentStateAsync,
-  type FashionPublishedSource
-} from "../utils/fashionDraft";
-import { getFashionMetaAsync } from "../utils/fashionAdminStorage";
+import { fetchPublishedFashionVideosAsync, getFashionVideoMetaAsync, type FashionVideoPageRecord } from "../utils/fashionVideoContent";
 
-type FashionViewModel = ReturnType<typeof getFashionClientViewModelState>["viewModel"];
-
-type UseFashionPublishedSyncOptions = {
+type UseFashionVideoPublishedSyncOptions = {
   pollIntervalMs?: number;
-  strictBackendOnly?: boolean;
+  onUnavailable?: () => void;
+  onLoaded?: (videos: FashionVideoPageRecord[]) => void;
 };
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
 
-export const useFashionPublishedSync = (
-  setFashionViewModel: Dispatch<SetStateAction<FashionViewModel>>,
-  setSource?: Dispatch<SetStateAction<FashionPublishedSource>>,
-  options?: UseFashionPublishedSyncOptions
+export const useFashionVideoPublishedSync = (
+  setVideoRecords: Dispatch<SetStateAction<FashionVideoPageRecord[]>>,
+  options?: UseFashionVideoPublishedSyncOptions
 ) => {
   const lastPublishedRevisionRef = useRef("");
 
@@ -31,37 +23,27 @@ export const useFashionPublishedSync = (
         : options?.pollIntervalMs === 0
           ? 0
           : DEFAULT_POLL_INTERVAL_MS;
-    const strictBackendOnly = options?.strictBackendOnly === true;
-
-    const syncFromCache = () => {
-      if (!active) return;
-      const state = getFashionClientViewModelState();
-      setFashionViewModel(state.viewModel);
-      setSource?.(state.source);
-    };
 
     const syncFromServer = async () => {
       try {
-        const state = await getPublishedFashionContentStateAsync();
+        const nextVideos = await fetchPublishedFashionVideosAsync();
         if (!active) return;
-        setFashionViewModel(buildFashionClientViewModel(state.content));
-        setSource?.(state.source);
-        const meta = await getFashionMetaAsync();
+        setVideoRecords(nextVideos);
+        options?.onLoaded?.(nextVideos);
+        const meta = await getFashionVideoMetaAsync();
         if (!active) return;
         if (meta?.publishedRevision) {
           lastPublishedRevisionRef.current = meta.publishedRevision;
         }
       } catch {
         if (!active) return;
-        if (strictBackendOnly) {
-          setSource?.("unavailable");
-        }
+        options?.onUnavailable?.();
       }
     };
 
     const syncFromRevision = async () => {
       try {
-        const meta = await getFashionMetaAsync();
+        const meta = await getFashionVideoMetaAsync();
         if (!active || !meta?.publishedRevision) return;
         if (!lastPublishedRevisionRef.current) {
           lastPublishedRevisionRef.current = meta.publishedRevision;
@@ -72,9 +54,7 @@ export const useFashionPublishedSync = (
         }
       } catch {
         if (!active) return;
-        if (strictBackendOnly) {
-          setSource?.("unavailable");
-        }
+        options?.onUnavailable?.();
       }
     };
 
@@ -84,10 +64,6 @@ export const useFashionPublishedSync = (
     };
 
     void syncFromServer();
-    if (!strictBackendOnly) {
-      window.addEventListener("fashion:published-cache-updated", syncFromCache);
-      window.addEventListener("storage", syncFromCache);
-    }
     window.addEventListener("focus", syncFromVisibility);
     document.addEventListener("visibilitychange", syncFromVisibility);
 
@@ -101,15 +77,11 @@ export const useFashionPublishedSync = (
 
     return () => {
       active = false;
-      if (!strictBackendOnly) {
-        window.removeEventListener("fashion:published-cache-updated", syncFromCache);
-        window.removeEventListener("storage", syncFromCache);
-      }
       window.removeEventListener("focus", syncFromVisibility);
       document.removeEventListener("visibilitychange", syncFromVisibility);
       if (pollHandle !== null) {
         window.clearInterval(pollHandle);
       }
     };
-  }, [options?.pollIntervalMs, options?.strictBackendOnly, setFashionViewModel, setSource]);
+  }, [options?.onLoaded, options?.onUnavailable, options?.pollIntervalMs, setVideoRecords]);
 };

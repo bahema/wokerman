@@ -1,9 +1,12 @@
 import { apiJson } from "../api/client";
 import type { FashionProduct } from "../data/fashionCatalog";
-import { formatFashionPrice } from "./fashionPricing";
 import { getFashionClientViewModel } from "./fashionDraft";
-import { getFashionWhatsAppNumber } from "./fashionWhatsApp";
-import { withBasePath } from "./basePath";
+import {
+  buildFitCheckoutMessage,
+  buildLookWhatsAppMessage,
+  buildProductCheckoutMessage,
+  getFashionWhatsAppNumber
+} from "./fashionWhatsApp";
 
 type FashionRichInquiryType = "product" | "fit" | "look" | "collection" | "editorial-story" | "style-set";
 
@@ -63,12 +66,6 @@ export type FashionRichInquiryResult = {
 };
 
 const normalizeDigits = (value: string) => value.replace(/\D/g, "");
-const resolveProductDeepLink = (productId: string) => {
-  const relative = withBasePath(`/fashion/collections?focusProduct=${encodeURIComponent(productId)}`);
-  if (typeof window === "undefined") return relative;
-  return new URL(relative, `${window.location.origin}/`).toString();
-};
-
 const toProductPayload = (product: FashionProduct, currency: string): FashionInquiryProductPayload => ({
   id: product.id,
   name: product.name,
@@ -146,34 +143,13 @@ export const submitRichProductInquiry = async (
   const imageUrl = product.primaryImage || product.detailImage || product.stylingImage;
   const message =
     mode === "fit"
-      ? [
-          `Hello, I need fit and sizing guidance for ${product.name}.`,
-          `Collection: ${product.collection}.`,
-          `Fit: ${product.fit}.`,
-          `Occasion: ${product.occasion}.`,
-          `Price: ${formatFashionPrice(product.price)}.`,
-          `Product link: ${resolveProductDeepLink(product.id)}.`,
-          `CTA: ${vm.whatsapp.fitCta}.`,
-          `Source: ${source}.`,
-          sheet.notes.trim() ? `Customer notes: ${sheet.notes.trim()}.` : null
-        ]
-      : [
-          product.whatsappNote || `Hello, I want this fashion item: ${product.name}.`,
-          `Collection: ${product.collection}.`,
-          `Category: ${product.category}.`,
-          `Price: ${formatFashionPrice(product.price)}.`,
-          `Tone: ${product.tone}.`,
-          `Occasion: ${product.occasion}.`,
-          `Product link: ${resolveProductDeepLink(product.id)}.`,
-          `CTA: ${vm.whatsapp.productCta}.`,
-          `Source: ${source}.`,
-          sheet.notes.trim() ? `Customer notes: ${sheet.notes.trim()}.` : null
-        ];
+      ? buildFitCheckoutMessage(product, vm.whatsapp, source, sheet.notes.trim()).message
+      : buildProductCheckoutMessage(product, vm.whatsapp, source, sheet.notes.trim()).message;
 
   return submitFashionRichInquiry({
     type: mode,
     source,
-    message: message.filter(Boolean).join(" "),
+    message,
     imageUrl,
     products: [toProductPayload(product, vm.pricing.currency)],
     customerMeta: buildCommonCustomerMeta(sheet),
@@ -192,20 +168,12 @@ export const submitRichLookInquiry = async (
   sheet: FashionInquirySheetInput
 ): Promise<FashionRichInquiryResult> => {
   const vm = getFashionClientViewModel();
-  const total = items.reduce((sum, item) => sum + item.price, 0);
-  const lines = [
-    `Hello, I want this look: ${title}.`,
-    ...items.flatMap((item) => [`${item.name} - ${formatFashionPrice(item.price)}.`, `Product link: ${resolveProductDeepLink(item.id)}.`]),
-    `Reference total: ${formatFashionPrice(total)}.`,
-    `CTA: ${vm.whatsapp.lookCta}.`,
-    `Source: ${source}.`,
-    sheet.notes.trim() ? `Customer notes: ${sheet.notes.trim()}.` : null
-  ];
+  const message = buildLookWhatsAppMessage(title, items, vm.whatsapp, source, sheet.notes.trim());
 
   return submitFashionRichInquiry({
     type: "look",
     source,
-    message: lines.filter(Boolean).join(" "),
+    message,
     imageUrl: items[0]?.primaryImage || items[0]?.detailImage || items[0]?.stylingImage,
     products: items.map((item) => toProductPayload(item, vm.pricing.currency)),
     customerMeta: buildCommonCustomerMeta(sheet),

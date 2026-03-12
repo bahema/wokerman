@@ -19,7 +19,7 @@ import { withBasePath } from "../utils/basePath";
 import { openFashionLookWhatsApp, openFashionProductCheckout } from "../utils/fashionWhatsApp";
 import { submitRichLookInquiry } from "../utils/fashionInquiry";
 import { formatFashionPrice } from "../utils/fashionPricing";
-import { getFashionClientViewModel } from "../utils/fashionDraft";
+import { getFashionClientViewModel, type FashionPublishedSource } from "../utils/fashionDraft";
 import { getFashionBadgeClassName, getFashionPriceChipClassName } from "../utils/fashionBadge";
 import { resolveFashionRouteTarget } from "../utils/fashionRouteTargets";
 import {
@@ -31,6 +31,27 @@ import {
 import { buildFashionNavbarSocials } from "../utils/fashionNavbar";
 import { useFashionPublishedSync } from "../hooks/useFashionPublishedSync";
 import { useSiteNavLabels } from "../hooks/useSiteNavLabels";
+import { type FashionVideoPageRecord } from "../utils/fashionVideoContent";
+import { useFashionVideoPublishedSync } from "../hooks/useFashionVideoPublishedSync";
+
+const createSeededRandom = (seed: number) => {
+  let value = seed % 2147483647;
+  if (value <= 0) value += 2147483646;
+  return () => {
+    value = (value * 16807) % 2147483647;
+    return (value - 1) / 2147483646;
+  };
+};
+
+const shuffleWithSeed = <T,>(items: T[], seed: number) => {
+  const next = [...items];
+  const random = createSeededRandom(seed);
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+  }
+  return next;
+};
 
 const createHeroImage = (start: string, end: string, label: string) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
@@ -109,6 +130,10 @@ const Fashion = () => {
   const trendRailRef = useRef<HTMLDivElement | null>(null);
   const elevatedRailRef = useRef<HTMLDivElement | null>(null);
   const [fashionViewModel, setFashionViewModel] = useState(() => getFashionClientViewModel());
+  const [, setContentSource] = useState<FashionPublishedSource>("loading");
+  const [fashionMotionSource, setFashionMotionSource] = useState<FashionPublishedSource>("loading");
+  const [fashionMotionVideos, setFashionMotionVideos] = useState<FashionVideoPageRecord[]>([]);
+  const [fashionMotionRotationSeed, setFashionMotionRotationSeed] = useState(() => Math.floor(Date.now() % 2147483647));
   const navLabels = useSiteNavLabels();
   const homepageDraft = fashionViewModel.homepage;
   const eventThemeVars = useMemo(() => getEventThemeCssVars("none", theme) as CSSProperties, [theme]);
@@ -150,9 +175,29 @@ const Fashion = () => {
           likes: 800 + index * 120,
           href: withBasePath(targetRoute)
       };
-    }),
+      }),
     [homepageSlides]
   );
+  const fashionMotionPreviewVideos = useMemo(() => {
+    const promoted = fashionMotionVideos.filter((video) => video.isPromoted || video.placement === "promoted");
+    const pool = promoted.length > 0 ? promoted : fashionMotionVideos;
+    return shuffleWithSeed(pool, fashionMotionRotationSeed).slice(0, 3);
+  }, [fashionMotionRotationSeed, fashionMotionVideos]);
+
+  useEffect(() => {
+    const rotate = () => setFashionMotionRotationSeed(Math.floor(Date.now() % 2147483647));
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") rotate();
+    };
+    const interval = window.setInterval(rotate, 60_000);
+    window.addEventListener("focus", rotate);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", rotate);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
   const pageProductSelections = useMemo(() => {
     const usedIds = new Set<string>();
     const resolveAssigned = (blockId: keyof typeof homepageAssignments) =>
@@ -240,21 +285,19 @@ const Fashion = () => {
       .filter((product): product is FashionProduct => Boolean(product));
     if (items.length < 3) return null;
 
-    const baseItems = displayConfig.enforceUniquePerPage
-      ? items.filter(
-          (item) =>
-            ![
-              ...featuredDropProducts,
-              ...trendingProducts,
-              ...accessoryProducts,
-              ...elevatedEditProducts,
-              ...mostAskedProducts,
-              ...bestSellerProducts,
-              ...editorPickProducts,
-              ...shopProducts
-            ].some((product) => product.id === item.id)
-        )
-      : items;
+    const baseItems = items.filter(
+      (item) =>
+        ![
+          ...featuredDropProducts,
+          ...trendingProducts,
+          ...accessoryProducts,
+          ...elevatedEditProducts,
+          ...mostAskedProducts,
+          ...bestSellerProducts,
+          ...editorPickProducts,
+          ...shopProducts
+        ].some((product) => product.id === item.id)
+    );
     if (baseItems.length < 3) return null;
 
     const bundleMeta = fashionViewModel.bundleMeta?.[bundleId];
@@ -311,7 +354,8 @@ const Fashion = () => {
         selectedProduct,
         allProducts,
         excludeIds: pageProductIds,
-        limit: displayConfig.relatedProductLimit
+        limit: displayConfig.relatedProductLimit,
+        allowReuseFallback: false
       }),
     [allProducts, displayConfig.relatedProductLimit, pageProductIds, selectedProduct]
   );
@@ -320,17 +364,23 @@ const Fashion = () => {
     updateTheme(theme);
   }, [theme]);
 
-  useFashionPublishedSync(setFashionViewModel);
+  useFashionPublishedSync(setFashionViewModel, setContentSource);
+
+  useFashionVideoPublishedSync(setFashionMotionVideos, {
+    onLoaded: () => setFashionMotionSource("live"),
+    onUnavailable: () => setFashionMotionSource("unavailable")
+  });
 
   useEffect(() => {
     const canonical = new URL(withBasePath("/fashion"), `${window.location.origin}/`).toString();
+    const seoProducts = allProducts.slice(0, 12);
     setStructuredData("fashion-landing", {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
       "@id": `${canonical}#fashion`,
       url: canonical,
       name: "AutoHub Fashion New Arrivals",
-      itemListElement: featuredFashionProducts.map((product, index) => ({
+      itemListElement: seoProducts.map((product, index) => ({
         "@type": "ListItem",
         position: index + 1,
         item: {
@@ -341,7 +391,7 @@ const Fashion = () => {
       }))
     });
     return () => removeStructuredData("fashion-landing");
-  }, []);
+  }, [allProducts]);
 
   const openPath = (path: string) => {
     window.history.pushState({}, "", withBasePath(path));
@@ -396,7 +446,6 @@ const Fashion = () => {
         navLabels={navLabels}
       />
       <FashionSubnav currentPath="/fashion" />
-
       <main className="overflow-x-hidden">
         <section className="relative overflow-hidden px-4 pb-14 pt-14 sm:px-6 lg:px-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(218,186,140,0.38),transparent_42%),radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.45),transparent_28%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(149,112,67,0.24),transparent_42%),radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.03),transparent_28%)]" />
@@ -414,6 +463,81 @@ const Fashion = () => {
                 </div>
               </div>
               <HeroCarousel slides={homepageHeroCards.length > 0 ? homepageHeroCards : fashionHeroCards} autoAdvanceMs={6200} likesScope="homepage" />
+            </div>
+          </div>
+        </section>
+
+        <section className="px-4 pb-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl rounded-[2rem] border border-black/8 bg-[#faf7f2] p-5 shadow-[0_28px_90px_-52px_rgba(58,36,18,0.22)] dark:border-white/10 dark:bg-[#11100e] sm:p-6">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#7a5e3e] dark:text-[#d5b18b]">Fashion motion</p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] sm:text-3xl">Fashion motion landing.</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => window.open(withBasePath("/fashion/videos"), "_blank", "noopener,noreferrer")}
+                className="inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(135deg,#1d4ed8,#2563eb_45%,#38bdf8)] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-24px_rgba(37,99,235,0.75)] transition hover:translate-y-[-1px] hover:shadow-[0_22px_48px_-24px_rgba(56,189,248,0.82)] sm:w-auto"
+              >
+                See all videos
+              </button>
+            </div>
+            <div className="overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="grid min-w-[48rem] grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-4 md:min-w-0 md:grid-cols-3 md:grid-flow-row md:auto-cols-fr lg:gap-5">
+              {fashionMotionSource === "loading" ? (
+                <div className="col-span-full rounded-[1.5rem] border border-dashed border-black/10 bg-white/70 px-5 py-10 text-center dark:border-white/10 dark:bg-white/5">
+                  <p className="text-sm font-black">Loading published Fashion videos.</p>
+                  <p className="mt-2 text-xs leading-6 text-[#5d5248] dark:text-[#d5c8bc]">
+                    This homepage presenter waits for the live Fashion video backend before rendering.
+                  </p>
+                </div>
+              ) : fashionMotionSource === "unavailable" ? (
+                <div className="col-span-full rounded-[1.5rem] border border-dashed border-rose-200 bg-rose-50/80 px-5 py-10 text-center dark:border-rose-900/40 dark:bg-rose-950/20">
+                  <p className="text-sm font-black text-rose-800 dark:text-rose-200">Fashion video backend unavailable.</p>
+                  <p className="mt-2 text-xs leading-6 text-rose-700 dark:text-rose-200/80">
+                    This presenter is in strict backend mode and cannot render video cards until the published feed returns.
+                  </p>
+                </div>
+              ) : fashionMotionPreviewVideos.length ? fashionMotionPreviewVideos.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                onClick={() => openPath(`/fashion/videos?video=${encodeURIComponent(item.id)}&autoplay=1&entry=motion`)}
+                className="min-w-0 overflow-hidden rounded-[1.5rem] border border-black/8 bg-white p-3 text-left shadow-[0_16px_40px_-34px_rgba(58,36,18,0.18)] transition hover:border-[#b68b62]/40 hover:bg-[#fdf9f4] dark:border-white/10 dark:bg-[#171513] dark:hover:border-[#d5b18b]/40 dark:hover:bg-[#1d1916]"
+                  style={{ animation: `fadeUp ${0.45 + index * 0.08}s ease-out` }}
+                >
+                  <div className="relative aspect-video overflow-hidden rounded-[1rem] bg-[#13100d]">
+                    {item.thumbnailUrl ? (
+                      <img src={item.thumbnailUrl} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
+                    ) : (
+                      <>
+                        <div className="absolute inset-0 bg-[linear-gradient(135deg,#201813,#7a5a42_55%,#c99d76)]" />
+                        <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22px_22px]" />
+                      </>
+                    )}
+                    <span className="absolute bottom-3 right-3 rounded-md bg-black/70 px-2 py-1 text-[11px] font-semibold text-white">{item.length}</span>
+                  </div>
+                  <div className="min-w-0 px-1 pb-1 pt-4">
+                    <h3 className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#17130f] dark:text-[#f8f2eb] sm:text-base sm:leading-6">{item.title}</h3>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#5d5248] dark:text-[#d5c8bc]">{item.note}</p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-[#6f6255] dark:text-[#d5c8bc]">
+                      <span>{item.viewers} views</span>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <span>👍 {item.likes}</span>
+                        <span>👎 {item.dislikes}</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )) : (
+                <div className="col-span-full rounded-[1.5rem] border border-dashed border-black/10 bg-white/70 px-5 py-10 text-center dark:border-white/10 dark:bg-white/5">
+                  <p className="text-sm font-black">No published Fashion videos yet.</p>
+                  <p className="mt-2 text-xs leading-6 text-[#5d5248] dark:text-[#d5c8bc]">
+                    This presenter is connected correctly, but the published Fashion video feed is currently empty.
+                  </p>
+                </div>
+              )}
+              </div>
             </div>
           </div>
         </section>

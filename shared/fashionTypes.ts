@@ -254,6 +254,12 @@ export type FashionContent = {
     fitCta: string;
     lookCta: string;
     storyCta: string;
+    generalMessageTemplate: string;
+    productMessageTemplate: string;
+    fitMessageTemplate: string;
+    lookMessageTemplate: string;
+    pairMessageTemplate: string;
+    storyMessageTemplate: string;
     disclaimer: string;
   };
   productCatalog: FashionProduct[];
@@ -270,4 +276,61 @@ export type FashionContentMeta = {
   draftProductCount: number;
   homepageSlideCount: number;
   editorialSlideCount: number;
+};
+
+export type FashionVideoStatus = "draft" | "published";
+
+export type FashionVideoPlacement = "landing" | "feed" | "series" | "promoted";
+
+export type FashionVideoComment = {
+  id: string;
+  name: string;
+  text: string;
+  createdAt: string;
+  status?: "visible" | "hidden" | "flagged";
+  parentId?: string;
+  likes?: number;
+  dislikes?: number;
+  reaction?: "like" | "dislike" | null;
+  likedByViewer?: boolean;
+  replies?: FashionVideoComment[];
+};
+
+export type FashionVideoRecord = {
+  id: string;
+  title: string;
+  description: string;
+  duration: string;
+  thumbnail: string;
+  videoAsset: string;
+  views: number;
+  likes: number;
+  dislikes: number;
+  comments: FashionVideoComment[];
+  status: FashionVideoStatus;
+  placement: FashionVideoPlacement;
+  series: string;
+  mappedProductId: string;
+  collection: string;
+  category: string;
+  tone: string;
+  styleTags: string[];
+  whatsappNumber: string;
+  checkoutLabel: string;
+  sourceLabel: string;
+  isPromoted: boolean;
+  sortOrder: number;
+};
+
+export type FashionVideoContent = {
+  videos: FashionVideoRecord[];
+};
+
+export type FashionVideoContentMeta = {
+  updatedAt: string;
+  hasDraft: boolean;
+  publishedRevision: string;
+  publishedVideoCount: number;
+  draftVideoCount: number;
+  publishedPromotedCount: number;
 };

@@ -1,0 +1,402 @@
+import type { FashionVideoContent } from "../../../shared/fashionTypes";
+
+export const defaultFashionVideoContent: FashionVideoContent = {
+  videos: [
+    {
+      id: "video-card-1",
+      title: "Campaign motion one",
+      description: "A cleaner studio-driven motion cut for the first campaign drop.",
+      duration: "00:24",
+      thumbnail: "",
+      videoAsset: "",
+      views: 28400,
+      likes: 1240,
+      dislikes: 16,
+      comments: [
+        {
+          id: "video-card-1-comment-1",
+          name: "Lina Karema",
+          text: "This cut feels premium and direct.",
+          createdAt: "2026-03-01T09:00:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "landing",
+      series: "Campaign motion",
+      mappedProductId: "fashion-001",
+      collection: "Signature Outerwear",
+      category: "Outerwear",
+      tone: "Charcoal",
+      styleTags: ["tailored", "outerwear", "monochrome"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: true,
+      sortOrder: 1
+    },
+    {
+      id: "video-card-2",
+      title: "Campaign motion two",
+      description: "Built for faster visual scanning with more runway pace and movement.",
+      duration: "00:31",
+      thumbnail: "",
+      videoAsset: "",
+      views: 41100,
+      likes: 1822,
+      dislikes: 24,
+      comments: [
+        {
+          id: "video-card-2-comment-1",
+          name: "Theo M.",
+          text: "The runway pacing is much stronger here.",
+          createdAt: "2026-03-01T09:10:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "landing",
+      series: "Campaign motion",
+      mappedProductId: "fashion-002",
+      collection: "Minimal Tailoring",
+      category: "Tailoring",
+      tone: "Sand",
+      styleTags: ["tailored", "blazer", "neutral"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: true,
+      sortOrder: 2
+    },
+    {
+      id: "video-card-3",
+      title: "Campaign motion three",
+      description: "A tighter edit focused on texture, finishing, and fit details.",
+      duration: "00:18",
+      thumbnail: "",
+      videoAsset: "",
+      views: 19700,
+      likes: 806,
+      dislikes: 11,
+      comments: [
+        {
+          id: "video-card-3-comment-1",
+          name: "Arielle N.",
+          text: "Detail shots make the product easier to trust.",
+          createdAt: "2026-03-01T09:20:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "landing",
+      series: "Campaign motion",
+      mappedProductId: "fashion-003",
+      collection: "Evening Minimal",
+      category: "Dresses",
+      tone: "Espresso",
+      styleTags: ["dress", "evening", "minimal"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: true,
+      sortOrder: 3
+    },
+    {
+      id: "video-card-4",
+      title: "Campaign motion four",
+      description: "An archive-led piece that gives the collection more visual depth.",
+      duration: "00:42",
+      thumbnail: "",
+      videoAsset: "",
+      views: 34800,
+      likes: 1460,
+      dislikes: 18,
+      comments: [
+        {
+          id: "video-card-4-comment-1",
+          name: "Mico Lee",
+          text: "This one adds a better story mood.",
+          createdAt: "2026-03-01T09:30:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "feed",
+      series: "Campaign motion",
+      mappedProductId: "fashion-004",
+      collection: "Transit Edit",
+      category: "Sets",
+      tone: "Stone",
+      styleTags: ["travel", "set", "layering"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 4
+    },
+    {
+      id: "video-card-5",
+      title: "Campaign motion five",
+      description: "A short styling loop that shifts from one look direction to another.",
+      duration: "00:29",
+      thumbnail: "",
+      videoAsset: "",
+      views: 23500,
+      likes: 990,
+      dislikes: 13,
+      comments: [
+        {
+          id: "video-card-5-comment-1",
+          name: "Sarah Joy",
+          text: "The styling transition is clean and fast.",
+          createdAt: "2026-03-01T09:40:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "feed",
+      series: "Campaign motion",
+      mappedProductId: "fashion-005",
+      collection: "Weekend Luxe",
+      category: "Shirts",
+      tone: "Ivory",
+      styleTags: ["weekend", "shirt", "layering"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 5
+    },
+    {
+      id: "video-card-6",
+      title: "Campaign motion six",
+      description: "A stronger launch-style cut intended for new arrival highlights.",
+      duration: "00:21",
+      thumbnail: "",
+      videoAsset: "",
+      views: 37200,
+      likes: 1638,
+      dislikes: 21,
+      comments: [
+        {
+          id: "video-card-6-comment-1",
+          name: "Emmanuel R.",
+          text: "Good launch energy for a homepage push.",
+          createdAt: "2026-03-01T09:50:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "feed",
+      series: "Campaign motion",
+      mappedProductId: "fashion-006",
+      collection: "Accessories Line",
+      category: "Bags",
+      tone: "Mocha",
+      styleTags: ["accessories", "bag", "office"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 6
+    },
+    {
+      id: "video-card-7",
+      title: "Campaign motion seven",
+      description: "A softer mood-focused motion piece for slower premium storytelling.",
+      duration: "00:37",
+      thumbnail: "",
+      videoAsset: "",
+      views: 16900,
+      likes: 712,
+      dislikes: 9,
+      comments: [
+        {
+          id: "video-card-7-comment-1",
+          name: "Diane K.",
+          text: "The slower mood works for premium positioning.",
+          createdAt: "2026-03-01T10:00:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "feed",
+      series: "Campaign motion",
+      mappedProductId: "fashion-007",
+      collection: "Minimal Tailoring",
+      category: "Tailoring",
+      tone: "Black",
+      styleTags: ["tailored", "trousers", "monochrome"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 7
+    },
+    {
+      id: "video-card-8",
+      title: "Campaign motion eight",
+      description: "A compressed campaign edit for compact viewing surfaces.",
+      duration: "00:26",
+      thumbnail: "",
+      videoAsset: "",
+      views: 21600,
+      likes: 904,
+      dislikes: 10,
+      comments: [
+        {
+          id: "video-card-8-comment-1",
+          name: "Jules O.",
+          text: "This fits smaller screens much better.",
+          createdAt: "2026-03-01T10:10:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "series",
+      series: "Campaign motion",
+      mappedProductId: "fashion-008",
+      collection: "After Hours",
+      category: "Shoes",
+      tone: "Onyx",
+      styleTags: ["heels", "evening", "accessories"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 8
+    },
+    {
+      id: "video-card-9",
+      title: "Campaign motion nine",
+      description: "A preview-style motion card for early teasers and collection reveals.",
+      duration: "00:33",
+      thumbnail: "",
+      videoAsset: "",
+      views: 30300,
+      likes: 1286,
+      dislikes: 17,
+      comments: [
+        {
+          id: "video-card-9-comment-1",
+          name: "Naomi P.",
+          text: "Preview format makes people want more.",
+          createdAt: "2026-03-01T10:20:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "series",
+      series: "Campaign motion",
+      mappedProductId: "fashion-001",
+      collection: "Signature Outerwear",
+      category: "Outerwear",
+      tone: "Charcoal",
+      styleTags: ["tailored", "outerwear", "monochrome"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 9
+    },
+    {
+      id: "video-card-10",
+      title: "Campaign motion ten",
+      description: "A cut intended to show how the silhouette settles in movement.",
+      duration: "00:19",
+      thumbnail: "",
+      videoAsset: "",
+      views: 14200,
+      likes: 604,
+      dislikes: 8,
+      comments: [
+        {
+          id: "video-card-10-comment-1",
+          name: "Chris D.",
+          text: "Movement sells the fit better here.",
+          createdAt: "2026-03-01T10:30:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "series",
+      series: "Campaign motion",
+      mappedProductId: "fashion-002",
+      collection: "Minimal Tailoring",
+      category: "Tailoring",
+      tone: "Sand",
+      styleTags: ["tailored", "blazer", "neutral"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 10
+    },
+    {
+      id: "video-card-11",
+      title: "Campaign motion eleven",
+      description: "A longer series-ready clip that carries stronger narrative pacing.",
+      duration: "00:44",
+      thumbnail: "",
+      videoAsset: "",
+      views: 44900,
+      likes: 2014,
+      dislikes: 29,
+      comments: [
+        {
+          id: "video-card-11-comment-1",
+          name: "Bella S.",
+          text: "Longer pacing works when the story is good.",
+          createdAt: "2026-03-01T10:40:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "series",
+      series: "Campaign motion",
+      mappedProductId: "fashion-003",
+      collection: "Evening Minimal",
+      category: "Dresses",
+      tone: "Espresso",
+      styleTags: ["dress", "evening", "minimal"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 11
+    },
+    {
+      id: "video-card-12",
+      title: "Campaign motion twelve",
+      description: "A compact styling-led motion clip for quick repeat viewing.",
+      duration: "00:27",
+      thumbnail: "",
+      videoAsset: "",
+      views: 18800,
+      likes: 788,
+      dislikes: 12,
+      comments: [
+        {
+          id: "video-card-12-comment-1",
+          name: "Omar T.",
+          text: "Short repeatable loops are good for ads.",
+          createdAt: "2026-03-01T10:50:00.000Z",
+          status: "visible"
+        }
+      ],
+      status: "draft",
+      placement: "series",
+      series: "Campaign motion",
+      mappedProductId: "fashion-004",
+      collection: "Transit Edit",
+      category: "Sets",
+      tone: "Stone",
+      styleTags: ["travel", "set", "layering"],
+      whatsappNumber: "",
+      checkoutLabel: "Check out",
+      sourceLabel: "Fashion videos upload",
+      isPromoted: false,
+      sortOrder: 12
+    }
+  ]
+};

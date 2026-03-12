@@ -12,7 +12,7 @@ import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
 import { openFashionStoryWhatsApp } from "../utils/fashionWhatsApp";
 import { formatFashionPrice } from "../utils/fashionPricing";
-import { getFashionClientViewModel } from "../utils/fashionDraft";
+import { getFashionClientViewModel, type FashionPublishedSource } from "../utils/fashionDraft";
 import { getFashionBadgeClassName, getFashionPriceChipClassName } from "../utils/fashionBadge";
 import { dedupeProductsById, normalizeFashionDisplayConfig, selectRelatedProducts } from "../utils/fashionProductDisplay";
 import { buildFashionNavbarSocials } from "../utils/fashionNavbar";
@@ -98,6 +98,7 @@ const FashionEditorial = () => {
   const [selectedProduct, setSelectedProduct] = useState<FashionProduct | null>(null);
   const [productTrigger, setProductTrigger] = useState<HTMLElement | null>(null);
   const [fashionViewModel, setFashionViewModel] = useState(() => getFashionClientViewModel());
+  const [, setContentSource] = useState<FashionPublishedSource>("loading");
   const navLabels = useSiteNavLabels();
   const editorialDraft = fashionViewModel.editorial;
   const eventThemeVars = useMemo(() => getEventThemeCssVars("none", theme) as CSSProperties, [theme]);
@@ -161,16 +162,14 @@ const FashionEditorial = () => {
   const editorialProducts = useMemo(() => dedupeProductsById(baseEditorialProducts), [baseEditorialProducts]);
   const chapterTwoProducts = useMemo(() => {
     const deduped = dedupeProductsById(baseChapterTwoProducts);
-    if (!displayConfig.enforceUniquePerPage) return deduped;
     const storyIds = new Set(editorialProducts.map((product) => product.id));
     return deduped.filter((product) => !storyIds.has(product.id));
-  }, [baseChapterTwoProducts, displayConfig.enforceUniquePerPage, editorialProducts]);
+  }, [baseChapterTwoProducts, editorialProducts]);
   const relatedStoryProducts = useMemo(() => {
     const deduped = dedupeProductsById(baseRelatedStoryProducts);
-    if (!displayConfig.enforceUniquePerPage) return deduped;
     const used = new Set([...editorialProducts, ...chapterTwoProducts].map((product) => product.id));
     return deduped.filter((product) => !used.has(product.id));
-  }, [baseRelatedStoryProducts, chapterTwoProducts, displayConfig.enforceUniquePerPage, editorialProducts]);
+  }, [baseRelatedStoryProducts, chapterTwoProducts, editorialProducts]);
   const pageProductIds = useMemo(
     () => dedupeProductsById([...editorialProducts, ...chapterTwoProducts, ...relatedStoryProducts]).map((product) => product.id),
     [chapterTwoProducts, editorialProducts, relatedStoryProducts]
@@ -190,7 +189,8 @@ const FashionEditorial = () => {
         selectedProduct,
         allProducts,
         excludeIds: pageProductIds,
-        limit: displayConfig.relatedProductLimit
+        limit: displayConfig.relatedProductLimit,
+        allowReuseFallback: false
       }),
     [allProducts, displayConfig.relatedProductLimit, pageProductIds, selectedProduct]
   );
@@ -199,7 +199,7 @@ const FashionEditorial = () => {
     updateTheme(theme);
   }, [theme]);
 
-  useFashionPublishedSync(setFashionViewModel);
+  useFashionPublishedSync(setFashionViewModel, setContentSource);
 
   useEffect(() => {
     const canonical = new URL(withBasePath("/fashion/editorial"), `${window.location.origin}/`).toString();
@@ -238,7 +238,6 @@ const FashionEditorial = () => {
         navLabels={navLabels}
       />
       <FashionSubnav currentPath="/fashion/editorial" />
-
       <main className="overflow-x-hidden px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto mb-8 max-w-7xl rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur md:p-6">
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

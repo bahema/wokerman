@@ -3,6 +3,7 @@ import { withBasePath } from "../utils/basePath";
 import { getFashionClientViewModel } from "../utils/fashionDraft";
 import { openGeneralFashionWhatsApp } from "../utils/fashionWhatsApp";
 import { useFashionPublishedSync } from "../hooks/useFashionPublishedSync";
+import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 
 const openPath = (path: string) => {
   window.history.pushState({}, "", withBasePath(path));
@@ -13,7 +14,7 @@ const openPath = (path: string) => {
 const FashionFooter = () => {
   const [fashionViewModel, setFashionViewModel] = useState(() => getFashionClientViewModel());
 
-  useFashionPublishedSync(setFashionViewModel, { pollIntervalMs: 0 });
+  useFashionPublishedSync(setFashionViewModel, undefined, { pollIntervalMs: 0 });
 
   const homepageDraft = fashionViewModel.homepage;
   const footerLinks = [
@@ -55,6 +56,13 @@ const FashionFooter = () => {
                 {link.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(OPEN_COOKIE_SETTINGS_EVENT))}
+              className="w-fit text-left text-sm font-semibold text-white/82 transition hover:text-white"
+            >
+              Cookie settings
+            </button>
           </div>
         </div>
 

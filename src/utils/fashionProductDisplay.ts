@@ -65,7 +65,7 @@ export const selectPageBlockProducts = (input: PageBlockSelectionInput) => {
     for (const product of pool) {
       if (picked.length >= input.limit) break;
       if (pickedIds.has(product.id)) continue;
-      if (input.enforceUniquePerPage && input.usedIds.has(product.id)) continue;
+      if (input.usedIds.has(product.id)) continue;
       picked.push(product);
       pickedIds.add(product.id);
     }
@@ -73,9 +73,7 @@ export const selectPageBlockProducts = (input: PageBlockSelectionInput) => {
   }
 
   const finalSelection = prioritizeCollectionDiversity(picked).slice(0, input.limit);
-  if (input.enforceUniquePerPage) {
-    finalSelection.forEach((product) => input.usedIds.add(product.id));
-  }
+  finalSelection.forEach((product) => input.usedIds.add(product.id));
 
   return finalSelection;
 };
@@ -85,17 +83,23 @@ type RelatedSelectionInput = {
   allProducts: FashionProduct[];
   excludeIds?: Iterable<string>;
   limit: number;
+  allowReuseFallback?: boolean;
 };
 
-export const selectRelatedProducts = ({ selectedProduct, allProducts, excludeIds, limit }: RelatedSelectionInput) => {
+export const selectRelatedProducts = ({
+  selectedProduct,
+  allProducts,
+  excludeIds,
+  limit,
+  allowReuseFallback = true
+}: RelatedSelectionInput) => {
   if (!selectedProduct) return [];
   const exclusion = new Set(excludeIds ?? []);
   exclusion.add(selectedProduct.id);
 
-  const ranked = dedupeProductsById(
-    allProducts
-      .filter((product) => !exclusion.has(product.id))
-      .sort((a, b) => {
+  const rankProducts = (products: FashionProduct[]) =>
+    dedupeProductsById(
+      products.sort((a, b) => {
         const aScore =
           (a.collection === selectedProduct.collection ? 3 : 0) +
           (a.category === selectedProduct.category ? 2 : 0) +
@@ -106,7 +110,14 @@ export const selectRelatedProducts = ({ selectedProduct, allProducts, excludeIds
           (b.tone === selectedProduct.tone ? 1 : 0);
         return bScore - aScore;
       })
-  );
+    );
 
-  return prioritizeCollectionDiversity(ranked).slice(0, limit);
+  const strictRanked = rankProducts(allProducts.filter((product) => !exclusion.has(product.id)));
+  if (strictRanked.length >= limit || !excludeIds || !allowReuseFallback) {
+    return prioritizeCollectionDiversity(strictRanked).slice(0, limit);
+  }
+
+  const fallbackRanked = rankProducts(allProducts.filter((product) => product.id !== selectedProduct.id));
+  const combined = dedupeProductsById([...strictRanked, ...fallbackRanked]);
+  return prioritizeCollectionDiversity(combined).slice(0, limit);
 };

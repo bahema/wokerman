@@ -2,10 +2,23 @@
   var params = new URLSearchParams(window.location.search);
   var redirectedPath = params.get("p");
   if (!redirectedPath) return;
+  var baseTag = document.querySelector("base");
+  var basePath = "";
+  if (baseTag && baseTag.getAttribute("href")) {
+    var baseHref = baseTag.getAttribute("href") || "/";
+    if (baseHref && baseHref !== "/") {
+      basePath = baseHref.endsWith("/") ? baseHref.slice(0, -1) : baseHref;
+    }
+  } else {
+    var pathSegments = window.location.pathname.split("/").filter(Boolean);
+    if (window.location.hostname.endsWith(".github.io") && pathSegments.length > 0) {
+      basePath = "/" + pathSegments[0];
+    }
+  }
   var nextPath = redirectedPath.charAt(0) === "/" ? redirectedPath : "/" + redirectedPath;
   var nextQuery = params.get("q") || "";
   var nextHash = params.get("h") || "";
-  var finalUrl = nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
+  var finalUrl = (basePath || "") + nextPath + (nextQuery ? "?" + nextQuery : "") + (nextHash ? "#" + nextHash : "");
   window.history.replaceState({}, "", finalUrl);
 })();
 

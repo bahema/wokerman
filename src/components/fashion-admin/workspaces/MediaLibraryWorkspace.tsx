@@ -14,6 +14,7 @@ type MediaLibraryWorkspaceProps = {
   imageUploadInputRef: RefObject<HTMLInputElement>;
   handleMediaUpload: (kind: "image" | "video", event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   mediaAssets: MediaAsset[];
+  mediaUsageMap: Record<string, string[]>;
   removeMediaAsset: (assetId: string) => Promise<void>;
   isUploadingMedia: boolean;
   mediaStatusMessage: string | null;
@@ -28,6 +29,7 @@ const MediaLibraryWorkspace = (props: MediaLibraryWorkspaceProps) => {
     imageUploadInputRef,
     handleMediaUpload,
     mediaAssets,
+    mediaUsageMap,
     removeMediaAsset,
     isUploadingMedia,
     mediaStatusMessage,
@@ -113,33 +115,40 @@ const MediaLibraryWorkspace = (props: MediaLibraryWorkspaceProps) => {
             ) : (
               <div className="mt-4 grid max-h-[54dvh] md:max-h-[32rem] gap-4 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
                 {mediaAssets.map((asset) => (
-                  <FashionAdminPreviewCard
-                    key={asset.id}
-                    title={asset.name}
-                    subtitle={asset.kind === "image" ? "Image asset" : "Video asset"}
-                    imageUrl={asset.kind === "image" ? asset.url : undefined}
-                    imageFallbackClassName="bg-[linear-gradient(145deg,#1f1a16,#66503f_58%,#c7a27a)]"
-                    actions={
-                      <>
-                        <FashionAdminChip>{asset.kind}</FashionAdminChip>
-                        <FashionAdminButton
-                          onClick={() => {
-                            void navigator.clipboard?.writeText(asset.url);
-                          }}
-                        >
-                          Copy URL
-                        </FashionAdminButton>
-                        <FashionAdminButton
-                          className="border-[var(--fa-error-border)] text-[var(--fa-error-text)] hover:bg-[var(--fa-error-bg)]"
-                          onClick={() => {
-                            void removeMediaAsset(asset.id);
-                          }}
-                        >
-                          Delete
-                        </FashionAdminButton>
-                      </>
-                    }
-                  />
+                  <div key={asset.id} className="space-y-3">
+                    <FashionAdminPreviewCard
+                      title={asset.name}
+                      subtitle={asset.kind === "image" ? "Image asset" : "Video asset"}
+                      imageUrl={asset.kind === "image" ? asset.url : undefined}
+                      imageFallbackClassName="bg-[linear-gradient(145deg,#1f1a16,#66503f_58%,#c7a27a)]"
+                      actions={
+                        <>
+                          <FashionAdminChip>{asset.kind}</FashionAdminChip>
+                          {mediaUsageMap[asset.url]?.length ? <FashionAdminChip>{mediaUsageMap[asset.url].length} refs</FashionAdminChip> : null}
+                          <FashionAdminButton
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(asset.url);
+                            }}
+                          >
+                            Copy URL
+                          </FashionAdminButton>
+                          <FashionAdminButton
+                            className="border-[var(--fa-error-border)] text-[var(--fa-error-text)] hover:bg-[var(--fa-error-bg)]"
+                            onClick={() => {
+                              void removeMediaAsset(asset.id);
+                            }}
+                          >
+                            Delete
+                          </FashionAdminButton>
+                        </>
+                      }
+                    />
+                    {mediaUsageMap[asset.url]?.length ? (
+                      <FashionAdminValidationPanel tone="warning" title="In use">
+                        {mediaUsageMap[asset.url].join(", ")}
+                      </FashionAdminValidationPanel>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             )}

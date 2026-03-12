@@ -511,6 +511,17 @@ export const defaultFashionContent: FashionContent = {
     fitCta: "Ask about size",
     lookCta: "Send this look on WhatsApp",
     storyCta: "Shop this story on WhatsApp",
+    generalMessageTemplate: "Hello, I want help with your fashion selections.\n{{disclaimer}}",
+    productMessageTemplate:
+      "{{product_note}}\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nCategory: {{category}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nTone: {{tone}}.\nOccasion: {{occasion}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    fitMessageTemplate:
+      "Hello, I need fit and sizing guidance for {{product_name}}.\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nFit: {{fit}}.\nOccasion: {{occasion}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    lookMessageTemplate:
+      "Hello, I want this look: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    pairMessageTemplate:
+      "Hello, I want to order {{lead_product}} with these paired items.\nReference total: {{total_price}}.\nLead item: {{lead_product}}.\nLead image preview: {{lead_image_link}}.\nSelected pairings:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    storyMessageTemplate:
+      "Hello, I want this story set: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
     disclaimer: "All orders and inquiries are handled directly by the client on WhatsApp."
   },
   productCatalog: defaultProductCatalog,

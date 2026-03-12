@@ -11,7 +11,7 @@ import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
 import { getFashionProductFitWhatsAppUrl, openFashionFitCheckout, openFashionLookWhatsApp } from "../utils/fashionWhatsApp";
 import { formatFashionPrice } from "../utils/fashionPricing";
-import { getFashionClientViewModel } from "../utils/fashionDraft";
+import { getFashionClientViewModel, type FashionPublishedSource } from "../utils/fashionDraft";
 import { getFashionBadgeClassName, getFashionPriceChipClassName } from "../utils/fashionBadge";
 import { dedupeProductsById, normalizeFashionDisplayConfig, selectRelatedProducts } from "../utils/fashionProductDisplay";
 import { buildFashionNavbarSocials } from "../utils/fashionNavbar";
@@ -25,6 +25,7 @@ const FashionStyleNotes = () => {
   const [selectedProduct, setSelectedProduct] = useState<FashionProduct | null>(null);
   const [productTrigger, setProductTrigger] = useState<HTMLElement | null>(null);
   const [fashionViewModel, setFashionViewModel] = useState(() => getFashionClientViewModel());
+  const [, setContentSource] = useState<FashionPublishedSource>("loading");
   const navLabels = useSiteNavLabels();
   const styleNotesDraft = fashionViewModel.styleNotes;
   const [activeSet, setActiveSet] = useState<StyleSetKey>(styleNotesDraft.defaultSet);
@@ -87,7 +88,8 @@ const FashionStyleNotes = () => {
         selectedProduct,
         allProducts,
         excludeIds: pageProductIds,
-        limit: displayConfig.relatedProductLimit
+        limit: displayConfig.relatedProductLimit,
+        allowReuseFallback: false
       }),
     [allProducts, displayConfig.relatedProductLimit, pageProductIds, selectedProduct]
   );
@@ -96,7 +98,7 @@ const FashionStyleNotes = () => {
     updateTheme(theme);
   }, [theme]);
 
-  useFashionPublishedSync(setFashionViewModel);
+  useFashionPublishedSync(setFashionViewModel, setContentSource);
 
   useEffect(() => {
     setActiveSet(styleNotesDraft.defaultSet);
@@ -133,7 +135,6 @@ const FashionStyleNotes = () => {
         navLabels={navLabels}
       />
       <FashionSubnav currentPath="/fashion/style-notes" />
-
       <main className="overflow-x-hidden px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr]">
           <section className="rounded-[2rem] border border-black/8 bg-white/80 p-6 backdrop-blur dark:border-white/10 dark:bg-white/5">

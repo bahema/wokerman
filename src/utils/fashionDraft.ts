@@ -207,12 +207,25 @@ export type FashionBossDraft = {
     fitCta: string;
     lookCta: string;
     storyCta: string;
+    generalMessageTemplate: string;
+    productMessageTemplate: string;
+    fitMessageTemplate: string;
+    lookMessageTemplate: string;
+    pairMessageTemplate: string;
+    storyMessageTemplate: string;
     disclaimer: string;
   };
   productCatalog: FashionProduct[];
   homepageSlides: FashionHeroSlide[];
   editorialSlides: FashionHeroSlide[];
   homepageAssignments: Record<FashionHomepageBlockId, string[]>;
+};
+
+export type FashionPublishedSource = "loading" | "live" | "cache" | "fallback" | "unavailable";
+
+export type FashionPublishedState = {
+  content: FashionBossDraft;
+  source: FashionPublishedSource;
 };
 
 export const FASHION_PUBLISHED_CACHE_KEY = "autohub:fashion:published:cache:v1";
@@ -484,6 +497,17 @@ export const createDefaultFashionBossDraft = (): FashionBossDraft => ({
     fitCta: "Ask about size",
     lookCta: "Send this look on WhatsApp",
     storyCta: "Shop this story on WhatsApp",
+    generalMessageTemplate: "Hello, I want help with your fashion selections.\n{{disclaimer}}",
+    productMessageTemplate:
+      "{{product_note}}\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nCategory: {{category}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nTone: {{tone}}.\nOccasion: {{occasion}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    fitMessageTemplate:
+      "Hello, I need fit and sizing guidance for {{product_name}}.\nReference total: {{reference_total}}.\nPrice: {{price}}.\nCollection: {{collection}}.\nFit: {{fit}}.\nOccasion: {{occasion}}.\nImage preview: {{image_link}}.\nProduct link: {{product_link}}.\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    lookMessageTemplate:
+      "Hello, I want this look: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    pairMessageTemplate:
+      "Hello, I want to order {{lead_product}} with these paired items.\nReference total: {{total_price}}.\nLead item: {{lead_product}}.\nLead image preview: {{lead_image_link}}.\nSelected pairings:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
+    storyMessageTemplate:
+      "Hello, I want this story set: {{title}}.\nReference total: {{total_price}}.\nItems:\n{{items_summary}}\nCTA: {{cta}}.\nSource: {{source}}.\nCustomer notes: {{customer_notes}}.",
     disclaimer: "All orders and inquiries are handled directly by the client on WhatsApp."
   },
   productCatalog: defaultProductCatalog,
@@ -506,6 +530,14 @@ const readPublishedFashionCache = (): FashionBossDraft | null => {
   }
 };
 
+const getCachedPublishedFashionState = (): FashionPublishedState => {
+  const cached = readPublishedFashionCache();
+  if (cached) {
+    return { content: cached, source: "cache" };
+  }
+  return { content: createDefaultFashionBossDraft(), source: "fallback" };
+};
+
 export const cachePublishedFashionContent = (content: FashionBossDraft) => {
   if (typeof window === "undefined") return;
   try {
@@ -517,19 +549,23 @@ export const cachePublishedFashionContent = (content: FashionBossDraft) => {
 };
 
 export const getCachedPublishedFashionContent = (): FashionBossDraft => {
-  const cached = readPublishedFashionCache();
-  return cached ?? createDefaultFashionBossDraft();
+  return getCachedPublishedFashionState().content;
 };
 
-export const getPublishedFashionContentAsync = async (): Promise<FashionBossDraft> => {
+export const getPublishedFashionContentStateAsync = async (): Promise<FashionPublishedState> => {
   try {
     const response = await apiGet<{ content: FashionBossDraft }>("/api/fashion/published");
     const content = response.content ?? createDefaultFashionBossDraft();
     cachePublishedFashionContent(content);
-    return content;
+    return { content, source: "live" };
   } catch {
-    return getCachedPublishedFashionContent();
+    return getCachedPublishedFashionState();
   }
+};
+
+export const getPublishedFashionContentAsync = async (): Promise<FashionBossDraft> => {
+  const state = await getPublishedFashionContentStateAsync();
+  return state.content;
 };
 
 export const buildFashionClientViewModel = (draft: FashionBossDraft) => {
@@ -577,3 +613,11 @@ export const buildFashionClientViewModel = (draft: FashionBossDraft) => {
 };
 
 export const getFashionClientViewModel = () => buildFashionClientViewModel(getCachedPublishedFashionContent());
+
+export const getFashionClientViewModelState = () => {
+  const state = getCachedPublishedFashionState();
+  return {
+    viewModel: buildFashionClientViewModel(state.content),
+    source: state.source
+  };
+};

@@ -11,7 +11,7 @@ import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
 import { openFashionStoryWhatsApp } from "../utils/fashionWhatsApp";
 import { formatFashionPrice } from "../utils/fashionPricing";
-import { getFashionClientViewModel } from "../utils/fashionDraft";
+import { getFashionClientViewModel, type FashionPublishedSource } from "../utils/fashionDraft";
 import { getFashionBadgeClassName, getFashionPriceChipClassName } from "../utils/fashionBadge";
 import { dedupeProductsById, normalizeFashionDisplayConfig, selectRelatedProducts } from "../utils/fashionProductDisplay";
 import { buildFashionNavbarSocials } from "../utils/fashionNavbar";
@@ -26,6 +26,7 @@ const FashionCollections = () => {
   const [selectedProduct, setSelectedProduct] = useState<FashionProduct | null>(null);
   const [productTrigger, setProductTrigger] = useState<HTMLElement | null>(null);
   const [fashionViewModel, setFashionViewModel] = useState(() => getFashionClientViewModel());
+  const [, setContentSource] = useState<FashionPublishedSource>("loading");
   const navLabels = useSiteNavLabels();
   const collectionsDraft = fashionViewModel.collections;
   const [focusedProductId, setFocusedProductId] = useState("");
@@ -94,10 +95,10 @@ const FashionCollections = () => {
     null;
   const listProducts = useMemo(
     () =>
-      displayConfig.enforceUniquePerPage && spotlightProduct
+      spotlightProduct
         ? visibleProducts.filter((product) => product.id !== spotlightProduct.id)
         : visibleProducts,
-    [displayConfig.enforceUniquePerPage, spotlightProduct, visibleProducts]
+    [spotlightProduct, visibleProducts]
   );
   const displayedProducts = useMemo(() => listProducts.slice(0, visibleCount), [listProducts, visibleCount]);
   const canLoadMore = displayedProducts.length < listProducts.length;
@@ -114,7 +115,8 @@ const FashionCollections = () => {
         selectedProduct,
         allProducts,
         excludeIds: [...displayedProducts.map((product) => product.id), ...(spotlightProduct ? [spotlightProduct.id] : [])],
-        limit: displayConfig.relatedProductLimit
+        limit: displayConfig.relatedProductLimit,
+        allowReuseFallback: false
       }),
     [allProducts, displayConfig.relatedProductLimit, displayedProducts, selectedProduct, spotlightProduct]
   );
@@ -123,7 +125,7 @@ const FashionCollections = () => {
     updateTheme(theme);
   }, [theme]);
 
-  useFashionPublishedSync(setFashionViewModel);
+  useFashionPublishedSync(setFashionViewModel, setContentSource);
 
   useEffect(() => {
     setSortMode(collectionsDraft.defaultSort);
@@ -236,7 +238,6 @@ const FashionCollections = () => {
         navLabels={navLabels}
       />
       <FashionSubnav currentPath="/fashion/collections" />
-
       <main className="overflow-x-hidden px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

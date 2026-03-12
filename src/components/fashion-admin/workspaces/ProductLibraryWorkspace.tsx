@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { FashionBossDraft } from "../../../utils/fashionDraft";
 import type { FashionProduct } from "../../../data/fashionCatalog";
 import type { FashionCurrencyCode, FashionLocaleCode } from "../../../utils/fashionPricing";
+import FashionAdminValidationPanel from "../primitives/FashionAdminValidationPanel";
 
 type DraftSection = "homepage" | "collections" | "editorial" | "styleNotes" | "pricing" | "whatsapp";
 type PatchDraft = <K extends DraftSection>(section: K, value: Partial<FashionBossDraft[K]>) => void;
@@ -71,6 +72,9 @@ type ProductLibraryWorkspaceProps = {
   NEW_PRODUCT_ID: string;
   renderEditorOverlay: (args: ProductEditorOverlayArgs) => ReactNode;
   saveCurrentProductToRemote: (mode: "save" | "publish") => Promise<void>;
+  deleteProductFromRemote: (productId: string) => Promise<void>;
+  productDraftIssues: string[];
+  selectedProductUsage: string[];
   formatBadgeLabel: (value: string) => string;
   productBadgeOptions: readonly string[];
   productFieldOptions: ProductFieldOptions;
@@ -98,6 +102,9 @@ const ProductLibraryWorkspace = (props: ProductLibraryWorkspaceProps) => {
     NEW_PRODUCT_ID,
     renderEditorOverlay,
     saveCurrentProductToRemote,
+    deleteProductFromRemote,
+    productDraftIssues,
+    selectedProductUsage,
     formatBadgeLabel,
     productBadgeOptions,
     productFieldOptions
@@ -131,26 +138,44 @@ const ProductLibraryWorkspace = (props: ProductLibraryWorkspaceProps) => {
                       </div>
                       <div className="max-h-[56dvh] md:max-h-[34rem] space-y-2 overflow-y-auto pr-1">
                         {filteredProducts.map((product: any) => (
-                          <button
+                          <div
                             key={product.id}
-                            type="button"
-                            onClick={() => setSelectedProductId(product.id)}
-                            className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                            className={`w-full rounded-2xl border px-3 py-3 transition ${
                               selectedProductId === product.id
                                 ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
                                 : "border-black/6 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="font-semibold">{product.name}</div>
-                                <div className={`mt-1 text-xs ${selectedProductId === product.id ? "text-white/70 dark:text-slate-700" : "text-slate-500 dark:text-slate-400"}`}>{product.collection}</div>
+                            <button type="button" onClick={() => setSelectedProductId(product.id)} className="w-full text-left">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-semibold">{product.name}</div>
+                                  <div className={`mt-1 text-xs ${selectedProductId === product.id ? "text-white/70 dark:text-slate-700" : "text-slate-500 dark:text-slate-400"}`}>{product.collection}</div>
+                                </div>
+                                <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${selectedProductId === product.id ? "bg-white/12 text-white/85 dark:bg-slate-900/10 dark:text-slate-900" : "bg-black/5 text-slate-500 dark:bg-white/10 dark:text-slate-400"}`}>
+                                  {product.category}
+                                </span>
                               </div>
-                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${selectedProductId === product.id ? "bg-white/12 text-white/85 dark:bg-slate-900/10 dark:text-slate-900" : "bg-black/5 text-slate-500 dark:bg-white/10 dark:text-slate-400"}`}>
-                                {product.category}
-                              </span>
+                            </button>
+                            <div className="mt-3 flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProductId(product.id)}
+                                className="fa-btn fa-btn-ghost rounded-full px-3 py-1.5 text-[10px]"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void deleteProductFromRemote(product.id);
+                                }}
+                                className="fa-btn fa-btn-danger-soft rounded-full px-3 py-1.5 text-[10px]"
+                              >
+                                Delete
+                              </button>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -169,6 +194,19 @@ const ProductLibraryWorkspace = (props: ProductLibraryWorkspaceProps) => {
                           children: (
                             <div className="grid gap-5 xl:grid-cols-[1.1fr_minmax(0,0.9fr)]">
                               <div className="space-y-4 fa-card p-4">
+                                {productDraftIssues.length > 0 ? (
+                                  <FashionAdminValidationPanel title="Product validation" tone="warning">
+                                    <ul className="list-disc pl-5">
+                                      {productDraftIssues.map((issue) => (
+                                        <li key={issue}>{issue}</li>
+                                      ))}
+                                    </ul>
+                                  </FashionAdminValidationPanel>
+                                ) : (
+                                  <FashionAdminValidationPanel title="Product validation" tone="success">
+                                    Product draft is ready for save and publish.
+                                  </FashionAdminValidationPanel>
+                                )}
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div>
                                     <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-amber-700 dark:text-amber-300">Editor panel</p>
@@ -287,6 +325,22 @@ const ProductLibraryWorkspace = (props: ProductLibraryWorkspaceProps) => {
                                     <span className="rounded-full bg-black/5 px-3 py-1 text-xs font-semibold dark:bg-white/10">{draft.pricing.locale ?? "en-US"}</span>
                                     <span className="rounded-full bg-black/5 px-3 py-1 text-xs font-semibold dark:bg-white/10">{draft.pricing.marketLabel ?? "Global"}</span>
                                   </div>
+                                  {selectedProduct && selectedProductUsage.length > 0 ? (
+                                    <div className="mt-4 rounded-2xl border border-black/8 bg-white/70 px-4 py-4 text-sm dark:border-white/10 dark:bg-white/5">
+                                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Used in</p>
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {selectedProductUsage.map((usage) => (
+                                          <span key={usage} className="rounded-full bg-black/5 px-3 py-1 text-xs font-semibold dark:bg-white/10">
+                                            {usage}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : selectedProduct ? (
+                                    <div className="mt-4 rounded-2xl border border-dashed border-black/12 px-4 py-4 text-sm text-slate-600 dark:border-white/10 dark:text-slate-300">
+                                      This product is not currently assigned to any live fashion section.
+                                    </div>
+                                  ) : null}
                                   <div className="mt-4 rounded-2xl border border-dashed border-black/12 px-4 py-4 text-sm text-slate-600 dark:border-white/10 dark:text-slate-300">
                                     Product metadata here feeds homepage cards, collections, editorial picks, style sets, and WhatsApp inquiry captions.
                                   </div>
