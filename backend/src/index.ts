@@ -1,13 +1,29 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import type { FashionContent, FashionVideoContent, FashionVideoComment } from "../../shared/fashionTypes";
 import type { SiteContent } from "../../shared/siteTypes";
 import multer from "multer";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createMediaStore } from "./media/store.js";
 import { createAnalyticsStore } from "./analytics/store.js";
+import { createFashionStore } from "./fashion/store.js";
+import { createFashionVideoStore } from "./fashion/videoStore.js";
+import { createFashionWhatsAppStore, type FashionWhatsAppApiSettings } from "./fashion/whatsAppStore.js";
+import { createFashionInquiryStore } from "./fashion/inquiryStore.js";
+import { createFashionLikesStore, type FashionSlideLikeScope } from "./fashion/likesStore.js";
+import { createFashionVideoEngagementStore } from "./fashion/videoEngagementStore.js";
+import {
+  type FashionInquiryPayload,
+  type FashionInquiryRecord,
+  type FashionInquiryStatus,
+  type FashionInquiryType
+} from "./fashion/inquiryTypes.js";
+import { buildFallbackWaMeUrl, sendFashionWhatsAppMessage } from "./fashion/inquirySend.js";
 import { createSiteStore } from "./site/store.js";
 import { createAuthStore, isAuthRateLimitError } from "./auth/store.js";
 import { createEmailStore } from "./email/store.js";
@@ -25,6 +41,7 @@ import {
   EMAIL_CAMPAIGN_SEND_MODE,
   EMAIL_CAMPAIGN_STATUS,
   EMAIL_EVENT_TYPES,
+  EMAIL_SUBSCRIBER_SOURCE,
   EMAIL_SUBSCRIBER_STATUS
 } from "./db/schema.js";
 import { defaultPublishedContent } from "./db/defaultPublishedContent.js";
@@ -75,6 +92,7 @@ const MEDIA_UPLOAD_IP_RATE_WINDOW_MS = Number(process.env.MEDIA_UPLOAD_IP_RATE_W
 const MEDIA_UPLOAD_IP_RATE_MAX = Number(process.env.MEDIA_UPLOAD_IP_RATE_MAX ?? 20);
 const MEDIA_UPLOAD_MAX_FILE_BYTES = Number(process.env.MEDIA_UPLOAD_MAX_FILE_BYTES ?? 10 * 1024 * 1024);
 const MEDIA_UPLOAD_MAX_FILES = Number(process.env.MEDIA_UPLOAD_MAX_FILES ?? 20);
+const FASHION_VIDEO_UPLOAD_MAX_FILE_BYTES = Number(process.env.FASHION_VIDEO_UPLOAD_MAX_FILE_BYTES ?? 350 * 1024 * 1024);
 const ADMIN_MUTATION_IP_RATE_WINDOW_MS = Number(process.env.ADMIN_MUTATION_IP_RATE_WINDOW_MS ?? 60_000);
 const ADMIN_MUTATION_IP_RATE_MAX = Number(process.env.ADMIN_MUTATION_IP_RATE_MAX ?? 60);
 const AI_CHAT_IP_RATE_WINDOW_MS = Number(process.env.AI_CHAT_IP_RATE_WINDOW_MS ?? 60_000);
@@ -108,7 +126,90 @@ const LIST_PAGE_SIZE_MAX = Number(process.env.LIST_PAGE_SIZE_MAX ?? 100);
 const ADMIN_UNSUBSCRIBE_ALERT_EMAIL = (process.env.ADMIN_UNSUBSCRIBE_ALERT_EMAIL ?? "").trim().toLowerCase();
 const ALLOWED_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
+const ALLOWED_FASHION_VIDEO_UPLOAD_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"]);
+const ALLOWED_FASHION_VIDEO_UPLOAD_EXTENSIONS = new Set([".mp4", ".webm", ".ogg", ".ogv", ".mov"]);
+const FFMPEG_PATH = (process.env.FFMPEG_PATH ?? "ffmpeg").trim() || "ffmpeg";
+const FFPROBE_PATH = (process.env.FFPROBE_PATH ?? "ffprobe").trim() || "ffprobe";
 const SUPER_MODE_BASE_URL_MAX_CHARS = Number(process.env.SUPER_MODE_BASE_URL_MAX_CHARS ?? 240);
+const execFileAsync = promisify(execFile);
+
+const formatVideoDuration = (seconds: number) => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  if (hours > 0) {
+    return [hours, minutes, remainingSeconds].map((value) => String(value).padStart(2, "0")).join(":");
+  }
+  return [minutes, remainingSeconds].map((value) => String(value).padStart(2, "0")).join(":");
+};
+
+const probeVideoDurationSeconds = async (filePath: string) => {
+  try {
+    const { stdout } = await execFileAsync(FFPROBE_PATH, [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath
+    ]);
+    const value = Number.parseFloat(stdout.trim());
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value;
+  } catch {
+    return null;
+  }
+};
+
+const generateVideoThumbnail = async (inputPath: string, outputPath: string) => {
+  try {
+    await execFileAsync(FFMPEG_PATH, [
+      "-y",
+      "-ss",
+      "00:00:01.000",
+      "-i",
+      inputPath,
+      "-frames:v",
+      "1",
+      "-q:v",
+      "2",
+      outputPath
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const transcodeVideoForWeb = async (inputPath: string, outputPath: string) => {
+  try {
+    await execFileAsync(FFMPEG_PATH, [
+      "-y",
+      "-i",
+      inputPath,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "23",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      outputPath
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+};
 const resolveTrustProxySetting = (): boolean | number | string => {
   const raw = (process.env.TRUST_PROXY ?? "").trim();
   if (!raw) return false;
@@ -347,6 +448,12 @@ const bootstrap = async () => {
   await resetSecurityStateIfRequested(MEDIA_DIR);
   const mediaStore = await createMediaStore(MEDIA_DIR);
   const analyticsStore = await createAnalyticsStore(MEDIA_DIR);
+  const fashionStore = await createFashionStore(MEDIA_DIR);
+  const fashionVideoStore = await createFashionVideoStore(MEDIA_DIR);
+  const fashionWhatsAppStore = await createFashionWhatsAppStore(MEDIA_DIR);
+  const fashionInquiryStore = await createFashionInquiryStore(MEDIA_DIR);
+  const fashionLikesStore = await createFashionLikesStore(MEDIA_DIR);
+  const fashionVideoEngagementStore = await createFashionVideoEngagementStore(MEDIA_DIR);
   const siteStore = await createSiteStore(MEDIA_DIR);
   const authStore = await createAuthStore(MEDIA_DIR);
   const emailStore = await createEmailStore(MEDIA_DIR);
@@ -397,6 +504,41 @@ const bootstrap = async () => {
       cb(null, true);
     }
   });
+  const fashionVideoUpload = multer({
+    storage,
+    limits: {
+      fileSize:
+        Number.isFinite(FASHION_VIDEO_UPLOAD_MAX_FILE_BYTES) && FASHION_VIDEO_UPLOAD_MAX_FILE_BYTES > 0
+          ? FASHION_VIDEO_UPLOAD_MAX_FILE_BYTES
+          : 350 * 1024 * 1024,
+      files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = (file.mimetype || "").toLowerCase();
+      if (!ALLOWED_FASHION_VIDEO_UPLOAD_MIME_TYPES.has(mime) || !ALLOWED_FASHION_VIDEO_UPLOAD_EXTENSIONS.has(ext)) {
+        cb(new Error("Unsupported video type. Allowed: MP4, WEBM, OGG, MOV."));
+        return;
+      }
+      cb(null, true);
+    }
+  });
+  const fashionVideoThumbnailUpload = multer({
+    storage,
+    limits: {
+      fileSize: maxUploadFileBytes,
+      files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = (file.mimetype || "").toLowerCase();
+      if (!ALLOWED_UPLOAD_MIME_TYPES.has(mime) || !ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+        cb(new Error("Unsupported thumbnail type. Allowed: JPG, PNG, WEBP, GIF, AVIF."));
+        return;
+      }
+      cb(null, true);
+    }
+  });
 
   app.use(
     cors({
@@ -438,6 +580,16 @@ const bootstrap = async () => {
       path === "/api/site/draft" ||
       path === "/api/site/publish" ||
       path === "/api/site/reset" ||
+      path === "/api/fashion/draft" ||
+      path === "/api/fashion/publish" ||
+      path === "/api/fashion/reset" ||
+      path === "/api/fashion-videos/draft" ||
+      path === "/api/fashion-videos/publish" ||
+      path === "/api/fashion-videos/reset" ||
+      path === "/api/fashion-videos/media/video" ||
+      path === "/api/fashion-videos/media/thumbnail" ||
+      path === "/api/fashion/whatsapp/settings" ||
+      path.startsWith("/api/fashion/whatsapp/inquiries") ||
       path.startsWith("/api/media") ||
       path.startsWith("/api/email/subscribers") ||
       path.startsWith("/api/email/campaigns") ||
@@ -824,6 +976,177 @@ const bootstrap = async () => {
   const exposeInternalErrors = !isProduction || process.env.EXPOSE_INTERNAL_ERRORS === "true";
   const safeServerErrorMessage = (error: unknown, fallbackMessage: string) =>
     exposeInternalErrors && error instanceof Error && error.message.trim() ? error.message : fallbackMessage;
+  const asNonEmptyString = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : "");
+  const asOptionalString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const normalizePhoneDigits = (value: string) => value.replace(/\D/g, "");
+  const allowedInquiryTypes = new Set<FashionInquiryType>(["product", "fit", "look", "collection", "editorial-story", "style-set"]);
+  const validateInquiryPayload = (body: unknown): { ok: true; payload: FashionInquiryPayload } | { ok: false; error: string } => {
+    const raw = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+    if (!raw) return { ok: false, error: "Inquiry payload is required." };
+
+    const typeCandidate = asNonEmptyString(raw.type);
+    if (!allowedInquiryTypes.has(typeCandidate as FashionInquiryType)) {
+      return { ok: false, error: "Inquiry type is invalid." };
+    }
+    const source = asNonEmptyString(raw.source);
+    if (!source) return { ok: false, error: "Inquiry source is required." };
+    const message = asNonEmptyString(raw.message);
+    if (!message) return { ok: false, error: "Inquiry message is required." };
+
+    const rawProducts = Array.isArray(raw.products) ? raw.products : [];
+    const products = rawProducts
+      .map((item) => {
+        if (typeof item !== "object" || item === null) return null;
+        const value = item as Record<string, unknown>;
+        const id = asNonEmptyString(value.id);
+        const name = asNonEmptyString(value.name);
+        if (!id || !name) return null;
+        const collection = asOptionalString(value.collection) || undefined;
+        const category = asOptionalString(value.category) || undefined;
+        const currency = asOptionalString(value.currency) || undefined;
+        const imageUrl = asOptionalString(value.imageUrl) || undefined;
+        const priceRaw = typeof value.price === "number" ? value.price : Number(value.price);
+        const price = Number.isFinite(priceRaw) ? priceRaw : undefined;
+        return { id, name, collection, category, currency, imageUrl, price };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .slice(0, 12);
+
+    const rawCustomer = typeof raw.customerMeta === "object" && raw.customerMeta !== null ? (raw.customerMeta as Record<string, unknown>) : null;
+    if (!rawCustomer) return { ok: false, error: "customerMeta is required." };
+    const phoneNumber = normalizePhoneDigits(asNonEmptyString(rawCustomer.phoneNumber));
+    if (!phoneNumber) return { ok: false, error: "Phone number is required." };
+    const customerMeta = {
+      name: asOptionalString(rawCustomer.name) || undefined,
+      phoneNumber,
+      countryCode: asOptionalString(rawCustomer.countryCode) || undefined,
+      preferredContactMethod: asOptionalString(rawCustomer.preferredContactMethod) || undefined,
+      notes: asOptionalString(rawCustomer.notes) || undefined
+    };
+
+    const rawConsent = typeof raw.consent === "object" && raw.consent !== null ? (raw.consent as Record<string, unknown>) : null;
+    if (!rawConsent || rawConsent.accepted !== true) {
+      return { ok: false, error: "Consent must be accepted before sending an inquiry." };
+    }
+    const consent = {
+      accepted: true,
+      text: asOptionalString(rawConsent.text) || undefined
+    };
+
+    const imageUrl = asOptionalString(raw.imageUrl) || undefined;
+    const fallbackPhoneNumber = normalizePhoneDigits(asOptionalString(raw.fallbackPhoneNumber));
+
+    return {
+      ok: true,
+      payload: {
+        type: typeCandidate as FashionInquiryType,
+        source,
+        message,
+        imageUrl,
+        products,
+        customerMeta,
+        consent,
+        fallbackPhoneNumber: fallbackPhoneNumber || undefined
+      }
+    };
+  };
+  const mapSendResultToInquiryStatus = (result: { ok: boolean; deliveryMode: "api-image" | "api-text" | "fallback-required" }) => {
+    if (result.deliveryMode === "api-image") return "api-image" as const;
+    if (result.deliveryMode === "api-text") return "api-text" as const;
+    return "fallback-required" as const;
+  };
+  const inferFallbackPhoneNumber = (payload: FashionInquiryPayload, published: FashionContent | null) =>
+    payload.fallbackPhoneNumber ||
+    normalizePhoneDigits(published?.whatsapp?.phoneNumber ?? "") ||
+    "";
+  const allowedInquiryStatuses = new Set<FashionInquiryStatus>(["queued", "api-image", "api-text", "fallback-required", "failed"]);
+  const validateInquiryAdminPatch = (
+    body: unknown
+  ):
+    | {
+        ok: true;
+        patch: Partial<
+          Pick<FashionInquiryRecord, "source" | "message" | "status" | "fallbackRequired" | "customerMeta" | "providerResponse">
+        >;
+      }
+    | { ok: false; error: string } => {
+    const raw = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+    if (!raw) return { ok: false, error: "Patch payload is required." };
+
+    const patch: Partial<
+      Pick<FashionInquiryRecord, "source" | "message" | "status" | "fallbackRequired" | "customerMeta" | "providerResponse">
+    > = {};
+
+    if ("source" in raw) {
+      const source = asNonEmptyString(raw.source);
+      if (!source) return { ok: false, error: "source must be a non-empty string." };
+      patch.source = source;
+    }
+    if ("message" in raw) {
+      const message = asNonEmptyString(raw.message);
+      if (!message) return { ok: false, error: "message must be a non-empty string." };
+      patch.message = message;
+    }
+    if ("status" in raw) {
+      const status = asNonEmptyString(raw.status);
+      if (!allowedInquiryStatuses.has(status as FashionInquiryStatus)) {
+        return { ok: false, error: "status is invalid." };
+      }
+      patch.status = status as FashionInquiryStatus;
+    }
+    if ("fallbackRequired" in raw) {
+      if (typeof raw.fallbackRequired !== "boolean") {
+        return { ok: false, error: "fallbackRequired must be a boolean." };
+      }
+      patch.fallbackRequired = raw.fallbackRequired;
+    }
+    if ("customerMeta" in raw) {
+      const customerRaw =
+        typeof raw.customerMeta === "object" && raw.customerMeta !== null ? (raw.customerMeta as Record<string, unknown>) : null;
+      if (!customerRaw) return { ok: false, error: "customerMeta must be an object." };
+      const phoneNumber = "phoneNumber" in customerRaw ? normalizePhoneDigits(asOptionalString(customerRaw.phoneNumber)) : "";
+      patch.customerMeta = {
+        name: "name" in customerRaw ? asOptionalString(customerRaw.name) || undefined : undefined,
+        phoneNumber,
+        countryCode: "countryCode" in customerRaw ? asOptionalString(customerRaw.countryCode) || undefined : undefined,
+        preferredContactMethod:
+          "preferredContactMethod" in customerRaw ? asOptionalString(customerRaw.preferredContactMethod) || undefined : undefined,
+        notes: "notes" in customerRaw ? asOptionalString(customerRaw.notes) || undefined : undefined
+      };
+    }
+    if ("providerResponse" in raw) {
+      const providerRaw =
+        typeof raw.providerResponse === "object" && raw.providerResponse !== null
+          ? (raw.providerResponse as Record<string, unknown>)
+          : null;
+      if (!providerRaw) return { ok: false, error: "providerResponse must be an object." };
+      const deliveryModeRaw = "deliveryMode" in providerRaw ? asOptionalString(providerRaw.deliveryMode) : "";
+      if (deliveryModeRaw && !["api-image", "api-text", "fallback-required"].includes(deliveryModeRaw)) {
+        return { ok: false, error: "providerResponse.deliveryMode is invalid." };
+      }
+      patch.providerResponse = {
+        statusCode:
+          "statusCode" in providerRaw
+            ? Number.isFinite(Number(providerRaw.statusCode))
+              ? Number(providerRaw.statusCode)
+              : undefined
+            : undefined,
+        deliveryMode: deliveryModeRaw
+          ? (deliveryModeRaw as "api-image" | "api-text" | "fallback-required")
+          : undefined,
+        detail: "detail" in providerRaw ? asOptionalString(providerRaw.detail) || undefined : undefined,
+        recipientPhoneNumber:
+          "recipientPhoneNumber" in providerRaw ? normalizePhoneDigits(asOptionalString(providerRaw.recipientPhoneNumber)) || undefined : undefined,
+        rawBody: "rawBody" in providerRaw ? asOptionalString(providerRaw.rawBody) || undefined : undefined
+      };
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { ok: false, error: "Patch payload is empty." };
+    }
+
+    return { ok: true, patch };
+  };
 
   const parseCampaignInput = (body: unknown) => {
     const payload = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
@@ -1392,6 +1715,119 @@ const bootstrap = async () => {
     }
   );
 
+  app.post(
+    "/api/fashion-videos/media/video",
+    requireAdminAuth,
+    mediaUploadIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.upload_video_asset"),
+    fashionVideoUpload.single("file"),
+    async (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "No video file uploaded. Use form-data field 'file'." });
+        return;
+      }
+      const sourceUrl = `${API_PUBLIC_BASE_URL}/uploads/${file.filename}`;
+      const sourceItem = await mediaStore.add({
+        name: file.originalname,
+        fileName: file.filename,
+        url: sourceUrl,
+        mime: file.mimetype,
+        sizeBytes: file.size
+      });
+      const filePath = path.join(mediaStore.uploadsDir, file.filename);
+      let item = sourceItem;
+      const warnings: string[] = [];
+
+      const transcodedFileName = `${Date.now()}-${randomUUID()}-web.mp4`;
+      const transcodedPath = path.join(mediaStore.uploadsDir, transcodedFileName);
+      const transcoded = await transcodeVideoForWeb(filePath, transcodedPath);
+      if (transcoded) {
+        try {
+          const transcodedStats = await fs.stat(transcodedPath);
+          item = await mediaStore.add({
+            name: `${path.parse(file.originalname).name}-web.mp4`,
+            fileName: transcodedFileName,
+            url: `${API_PUBLIC_BASE_URL}/uploads/${transcodedFileName}`,
+            mime: "video/mp4",
+            sizeBytes: transcodedStats.size
+          });
+        } catch {
+          warnings.push("Video was converted but the browser-safe asset could not be registered.");
+        }
+      } else {
+        try {
+          await fs.unlink(transcodedPath);
+        } catch {
+          // ignore
+        }
+        warnings.push("Video could not be converted to a browser-safe MP4. Playback depends on the original file format.");
+      }
+
+      const durationSeconds = await probeVideoDurationSeconds(filePath);
+      const duration = durationSeconds ? formatVideoDuration(durationSeconds) : null;
+
+      let thumbnailItem: Awaited<ReturnType<typeof mediaStore.add>> | null = null;
+      const thumbnailFileName = `${Date.now()}-${randomUUID()}.jpg`;
+      const thumbnailPath = path.join(mediaStore.uploadsDir, thumbnailFileName);
+      const thumbnailCreated = await generateVideoThumbnail(filePath, thumbnailPath);
+      if (thumbnailCreated) {
+        try {
+          const stats = await fs.stat(thumbnailPath);
+          thumbnailItem = await mediaStore.add({
+            name: `${path.parse(file.originalname).name}-thumbnail.jpg`,
+            fileName: thumbnailFileName,
+            url: `${API_PUBLIC_BASE_URL}/uploads/${thumbnailFileName}`,
+            mime: "image/jpeg",
+            sizeBytes: stats.size
+          });
+        } catch {
+          warnings.push("Thumbnail generation completed but could not be registered.");
+        }
+      } else {
+        try {
+          await fs.unlink(thumbnailPath);
+        } catch {
+          // ignore
+        }
+        warnings.push("Thumbnail could not be generated automatically for this video.");
+      }
+
+      res.status(201).json({
+        item,
+        duration,
+        thumbnailItem,
+        warning: warnings.length ? warnings.join(" ") : null
+      });
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/media/thumbnail",
+    requireAdminAuth,
+    mediaUploadIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.upload_thumbnail"),
+    fashionVideoThumbnailUpload.single("file"),
+    async (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "No thumbnail uploaded. Use form-data field 'file'." });
+        return;
+      }
+      const url = `${API_PUBLIC_BASE_URL}/uploads/${file.filename}`;
+      const item = await mediaStore.add({
+        name: file.originalname,
+        fileName: file.filename,
+        url,
+        mime: file.mimetype,
+        sizeBytes: file.size
+      });
+      res.status(201).json({ item });
+    }
+  );
+
   app.delete("/api/media/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.delete"), async (req, res) => {
     const mediaId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const removed = await mediaStore.remove(mediaId);
@@ -1466,6 +1902,723 @@ const bootstrap = async () => {
     res.status(200).json({ published: next.published, draft: next.draft });
     }
   );
+
+  app.get("/api/fashion/published", async (_req, res) => {
+    const content = await fashionStore.getPublished();
+    res.status(200).json({ content });
+  });
+
+  app.get("/api/fashion/draft", requireAdminAuth, async (_req, res) => {
+    const content = await fashionStore.getDraft();
+    res.status(200).json({ content });
+  });
+
+  app.get("/api/fashion/meta", async (_req, res) => {
+    const meta = await fashionStore.getMeta();
+    res.status(200).json(meta);
+  });
+
+  app.get("/api/fashion-videos/published", async (_req, res) => {
+    const content = await fashionVideoStore.getPublished();
+    const summary = await fashionVideoEngagementStore.getPublicSummary(toVideoSeed(content));
+    const byVideo = new Map(summary.byVideo.map((item) => [item.videoId, item]));
+    const mergedContent = {
+      ...content,
+      videos: content.videos.map((video) => {
+        const metrics = byVideo.get(video.id);
+        if (!metrics) return video;
+        return {
+          ...video,
+          views: metrics.views,
+          likes: metrics.likes,
+          dislikes: metrics.dislikes,
+          comments: metrics.comments
+        };
+      })
+    };
+    res.status(200).json({ content: mergedContent });
+  });
+
+  app.get("/api/fashion-videos/draft", requireAdminAuth, async (_req, res) => {
+    const content = await fashionVideoStore.getDraft();
+    res.status(200).json({ content });
+  });
+
+  app.get("/api/fashion-videos/meta", async (_req, res) => {
+    const meta = await fashionVideoStore.getMeta();
+    res.status(200).json(meta);
+  });
+
+  const parseLikeScope = (value: unknown): FashionSlideLikeScope | null => {
+    if (value === "homepage" || value === "editorial") return value;
+    return null;
+  };
+  const normalizeClientLikeId = (value: unknown) => {
+    if (typeof value !== "string") return "";
+    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "");
+    return normalized.slice(0, 80);
+  };
+  const toVideoSeed = (content: FashionVideoContent) =>
+    (content.videos ?? []).map((video) => ({
+      id: video.id,
+      seedViews: video.views,
+      seedLikes: video.likes,
+      seedDislikes: video.dislikes,
+      seedComments: video.comments
+    }));
+
+  app.post("/api/fashion-videos/engagement/summary", analyticsIpLimiter, async (req, res) => {
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const videosRaw = Array.isArray(req.body?.videos) ? (req.body.videos as Array<Record<string, unknown>>) : [];
+    if (!clientId) {
+      res.status(400).json({ error: "clientId is required." });
+      return;
+    }
+    const videos = videosRaw
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id.trim() : "",
+        seedViews: typeof item.seedViews === "number" && Number.isFinite(item.seedViews) ? Math.max(0, Math.floor(item.seedViews)) : 0,
+        seedLikes: typeof item.seedLikes === "number" && Number.isFinite(item.seedLikes) ? Math.max(0, Math.floor(item.seedLikes)) : 0,
+        seedDislikes:
+          typeof item.seedDislikes === "number" && Number.isFinite(item.seedDislikes) ? Math.max(0, Math.floor(item.seedDislikes)) : 0,
+        seedComments: Array.isArray(item.seedComments) ? (item.seedComments as FashionVideoComment[]) : []
+      }))
+      .filter((item) => Boolean(item.id));
+    const summary = await fashionVideoEngagementStore.getSummary(clientId, videos);
+    res.status(200).json(summary);
+  });
+
+  app.post("/api/fashion-videos/engagement/view", analyticsIpLimiter, async (req, res) => {
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+    const seedViews =
+      typeof req.body?.seedViews === "number" && Number.isFinite(req.body.seedViews) ? Math.max(0, Math.floor(req.body.seedViews)) : 0;
+    if (!clientId || !videoId) {
+      res.status(400).json({ error: "clientId and videoId are required." });
+      return;
+    }
+    const result = await fashionVideoEngagementStore.recordView(videoId, clientId, seedViews);
+    res.status(200).json(result);
+  });
+
+  app.post("/api/fashion-videos/engagement/react", analyticsIpLimiter, async (req, res) => {
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+    const reaction = req.body?.reaction === "dislike" ? "dislike" : req.body?.reaction === "like" ? "like" : null;
+    const seedLikes =
+      typeof req.body?.seedLikes === "number" && Number.isFinite(req.body.seedLikes) ? Math.max(0, Math.floor(req.body.seedLikes)) : 0;
+    const seedDislikes =
+      typeof req.body?.seedDislikes === "number" && Number.isFinite(req.body.seedDislikes) ? Math.max(0, Math.floor(req.body.seedDislikes)) : 0;
+    if (!clientId || !videoId || !reaction) {
+      res.status(400).json({ error: "clientId, videoId, and reaction are required." });
+      return;
+    }
+    const result = await fashionVideoEngagementStore.toggleReaction(videoId, clientId, reaction, seedLikes, seedDislikes);
+    res.status(200).json(result);
+  });
+
+  app.post("/api/fashion-videos/comments", analyticsIpLimiter, async (req, res) => {
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    const parentId = typeof req.body?.parentId === "string" ? req.body.parentId.trim() : "";
+    if (!clientId || !videoId || !name || !text) {
+      res.status(400).json({ error: "clientId, videoId, name, and text are required." });
+      return;
+    }
+    try {
+      const comment = await fashionVideoEngagementStore.addComment(videoId, clientId, name, text, parentId || undefined);
+      res.status(200).json({ comment });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to add comment." });
+    }
+  });
+
+  app.post("/api/fashion-videos/comments/react", analyticsIpLimiter, async (req, res) => {
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+    const commentId = typeof req.body?.commentId === "string" ? req.body.commentId.trim() : "";
+    const reaction = req.body?.reaction === "dislike" ? "dislike" : req.body?.reaction === "like" ? "like" : null;
+    if (!clientId || !videoId || !commentId || !reaction) {
+      res.status(400).json({ error: "clientId, videoId, commentId, and reaction are required." });
+      return;
+    }
+    const comment = await fashionVideoEngagementStore.toggleCommentReaction(videoId, commentId, clientId, reaction);
+    if (!comment) {
+      res.status(404).json({ error: "Comment not found." });
+      return;
+    }
+    res.status(200).json({ comment });
+  });
+
+  app.get("/api/fashion-videos/engagement/admin", requireAdminAuth, async (_req, res) => {
+    const draftContent = await fashionVideoStore.getDraft();
+    const fallbackContent = draftContent ?? (await fashionVideoStore.getPublished());
+    const summary = await fashionVideoEngagementStore.getAdminSummary(toVideoSeed(fallbackContent));
+    res.status(200).json(summary);
+  });
+
+  app.get("/api/fashion-videos/analytics/summary", requireAdminAuth, async (_req, res) => {
+    const draftContent = await fashionVideoStore.getDraft();
+    const activeContent = draftContent ?? (await fashionVideoStore.getPublished());
+    const engagement = await fashionVideoEngagementStore.getAdminSummary(toVideoSeed(activeContent));
+    const videos = activeContent.videos ?? [];
+    const totals = {
+      totalVideos: videos.length,
+      draftVideos: videos.filter((video) => video.status === "draft").length,
+      publishedVideos: videos.filter((video) => video.status === "published").length,
+      promotedVideos: videos.filter((video) => video.isPromoted || video.placement === "promoted").length,
+      mappedVideos: videos.filter((video) => Boolean(video.mappedProductId.trim())).length,
+      views: engagement.totals.views,
+      likes: engagement.totals.likes,
+      dislikes: engagement.totals.dislikes,
+      comments: engagement.totals.comments
+    };
+
+    const rankedVideos = videos
+      .map((video, index) => {
+        const engagementItem = engagement.byVideo.find((item) => item.videoId === video.id);
+        const score = (engagementItem?.views ?? 0) + (engagementItem?.likes ?? 0) * 3 + (engagementItem?.commentCount ?? 0) * 4;
+        return {
+          videoId: video.id,
+          title: video.title,
+          productCollection: video.collection,
+          views: engagementItem?.views ?? 0,
+          score,
+          index
+        };
+      })
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+
+    const paddedSeries = (values: number[], target = 8) => {
+      if (values.length >= target) return values.slice(0, target);
+      return [...values, ...Array.from({ length: target - values.length }, (_, index) => Math.max(12, values.at(-1) ?? 20 - index * 2))];
+    };
+
+    const viewTrend = paddedSeries(
+      rankedVideos.slice(0, 8).map((item, index) => Math.max(14, Math.min(100, item.views > 0 ? Math.round((item.views / Math.max(1, totals.views)) * 100) : 22 + index * 5)))
+    );
+    const engagementTrend = paddedSeries(
+      rankedVideos.slice(0, 8).map((item, index) => Math.max(12, Math.min(100, item.score > 0 ? Math.round((item.score / Math.max(1, rankedVideos[0]?.score ?? 1)) * 100) : 18 + index * 4)))
+    );
+    const publishPulse = paddedSeries(
+      videos.slice(0, 8).map((video, index) => (video.status === "published" ? 56 + (index % 3) * 8 : 24 + (index % 4) * 5))
+    );
+
+    const recommendations = [
+      totals.draftVideos
+        ? `Publish ${totals.draftVideos} draft video${totals.draftVideos === 1 ? "" : "s"} waiting in the library.`
+        : "All current videos are published. Review promotion order next.",
+      totals.comments
+        ? `${totals.comments} comment${totals.comments === 1 ? "" : "s"} are available for moderation review.`
+        : "No public comments yet. Keep comment moderation ready for first responses.",
+      totals.promotedVideos
+        ? `${totals.promotedVideos} video${totals.promotedVideos === 1 ? "" : "s"} are promoted. Recheck homepage and feed balance.`
+        : "No promoted videos yet. Use Promote in the library to boost visibility.",
+      totals.mappedVideos < totals.totalVideos
+        ? `${totals.totalVideos - totals.mappedVideos} video${totals.totalVideos - totals.mappedVideos === 1 ? "" : "s"} still need stronger product mapping.`
+        : "All videos are mapped to products for commerce actions."
+    ];
+
+    res.status(200).json({
+      totals,
+      trends: {
+        views: viewTrend,
+        engagement: engagementTrend,
+        publishPulse
+      },
+      recommendations,
+      topVideos: rankedVideos.slice(0, 4).map(({ index, ...item }) => item)
+    });
+  });
+
+  app.post(
+    "/api/fashion-videos/comments/moderate",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.moderate_comment"),
+    async (req, res) => {
+      const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+      const commentId = typeof req.body?.commentId === "string" ? req.body.commentId.trim() : "";
+      const status =
+        req.body?.status === "visible" || req.body?.status === "hidden" || req.body?.status === "flagged"
+          ? req.body.status
+          : null;
+      if (!videoId || !commentId || !status) {
+        res.status(400).json({ error: "videoId, commentId, and status are required." });
+        return;
+      }
+      const comment = await fashionVideoEngagementStore.updateCommentStatus(videoId, commentId, status);
+      if (!comment) {
+        res.status(404).json({ error: "Comment not found." });
+        return;
+      }
+      res.status(200).json({ comment });
+    }
+  );
+
+  app.post("/api/fashion/likes/summary", analyticsIpLimiter, async (req, res) => {
+    const scope = parseLikeScope(req.body?.scope);
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const slidesRaw = Array.isArray(req.body?.slides) ? (req.body.slides as Array<Record<string, unknown>>) : [];
+    if (!scope || !clientId) {
+      res.status(400).json({ error: "scope and clientId are required." });
+      return;
+    }
+    const slides = slidesRaw
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id.trim() : "",
+        seedLikes: typeof item.seedLikes === "number" && Number.isFinite(item.seedLikes) ? Math.max(0, Math.floor(item.seedLikes)) : 0
+      }))
+      .filter((item) => Boolean(item.id));
+    const summary = await fashionLikesStore.getSummary(scope, clientId, slides);
+    res.status(200).json(summary);
+  });
+
+  app.post("/api/fashion/likes/toggle", analyticsIpLimiter, async (req, res) => {
+    const scope = parseLikeScope(req.body?.scope);
+    const clientId = normalizeClientLikeId(req.body?.clientId);
+    const slideId = typeof req.body?.slideId === "string" ? req.body.slideId.trim() : "";
+    const seedLikes =
+      typeof req.body?.seedLikes === "number" && Number.isFinite(req.body.seedLikes) ? Math.max(0, Math.floor(req.body.seedLikes)) : 0;
+    if (!scope || !clientId || !slideId) {
+      res.status(400).json({ error: "scope, clientId, and slideId are required." });
+      return;
+    }
+    const result = await fashionLikesStore.toggle(scope, slideId, clientId, seedLikes);
+    res.status(200).json(result);
+  });
+
+  app.put(
+    "/api/fashion/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.save_draft"),
+    async (req, res) => {
+    const payload = req.body?.content as FashionContent | undefined;
+    if (!payload || typeof payload !== "object") {
+      res.status(400).json({ error: "content payload is required." });
+      return;
+    }
+    try {
+      const content = await fashionStore.saveDraft(payload);
+      await fashionLikesStore.syncSlides(
+        "homepage",
+        (content.homepageSlides ?? []).map((slide) => slide.id)
+      );
+      await fashionLikesStore.syncSlides(
+        "editorial",
+        (content.editorialSlides ?? []).map((slide) => slide.id)
+      );
+      res.status(200).json({ content });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion content payload." });
+    }
+    }
+  );
+
+  app.post(
+    "/api/fashion/publish",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.publish"),
+    async (req, res) => {
+    const payload = req.body?.content as FashionContent | undefined;
+    try {
+      const content = await fashionStore.publish(payload);
+      await fashionLikesStore.syncSlides(
+        "homepage",
+        (content.homepageSlides ?? []).map((slide) => slide.id)
+      );
+      await fashionLikesStore.syncSlides(
+        "editorial",
+        (content.editorialSlides ?? []).map((slide) => slide.id)
+      );
+      res.status(200).json({ content });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion content payload." });
+    }
+    }
+  );
+
+  app.post(
+    "/api/fashion/reset",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.reset"),
+    async (_req, res) => {
+    const next = await fashionStore.reset();
+    await fashionLikesStore.syncSlides(
+      "homepage",
+      (next.published.homepageSlides ?? []).map((slide) => slide.id)
+    );
+    await fashionLikesStore.syncSlides(
+      "editorial",
+      (next.published.editorialSlides ?? []).map((slide) => slide.id)
+    );
+    res.status(200).json({ published: next.published, draft: next.draft });
+    }
+  );
+
+  app.put(
+    "/api/fashion-videos/draft",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.save_draft"),
+    async (req, res) => {
+      const payload = req.body?.content;
+      if (!payload || typeof payload !== "object") {
+        res.status(400).json({ error: "content payload is required." });
+        return;
+      }
+      try {
+        const content = await fashionVideoStore.saveDraft(payload);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(content));
+        res.status(200).json({ content });
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion video content payload." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/publish",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.publish"),
+    async (req, res) => {
+      const payload = typeof req.body?.content === "object" && req.body?.content !== null ? req.body.content : undefined;
+      try {
+        const content = await fashionVideoStore.publish(payload);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(content));
+        res.status(200).json({ content });
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Invalid fashion video content payload." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/reset",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.reset"),
+    async (_req, res) => {
+      const next = await fashionVideoStore.reset();
+      await fashionVideoEngagementStore.syncVideos(toVideoSeed(next.published));
+      res.status(200).json({ published: next.published, draft: next.draft });
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/promote",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.toggle_promote"),
+    async (req, res) => {
+      const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+      if (!videoId) {
+        res.status(400).json({ error: "videoId is required." });
+        return;
+      }
+      try {
+        const next = await fashionVideoStore.togglePromote(videoId);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(next.content));
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update promotion." });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/fashion-videos/:videoId",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.delete"),
+    async (req, res) => {
+      const videoId = typeof req.params.videoId === "string" ? req.params.videoId.trim() : "";
+      if (!videoId) {
+        res.status(400).json({ error: "videoId is required." });
+        return;
+      }
+      try {
+        const next = await fashionVideoStore.deleteVideo(videoId);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(next.content));
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to delete video." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/placement",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.update_placement"),
+    async (req, res) => {
+      const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+      const placement =
+        req.body?.placement === "landing" ||
+        req.body?.placement === "feed" ||
+        req.body?.placement === "series" ||
+        req.body?.placement === "promoted"
+          ? req.body.placement
+          : null;
+      if (!videoId || !placement) {
+        res.status(400).json({ error: "videoId and placement are required." });
+        return;
+      }
+      try {
+        const next = await fashionVideoStore.updatePlacement(videoId, placement);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(next.content));
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update placement." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/fashion-videos/reorder",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion_videos.reorder"),
+    async (req, res) => {
+      const videoId = typeof req.body?.videoId === "string" ? req.body.videoId.trim() : "";
+      const direction = req.body?.direction === "up" || req.body?.direction === "down" ? req.body.direction : null;
+      if (!videoId || !direction) {
+        res.status(400).json({ error: "videoId and direction are required." });
+        return;
+      }
+      try {
+        const next = await fashionVideoStore.reorderVideo(videoId, direction);
+        await fashionVideoEngagementStore.syncVideos(toVideoSeed(next.content));
+        res.status(200).json(next);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to reorder video." });
+      }
+    }
+  );
+
+  app.get("/api/fashion/whatsapp/settings", requireAdminAuth, async (_req, res) => {
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      res.status(200).json({ settings });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to load WhatsApp API settings.") });
+    }
+  });
+
+  app.put(
+    "/api/fashion/whatsapp/settings",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.update_whatsapp_settings"),
+    async (req, res) => {
+    const payload =
+      typeof req.body?.settings === "object" && req.body?.settings !== null ? (req.body.settings as FashionWhatsAppApiSettings) : null;
+    if (!payload) {
+      res.status(400).json({ error: "settings payload is required." });
+      return;
+    }
+    try {
+      const settings = await fashionWhatsAppStore.saveSettings(payload);
+      res.status(200).json({ settings });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid WhatsApp API settings payload." });
+    }
+    }
+  );
+
+  app.post("/api/fashion/whatsapp/inquiries", async (req, res) => {
+    const validation = validateInquiryPayload(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ ok: false, error: validation.error, deliveryMode: "fallback-required" });
+      return;
+    }
+
+    const payload = validation.payload;
+    const publishedFashion = await fashionStore.getPublished();
+    const inquiryId = `inq-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const fallbackPhoneNumber = inferFallbackPhoneNumber(payload, publishedFashion);
+    const fallbackWaMeUrl = buildFallbackWaMeUrl(fallbackPhoneNumber, payload.message);
+    const baseRecord: FashionInquiryRecord = {
+      id: inquiryId,
+      createdAt: new Date().toISOString(),
+      type: payload.type,
+      source: payload.source,
+      products: payload.products,
+      message: payload.message,
+      imageUrl: payload.imageUrl,
+      customerMeta: payload.customerMeta,
+      consent: payload.consent,
+      sendMode: "rich-inquiry",
+      status: "queued",
+      fallbackRequired: false
+    };
+
+    await fashionInquiryStore.add(baseRecord);
+
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      const sendResult = await sendFashionWhatsAppMessage(settings, {
+        message: payload.message,
+        imageUrl: payload.imageUrl
+      });
+
+      const fallbackRequired = sendResult.deliveryMode === "fallback-required";
+      const status = mapSendResultToInquiryStatus(sendResult);
+      await fashionInquiryStore.updateStatus(inquiryId, {
+        status,
+        fallbackRequired,
+        providerResponse: sendResult.providerResponse
+      });
+
+      if (!sendResult.ok && fallbackRequired) {
+        res.status(200).json({
+          ok: false,
+          inquiryId,
+          deliveryMode: "fallback-required",
+          fallbackWaMeUrl: fallbackWaMeUrl || undefined,
+          error: sendResult.error || sendResult.providerResponse?.detail || "API send unavailable. Fallback required."
+        });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        inquiryId,
+        deliveryMode: sendResult.deliveryMode,
+        fallbackWaMeUrl: fallbackRequired ? fallbackWaMeUrl || undefined : undefined,
+        recipientPhoneNumber: sendResult.recipientPhoneNumber
+      });
+    } catch (error) {
+      const detail = safeServerErrorMessage(error, "Failed to process rich fashion inquiry.");
+      await fashionInquiryStore.updateStatus(inquiryId, {
+        status: "failed",
+        fallbackRequired: true,
+        providerResponse: {
+          deliveryMode: "fallback-required",
+          detail
+        }
+      });
+      res.status(500).json({
+        ok: false,
+        inquiryId,
+        deliveryMode: "fallback-required",
+        fallbackWaMeUrl: fallbackWaMeUrl || undefined,
+        error: detail
+      });
+    }
+  });
+
+  app.get("/api/fashion/whatsapp/inquiries", requireAdminAuth, async (req, res) => {
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const parsedLimit =
+      typeof rawLimit === "string" && rawLimit.trim() ? Number.parseInt(rawLimit.trim(), 10) : Number.NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 200)) : 20;
+    const records = await fashionInquiryStore.listLatest(limit);
+    res.status(200).json({ records });
+  });
+
+  app.put(
+    "/api/fashion/whatsapp/inquiries/:id",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.update_whatsapp_inquiry"),
+    async (req, res) => {
+      const inquiryId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+      if (!inquiryId) {
+        res.status(400).json({ error: "Inquiry id is required." });
+        return;
+      }
+      const validation = validateInquiryAdminPatch(req.body);
+      if (!validation.ok) {
+        res.status(400).json({ error: validation.error });
+        return;
+      }
+      try {
+        const updated = await fashionInquiryStore.updateById(inquiryId, validation.patch);
+        if (!updated) {
+          res.status(404).json({ error: "Inquiry not found." });
+          return;
+        }
+        res.status(200).json({ ok: true, record: updated });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to update inquiry.") });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/fashion/whatsapp/inquiries/:id",
+    requireAdminAuth,
+    adminMutationIpLimiter,
+    requireCsrfForCookieAuth,
+    auditAdminAction("fashion.delete_whatsapp_inquiry"),
+    async (req, res) => {
+      const inquiryId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+      if (!inquiryId) {
+        res.status(400).json({ error: "Inquiry id is required." });
+        return;
+      }
+      try {
+        const removed = await fashionInquiryStore.removeById(inquiryId);
+        if (!removed) {
+          res.status(404).json({ error: "Inquiry not found." });
+          return;
+        }
+        res.status(200).json({ ok: true, id: inquiryId });
+      } catch (error) {
+        res.status(500).json({ error: safeServerErrorMessage(error, "Failed to delete inquiry.") });
+      }
+    }
+  );
+
+  app.post("/api/fashion/whatsapp/checkout", async (req, res) => {
+    const payload = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+    const message = typeof payload.message === "string" ? payload.message.trim() : "";
+    const imageUrl = typeof payload.imageUrl === "string" ? payload.imageUrl.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required." });
+      return;
+    }
+
+    try {
+      const settings = await fashionWhatsAppStore.getSettings();
+      const sendResult = await sendFashionWhatsAppMessage(settings, { message, imageUrl });
+      if (!sendResult.ok) {
+        const detail = sendResult.providerResponse?.detail || sendResult.error || "WhatsApp API is not configured.";
+        const statusCode = sendResult.providerResponse?.statusCode ?? (sendResult.deliveryMode === "fallback-required" ? 503 : 502);
+        res.status(statusCode).json({ error: detail, delivery: sendResult.deliveryMode === "fallback-required" ? "disabled" : sendResult.deliveryMode });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        delivery: sendResult.deliveryMode,
+        recipientPhoneNumber: sendResult.recipientPhoneNumber
+      });
+    } catch (error) {
+      res.status(500).json({ error: safeServerErrorMessage(error, "Failed to send WhatsApp checkout request.") });
+    }
+  });
 
   const normalizeForCompare = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
   const hasHealthRiskClaims = (value: string) => /(cure|guaranteed|100%|no risk|instant results|instant)/i.test(value);
@@ -3440,6 +4593,10 @@ const bootstrap = async () => {
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+    const source =
+      req.body?.source === EMAIL_SUBSCRIBER_SOURCE.fashionVideosAdvertise
+        ? EMAIL_SUBSCRIBER_SOURCE.fashionVideosAdvertise
+        : EMAIL_SUBSCRIBER_SOURCE.quickGrabs;
 
     if (!name) {
       res.status(400).json({ error: "name is required." });
@@ -3503,12 +4660,12 @@ const bootstrap = async () => {
         return;
       }
 
-      const subscriber = await emailStore.upsertPendingSubscriber({ name, email, phone });
+      const subscriber = await emailStore.upsertPendingSubscriber({ name, email, phone, source });
       await emailStore.addEvent({
         eventType: EMAIL_EVENT_TYPES.leadSubscribed,
         subscriberId: subscriber.id,
         meta: {
-          source: "quick_grabs",
+          source,
           confirmationDispatch: {
             state: EMAIL_CONFIRM_MODE === "sync" ? "sending" : "queued",
             at: new Date().toISOString()
@@ -4325,7 +5482,7 @@ const bootstrap = async () => {
       res.status(400).json({ error: error.message || "Invalid upload payload." });
       return;
     }
-    if (error instanceof Error && /Unsupported file type/i.test(error.message)) {
+    if (error instanceof Error && /Unsupported .*type/i.test(error.message)) {
       res.status(400).json({ error: error.message });
       return;
     }

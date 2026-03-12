@@ -7,6 +7,13 @@ import { useI18n } from "./i18n/provider";
 
 const Admin = lazy(() => import("./pages/Admin"));
 const ConfirmResultPage = lazy(() => import("./pages/ConfirmResultPage"));
+const FashionBossPage = lazy(() => import("./pages/FashionBoss"));
+const FashionVideoBossPage = lazy(() => import("./pages/FashionVideoBoss"));
+const FashionPage = lazy(() => import("./pages/Fashion"));
+const FashionVideosPage = lazy(() => import("./pages/FashionVideos"));
+const FashionCollectionsPage = lazy(() => import("./pages/FashionCollections"));
+const FashionEditorialPage = lazy(() => import("./pages/FashionEditorial"));
+const FashionStyleNotesPage = lazy(() => import("./pages/FashionStyleNotes"));
 const HealthPage = lazy(() => import("./pages/Health"));
 const LoginPage = lazy(() => import("./pages/Signup"));
 const PolicyPage = lazy(() => import("./pages/PolicyPage"));
@@ -45,6 +52,17 @@ const normalizeHistoryArgs = <T extends [data: any, unused: string, url?: string
 const normalizePath = (rawPath: string) => {
   const cleaned = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (cleaned === "/boss/login" || cleaned === "/signup") return "/login";
+  if (
+    cleaned === "/boss/fashion/videos" ||
+    cleaned === "/boss/fashion/videos/uploads" ||
+    cleaned === "/boss/fashion/videos/library" ||
+    cleaned === "/boss/fashion/videos/commerce" ||
+    cleaned === "/boss/fashion/videos/previews"
+  ) {
+    return cleaned;
+  }
+  if (cleaned === "/boss/fashion/videos") return "/boss/fashion/videos";
+  if (cleaned === "/boss/fashion") return "/boss/fashion";
   if (cleaned.startsWith("/boss/")) return "/admin";
   if (
     cleaned === "/admin" ||
@@ -54,6 +72,11 @@ const normalizePath = (rawPath: string) => {
     cleaned === "/betting" ||
     cleaned === "/software" ||
     cleaned === "/social" ||
+    cleaned === "/fashion" ||
+    cleaned === "/fashion/videos" ||
+    cleaned === "/fashion/editorial" ||
+    cleaned === "/fashion/collections" ||
+    cleaned === "/fashion/style-notes" ||
     cleaned === "/health" ||
     cleaned === "/affiliate-disclosure" ||
     cleaned === "/earnings-disclaimer" ||
@@ -126,7 +149,16 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (normalizedPath !== "/login" && normalizedPath !== "/admin") return;
+    if (
+      normalizedPath !== "/login" &&
+      normalizedPath !== "/admin" &&
+      normalizedPath !== "/boss/fashion" &&
+      normalizedPath !== "/boss/fashion/videos" &&
+      normalizedPath !== "/boss/fashion/videos/uploads" &&
+      normalizedPath !== "/boss/fashion/videos/library" &&
+      normalizedPath !== "/boss/fashion/videos/commerce" &&
+      normalizedPath !== "/boss/fashion/videos/previews"
+    ) return;
     if (isLocalDevBypassEnabled()) {
       if (normalizedPath === "/login") {
         window.history.replaceState({}, "", toBrowserPath("/admin?devBypass=1"));
@@ -146,7 +178,7 @@ function App() {
           setPath(toAppPath(window.location.pathname));
         }
       } else if (!ok) {
-        const nextPath = encodeURIComponent("/admin");
+        const nextPath = encodeURIComponent(normalizedPath);
         window.history.replaceState({}, "", toBrowserPath(`/login?next=${nextPath}`));
         setPath(toAppPath(window.location.pathname));
       }
@@ -184,6 +216,31 @@ function App() {
         description: "Find social automation products for scheduling, engagement workflows, and campaign optimization.",
         canonicalPath: "/social"
       },
+      "/fashion": {
+        title: "Fashion | AutoHub",
+        description: "Explore the new fashion landing experience with curated collections, editorial structure, and modern storefront direction.",
+        canonicalPath: "/fashion"
+      },
+      "/fashion/videos": {
+        title: "Fashion Videos | AutoHub",
+        description: "Explore the Fashion video hub with campaign motion previews and advertising access.",
+        canonicalPath: "/fashion/videos"
+      },
+      "/fashion/editorial": {
+        title: "Fashion Editorial | AutoHub",
+        description: "Browse the editorial fashion experience with campaign-led storytelling and premium visual hierarchy.",
+        canonicalPath: "/fashion/editorial"
+      },
+      "/fashion/collections": {
+        title: "Fashion Collections | AutoHub",
+        description: "Browse dedicated fashion collections in a faster e-commerce layout built for product discovery.",
+        canonicalPath: "/fashion/collections"
+      },
+      "/fashion/style-notes": {
+        title: "Fashion Style Notes | AutoHub",
+        description: "Explore style guidance, look notes, and pairing direction in a dedicated fashion subpage.",
+        canonicalPath: "/fashion/style-notes"
+      },
       "/health": {
         title: "Health Products | AutoHub",
         description: "Explore healthy gadgets and supplements curated for wellness, daily performance, and recovery support.",
@@ -199,6 +256,42 @@ function App() {
         title: "Admin | AutoHub Boss Panel",
         description: "Private administration workspace for AutoHub content and product management.",
         canonicalPath: "/admin",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion": {
+        title: "Fashion Boss | AutoHub",
+        description: "Private fashion-only control workspace for the AutoHub affiliate storefront.",
+        canonicalPath: "/boss/fashion",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion/videos": {
+        title: "Fashion Video Boss | AutoHub",
+        description: "Private Fashion video administration workspace for uploads, library control, publishing, comments, and commerce settings.",
+        canonicalPath: "/boss/fashion/videos",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion/videos/uploads": {
+        title: "Uploads Systems | Fashion Video Boss",
+        description: "Private Fashion video admin uploads workspace.",
+        canonicalPath: "/boss/fashion/videos/uploads",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion/videos/library": {
+        title: "Video Library | Fashion Video Boss",
+        description: "Private Fashion video admin library workspace.",
+        canonicalPath: "/boss/fashion/videos/library",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion/videos/commerce": {
+        title: "Commerce and Comments | Fashion Video Boss",
+        description: "Private Fashion video admin commerce and engagement workspace.",
+        canonicalPath: "/boss/fashion/videos/commerce",
+        robots: "noindex,nofollow"
+      },
+      "/boss/fashion/videos/previews": {
+        title: "Preview Surfaces | Fashion Video Boss",
+        description: "Private Fashion video admin preview-surfaces workspace.",
+        canonicalPath: "/boss/fashion/videos/previews",
         robots: "noindex,nofollow"
       },
       "/404": {
@@ -266,6 +359,11 @@ function App() {
   if (normalizedPath === "/terms") return withCookieConsent(<Suspense fallback={null}><PolicyPage kind="terms" /></Suspense>);
   if (normalizedPath === "/confirm") return withCookieConsent(<Suspense fallback={null}><ConfirmResultPage /></Suspense>);
   if (normalizedPath === "/unsubscribe") return withCookieConsent(<Suspense fallback={null}><UnsubscribeResultPage /></Suspense>);
+  if (normalizedPath === "/fashion") return withCookieConsent(<Suspense fallback={null}><FashionPage /></Suspense>);
+  if (normalizedPath === "/fashion/videos") return withCookieConsent(<Suspense fallback={null}><FashionVideosPage /></Suspense>);
+  if (normalizedPath === "/fashion/editorial") return withCookieConsent(<Suspense fallback={null}><FashionEditorialPage /></Suspense>);
+  if (normalizedPath === "/fashion/collections") return withCookieConsent(<Suspense fallback={null}><FashionCollectionsPage /></Suspense>);
+  if (normalizedPath === "/fashion/style-notes") return withCookieConsent(<Suspense fallback={null}><FashionStyleNotesPage /></Suspense>);
   if (normalizedPath === "/health") return withCookieConsent(<Suspense fallback={null}><HealthPage /></Suspense>);
   if (normalizedPath === "/admin") {
     if (checkingAuth) {
@@ -278,6 +376,40 @@ function App() {
     return (
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
         <Admin />
+      </Suspense>
+    );
+  }
+  if (normalizedPath === "/boss/fashion") {
+    if (checkingAuth) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          {t("app.loadingAdmin")}
+        </div>
+      );
+    }
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
+        <FashionBossPage />
+      </Suspense>
+    );
+  }
+  if (
+    normalizedPath === "/boss/fashion/videos" ||
+    normalizedPath === "/boss/fashion/videos/uploads" ||
+    normalizedPath === "/boss/fashion/videos/library" ||
+    normalizedPath === "/boss/fashion/videos/commerce" ||
+    normalizedPath === "/boss/fashion/videos/previews"
+  ) {
+    if (checkingAuth) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          {t("app.loadingAdmin")}
+        </div>
+      );
+    }
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{t("app.loadingAdmin")}</div>}>
+        <FashionVideoBossPage />
       </Suspense>
     );
   }
