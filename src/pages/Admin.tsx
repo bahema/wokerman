@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
-import PricingEditor from "../components/admin/PricingEditor";
+import PriceSystemEditor from "../components/admin/PriceSystemEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AiControlCenterEditor from "../components/admin/AiControlCenterEditor";
@@ -54,6 +54,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/products-gadgets": "products-gadgets",
   "/boss/health-upcoming": "health-upcoming",
   "/boss/adsection-man": "adsection-man",
+  "/boss/price": "price-system",
   "/boss/account-settings": "account-settings"
 };
 
@@ -70,6 +71,7 @@ const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "products-gadgets": "/boss/products-gadgets",
   "health-upcoming": "/boss/health-upcoming",
   "adsection-man": "/boss/adsection-man",
+  "price-system": "/boss/price",
   "account-settings": "/boss/account-settings"
 };
 
@@ -418,21 +420,33 @@ const Admin = () => {
                   queueAutoPublish(nextContent, "Branding updated and published.", "Failed to publish branding updates.");
                 }}
               />
-              <PricingEditor
-                value={
-                  content.pricing ?? {
-                    mode: "auto",
-                    defaultCurrency: "USD",
-                    fallbackLocale: "en-US",
-                    manualCurrency: "USD"
-                  }
-                }
-                onChange={(nextPricing) => {
-                  const nextContent = { ...content, pricing: nextPricing };
-                  queueAutoPublish(nextContent, "Pricing settings updated and published.", "Failed to publish pricing settings.");
-                }}
-              />
             </div>
+          </EditorShell>
+        );
+      case "price-system":
+        return (
+          <EditorShell
+            title="Price System"
+            description="Control global currency conversion for all price badges across the site."
+          >
+            <PriceSystemEditor
+              value={
+                content.pricing ?? {
+                  mode: "manual",
+                  defaultCurrency: "USD",
+                  fallbackLocale: "en-US",
+                  manualCurrency: "USD",
+                  baseCurrency: "USD",
+                  exchangeRates: { USD: 1, EUR: 0.93, GBP: 0.79, RWF: 1325 },
+                  showCurrencyCode: true,
+                  rounding: "auto"
+                }
+              }
+              onChange={(nextPricing) => {
+                const nextContent = { ...content, pricing: nextPricing };
+                queueAutoPublish(nextContent, "Pricing settings updated and published.", "Failed to publish pricing settings.");
+              }}
+            />
           </EditorShell>
         );
       case "social-links":

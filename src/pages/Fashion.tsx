@@ -626,7 +626,7 @@ const Fashion = () => {
           </div>
         </section>
 
-        {homepageDraft.showTrending ? (
+        {homepageDraft.showTrending && featuredDropProducts.length > 0 ? (
         <section className="px-4 py-12 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

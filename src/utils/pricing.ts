@@ -22,6 +22,38 @@ const normalizeCurrency = (value: string) => {
   return trimmed;
 };
 
+const normalizeExchangeRates = (rates?: PricingConfig["exchangeRates"]) => {
+  const normalized: Record<string, number> = {};
+  if (!rates) return normalized;
+  for (const [code, value] of Object.entries(rates)) {
+    const currency = normalizeCurrency(code);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    normalized[currency] = value;
+  }
+  return normalized;
+};
+
+const resolveBaseCurrency = (pricing?: PricingConfig | null) =>
+  normalizeCurrency(pricing?.baseCurrency ?? pricing?.defaultCurrency ?? "USD");
+
+const resolveSupportedCurrency = (pricing: PricingConfig | null | undefined, currency: string) => {
+  const normalized = normalizeCurrency(currency);
+  const rates = normalizeExchangeRates(pricing?.exchangeRates);
+  if (Object.keys(rates).length === 0) return normalized;
+  if (rates[normalized]) return normalized;
+  const baseCurrency = resolveBaseCurrency(pricing);
+  return rates[baseCurrency] ? baseCurrency : normalized;
+};
+
+const resolveExchangeRate = (pricing: PricingConfig | null | undefined, targetCurrency: string) => {
+  const baseCurrency = resolveBaseCurrency(pricing);
+  const normalizedRates = normalizeExchangeRates(pricing?.exchangeRates);
+  const baseRate = normalizedRates[baseCurrency] ?? 1;
+  const targetRate = normalizedRates[targetCurrency] ?? (targetCurrency === baseCurrency ? baseRate : null);
+  if (!targetRate) return null;
+  return targetRate / baseRate;
+};
+
 const regionToCurrency: Record<string, string> = {
   US: "USD",
   CA: "CAD",
@@ -106,7 +138,7 @@ export const resolveCurrencyContext = (pricing?: PricingConfig | null): Currency
   if (mode === "manual") {
     return {
       locale,
-      currency: normalizeCurrency(pricing?.manualCurrency ?? pricing?.defaultCurrency ?? "USD"),
+      currency: resolveSupportedCurrency(pricing, pricing?.manualCurrency ?? pricing?.defaultCurrency ?? "USD"),
       mode
     };
   }
@@ -114,27 +146,54 @@ export const resolveCurrencyContext = (pricing?: PricingConfig | null): Currency
   const detectedCurrency = detectCurrencyFromLocale(locale);
   return {
     locale,
-    currency: normalizeCurrency(detectedCurrency || pricing?.defaultCurrency || "USD"),
+    currency: resolveSupportedCurrency(pricing, detectedCurrency || pricing?.defaultCurrency || "USD"),
     mode
   };
 };
 
-export const formatPriceWithContext = (price: number, context: CurrencyContext) => {
-  if (!Number.isFinite(price)) return "";
-  try {
-    return new Intl.NumberFormat(context.locale, {
-      style: "currency",
-      currency: context.currency,
-      maximumFractionDigits: 0
-    }).format(price);
-  } catch {
-    return `${context.currency} ${Math.round(price)}`;
+const resolveRoundingDigits = (currency: string, rounding?: PricingConfig["rounding"]) => {
+  if (rounding === "integer") return 0;
+  if (rounding === "two-decimal") return 2;
+  const zeroDecimalCurrencies = new Set(["RWF", "KES", "UGX", "TZS", "JPY"]);
+  return zeroDecimalCurrencies.has(currency) ? 0 : 2;
+};
+
+const formatWithCurrency = (value: number, context: CurrencyContext, pricing?: PricingConfig | null) => {
+  if (!Number.isFinite(value)) return "";
+  const currency = normalizeCurrency(context.currency);
+  const roundingDigits = resolveRoundingDigits(currency, pricing?.rounding);
+  const locale = context.locale || "en-US";
+  if (pricing?.showCurrencyCode) {
+    const rounded =
+      roundingDigits === 0 ? Math.round(value) : Number(value.toFixed(roundingDigits));
+    return `${currency} ${rounded.toLocaleString(locale, {
+      minimumFractionDigits: roundingDigits,
+      maximumFractionDigits: roundingDigits
+    })}`;
   }
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: roundingDigits,
+      maximumFractionDigits: roundingDigits
+    }).format(value);
+  } catch {
+    const rounded =
+      roundingDigits === 0 ? Math.round(value) : Number(value.toFixed(roundingDigits));
+    return `${currency} ${rounded}`;
+  }
+};
+
+export const formatPriceWithContext = (price: number, context: CurrencyContext, pricing?: PricingConfig | null) => {
+  const rate = resolveExchangeRate(pricing, normalizeCurrency(context.currency));
+  const converted = rate ? price * rate : price;
+  return formatWithCurrency(converted, context, pricing);
 };
 
 export const formatPriceBadge = (price: number, pricing?: PricingConfig | null) => {
   const context = resolveCurrencyContext(pricing);
-  return formatPriceWithContext(price, context);
+  return formatPriceWithContext(price, context, pricing);
 };
 
 export type { CurrencyContext };

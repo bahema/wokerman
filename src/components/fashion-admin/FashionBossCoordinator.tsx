@@ -497,7 +497,7 @@ const FashionBoss = () => {
     }));
 
   const refreshMediaLibrary = async () => {
-    const items = await getMediaLibrary();
+    const items = await getMediaLibrary("fashion");
     setMediaAssets(toMediaAssets(items));
     return items.length;
   };
@@ -520,11 +520,11 @@ const FashionBoss = () => {
         setFashionMeta(meta);
         setWhatsAppApiSettings(apiSettings);
         setRecentInquiries(inquiries);
-        void getMediaLibrary()
-          .then((items) => {
-            if (!active) return;
-            setMediaAssets(toMediaAssets(items));
-          })
+          void getMediaLibrary("fashion")
+            .then((items) => {
+              if (!active) return;
+              setMediaAssets(toMediaAssets(items));
+            })
           .catch(() => {
             if (!active) return;
             setMediaAssets([]);
@@ -1562,7 +1562,7 @@ const FashionBoss = () => {
     setIsUploadingMedia(true);
     setRequestError(null);
     try {
-      const uploaded = await uploadMediaFiles(files);
+      const uploaded = await uploadMediaFiles(files, "fashion");
       await refreshMediaLibrary();
       setMediaStatusMessage(`${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded successfully.`);
       setActionMessage(`${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded.`);
@@ -1583,7 +1583,7 @@ const FashionBoss = () => {
         setRequestError(`This media asset is still used in Fashion: ${usageReferences.join(", ")}.`);
         return;
       }
-      await deleteMediaItem(assetId);
+      await deleteMediaItem(assetId, "fashion");
       await refreshMediaLibrary();
       setMediaStatusMessage("Media item removed.");
       setActionMessage("Media item deleted.");

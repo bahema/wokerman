@@ -60,22 +60,15 @@ const fallbackPriceByCategory: Record<Product["category"], number> = {
   Supplements: 39
 };
 
-const normalizePriceLabel = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed;
-};
-
 const ProductCard = ({ product, onCheckout, onMoreInfo, labels, pricing }: ProductCardProps) => {
   const [imageFailed, setImageFailed] = useState(false);
   const roundedRating = Math.round(product.rating);
   const trustLabel = product.isNew ? (labels?.newReleaseLabel ?? "New release") : `${product.features.length} ${labels?.keyFeaturesSuffix ?? "key features"}`;
-  const normalizedPriceLabel = typeof product.priceLabel === "string" ? normalizePriceLabel(product.priceLabel) : "";
   const fallbackNumericPrice = fallbackPriceByCategory[product.category] ?? 49;
   const priceBadgeText =
     (typeof product.price === "number" && Number.isFinite(product.price) && product.price >= 0
       ? formatPriceBadge(product.price, pricing)
-      : normalizedPriceLabel || formatPriceBadge(fallbackNumericPrice, pricing));
+      : formatPriceBadge(fallbackNumericPrice, pricing));
 
   useEffect(() => {
     setImageFailed(false);

@@ -10,10 +10,17 @@ import { smoothScrollToId } from "../utils/smoothScroll";
 import { getInitialTheme, type Theme, updateTheme } from "../utils/theme";
 import { useProductFilters } from "../utils/useProductFilters";
 import { useSectionObserver } from "../utils/useSectionObserver";
-import { getDraftContentAsync, getPublishedContentAsync, getSiteMetaAsync } from "../utils/adminStorage";
+import {
+  getDraftContentAsync,
+  getPublishedContentAsync,
+  getSiteMetaAsync,
+  PUBLISHED_CACHE_KEY,
+  PUBLISHED_UPDATED_EVENT
+} from "../utils/adminStorage";
 import { trackAnalyticsEvent } from "../utils/analytics";
 import { removeStructuredData, setStructuredData } from "../utils/seo";
 import { withBasePath } from "../utils/basePath";
+import { openProductCheckout } from "../utils/productCheckout";
 import { getEventThemeCssVars } from "../utils/eventTheme";
 import { OPEN_COOKIE_SETTINGS_EVENT } from "../utils/cookieConsent";
 import { useI18n } from "../i18n/provider";
@@ -31,6 +38,14 @@ const fallbackProductSections: ProductSections = {
 };
 
 const fallbackHomeUi: NonNullable<SiteContent["homeUi"]> = {
+  navLabels: {
+    fashion: "Fashion",
+    forex: "Forex",
+    betting: "Betting",
+    software: "Software",
+    social: "Social",
+    health: "Health"
+  },
   heroEyebrow: "Smart automation for modern operators",
   heroQuickGrabsLabel: "Quick Grabs",
   performanceSnapshotTitle: "Performance Snapshot",
@@ -108,8 +123,6 @@ const loadDefaultSiteContent = async () => {
 
 type AdSectionBox = NonNullable<SiteContent["homeUi"]>["adsectionMan"]["gadgets"];
 const resolveAdSectionPriceBadge = (section: AdSectionBox, pricing: SiteContent["pricing"]) => {
-  const custom = (section.priceBadge ?? "").trim();
-  if (custom) return custom;
   if (typeof section.price === "number" && Number.isFinite(section.price) && section.price > 0) {
     return formatPriceBadge(section.price, pricing);
   }
@@ -221,6 +234,28 @@ const Home = (_props: HomeProps) => {
       window.clearInterval(interval);
     };
   }, [siteUpdatedAt]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== PUBLISHED_CACHE_KEY || !event.newValue) return;
+      try {
+        const parsed = JSON.parse(event.newValue) as SiteContent;
+        setContent(parsed);
+      } catch {
+        // Ignore invalid payloads.
+      }
+    };
+    const onPublishedUpdate = (event: Event) => {
+      const next = (event as CustomEvent<SiteContent>).detail;
+      if (next) setContent(next);
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(PUBLISHED_UPDATED_EVENT, onPublishedUpdate);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(PUBLISHED_UPDATED_EVENT, onPublishedUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     if (loadingContent) return;
@@ -371,7 +406,7 @@ const Home = (_props: HomeProps) => {
             action: "checkout_button"
           });
           void trigger;
-          window.open(item.checkoutLink, "_blank", "noopener,noreferrer");
+          openProductCheckout(item, content);
         }}
         onMoreInfo={(item, trigger) => {
           trackAnalyticsEvent("product_more_info_click", {
@@ -411,6 +446,7 @@ const Home = (_props: HomeProps) => {
         onThemeToggle={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
         logoText={content.branding.logoText}
         socials={content.socials}
+        navLabels={homeUi.navLabels}
         eventThemeActive={eventThemeActive}
       />
 
@@ -735,9 +771,7 @@ const Home = (_props: HomeProps) => {
               {homeUi.industriesEmptyMessage}
             </div>
           ) : (
-            <div
-              className="scrollbar-none overflow-hidden py-4"
-            >
+            <div className="scrollbar-none overflow-hidden py-4">
               <div className={`flex min-w-max touch-pan-x flex-nowrap items-center justify-start gap-6 px-4 md:gap-8 ${content.industries.length > 1 ? "marquee-track" : ""}`}>
                 {industriesForTrack.map((industry, index) => {
                   return (
@@ -905,4 +939,3 @@ const Home = (_props: HomeProps) => {
 };
 
 export default Home;
-

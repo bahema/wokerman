@@ -1,5 +1,7 @@
 import { apiForm, apiGet, apiJson } from "../api/client";
 
+export type MediaScope = "site" | "fashion";
+
 export type MediaItem = {
   id: string;
   name: string;
@@ -21,8 +23,10 @@ const toMediaItem = (item: ApiMediaItem): MediaItem => ({
   createdAt: item.createdAt
 });
 
-export const getMediaLibrary = async (): Promise<MediaItem[]> => {
-  const response = await apiGet<{ items: ApiMediaItem[] }>("/api/media");
+const toScopeQuery = (scope?: MediaScope) => (scope ? `?scope=${scope}` : "");
+
+export const getMediaLibrary = async (scope?: MediaScope): Promise<MediaItem[]> => {
+  const response = await apiGet<{ items: ApiMediaItem[] }>(`/api/media${toScopeQuery(scope)}`);
   return (response.items ?? []).map(toMediaItem);
 };
 
@@ -30,13 +34,13 @@ export const saveMediaLibrary = async (_items: MediaItem[]) => {
   // no-op for API-backed store
 };
 
-export const uploadMediaFiles = async (files: File[]): Promise<MediaItem[]> => {
+export const uploadMediaFiles = async (files: File[], scope?: MediaScope): Promise<MediaItem[]> => {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  const response = await apiForm<{ items: ApiMediaItem[] }>("/api/media", formData);
+  const response = await apiForm<{ items: ApiMediaItem[] }>(`/api/media${toScopeQuery(scope)}`, formData);
   return (response.items ?? []).map(toMediaItem);
 };
 
-export const deleteMediaItem = async (id: string) => {
-  await apiJson<{ ok: boolean; removedId: string }>(`/api/media/${id}`, "DELETE");
+export const deleteMediaItem = async (id: string, scope?: MediaScope) => {
+  await apiJson<{ ok: boolean; removedId: string }>(`/api/media/${id}${toScopeQuery(scope)}`, "DELETE");
 };

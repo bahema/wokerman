@@ -4,7 +4,8 @@ import { withBasePath } from "./basePath";
 import { buildFashionClientViewModel, getFashionClientViewModel, getPublishedFashionContentAsync } from "./fashionDraft";
 import { formatFashionPrice } from "./fashionPricing";
 
-const FALLBACK_WHATSAPP_NUMBER = "10000000000";
+const PLACEHOLDER_WHATSAPP_NUMBER = "10000000000";
+const SITE_PUBLISHED_CACHE_KEY = "site:published:cache";
 const FALLBACK_IMAGE_PATH = "/logo.png";
 
 type FashionWhatsAppSettings = ReturnType<typeof getFashionClientViewModel>["whatsapp"];
@@ -54,21 +55,54 @@ const buildItemSummary = (items: FashionProduct[]) =>
     })
     .join("\n");
 
-export const getFashionWhatsAppNumber = () => {
-  const digits = getFashionClientViewModel().whatsapp.phoneNumber.replace(/\D/g, "");
-  return digits || FALLBACK_WHATSAPP_NUMBER;
-};
-
 const extractWhatsAppDigits = (value?: string) => value?.replace(/\D/g, "") ?? "";
 
-const normalizeWhatsAppNumber = (value?: string, fallback?: string) =>
-  extractWhatsAppDigits(value) || extractWhatsAppDigits(fallback) || FALLBACK_WHATSAPP_NUMBER;
+const isPlaceholderNumber = (digits: string) => digits === PLACEHOLDER_WHATSAPP_NUMBER;
+
+const readSiteWhatsAppDigits = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem(SITE_PUBLISHED_CACHE_KEY);
+    if (!raw) return "";
+    const content = JSON.parse(raw) as { socials?: { whatsappUrl?: string } };
+    const url = content.socials?.whatsappUrl?.trim() ?? "";
+    if (!url) return "";
+    const direct = extractWhatsAppDigits(url);
+    if (direct) return direct;
+    try {
+      const parsed = new URL(url);
+      return extractWhatsAppDigits(`${parsed.pathname}${parsed.search}`);
+    } catch {
+      return "";
+    }
+  } catch {
+    return "";
+  }
+};
+
+const resolveWhatsAppDigits = (...values: Array<string | undefined>) => {
+  for (const value of values) {
+    const digits = extractWhatsAppDigits(value);
+    if (digits && !isPlaceholderNumber(digits)) return digits;
+  }
+  const siteDigits = readSiteWhatsAppDigits();
+  if (siteDigits && !isPlaceholderNumber(siteDigits)) return siteDigits;
+  return "";
+};
+
+export const getFashionWhatsAppNumber = () => {
+  const digits = getFashionClientViewModel().whatsapp.phoneNumber;
+  return resolveWhatsAppDigits(digits);
+};
 
 const getProductWhatsAppNumber = (product: FashionProduct, fallbackPhoneNumber?: string) =>
-  normalizeWhatsAppNumber(product.whatsappNumber?.trim(), fallbackPhoneNumber);
+  resolveWhatsAppDigits(product.whatsappNumber?.trim(), fallbackPhoneNumber);
 
 const openWhatsAppMessage = (message: string, phoneNumber = getFashionWhatsAppNumber()) => {
-  window.open(`https://wa.me/${normalizeWhatsAppNumber(phoneNumber)}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  const digits = resolveWhatsAppDigits(phoneNumber);
+  if (!digits) return false;
+  window.open(`https://wa.me/${digits}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  return true;
 };
 
 const trySendViaWhatsAppApi = async (message: string, imageUrl?: string) => {
@@ -259,7 +293,7 @@ export const getFashionProductWhatsAppUrl = (product: FashionProduct, source?: s
   const fashionViewModel = getFashionClientViewModel();
   const { message } = buildProductCheckoutMessage(product, fashionViewModel.whatsapp, source);
   const phoneNumber = getProductWhatsAppNumber(product, fashionViewModel.whatsapp.phoneNumber || getFashionWhatsAppNumber());
-  return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+  return phoneNumber ? `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}` : "https://wa.me/";
 };
 
 export const openFashionProductCheckout = async (product: FashionProduct, source?: string) => {
@@ -278,7 +312,7 @@ export const getFashionProductFitWhatsAppUrl = (product: FashionProduct, source?
   const fashionViewModel = getFashionClientViewModel();
   const { message } = buildFitCheckoutMessage(product, fashionViewModel.whatsapp, source);
   const phoneNumber = getProductWhatsAppNumber(product, fashionViewModel.whatsapp.phoneNumber || getFashionWhatsAppNumber());
-  return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+  return phoneNumber ? `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}` : "https://wa.me/";
 };
 
 export const openFashionFitCheckout = async (product: FashionProduct, source?: string) => {

@@ -1679,9 +1679,37 @@ const bootstrap = async () => {
     }
   );
 
-  app.get("/api/media", requireAdminAuth, async (_req, res) => {
+  const resolveMediaScope = (value: unknown) => {
+    if (typeof value !== "string") return "site";
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "fashion") return "fashion";
+    return "site";
+  };
+
+  const matchesMediaScope = (item: { source?: string }, scope: "site" | "fashion") => {
+    const source = item.source ?? "site";
+    return scope === "fashion" ? source === "fashion" : source === "site";
+  };
+
+  app.get("/api/media", requireAdminAuth, async (req, res) => {
+    const scope = resolveMediaScope(req.query.scope);
     const items = await mediaStore.list();
-    res.status(200).json({ items });
+    const excludedUrls = new Set<string>();
+    try {
+      const draft = await fashionVideoStore.getDraft();
+      const published = await fashionVideoStore.getPublished();
+      const content = draft ?? published;
+      if (content?.videos?.length) {
+        content.videos.forEach((video) => {
+          if (video.videoAsset) excludedUrls.add(video.videoAsset);
+          if (video.thumbnail) excludedUrls.add(video.thumbnail);
+        });
+      }
+    } catch {
+      // ignore lookup failures for media listing
+    }
+    const filtered = items.filter((item) => !excludedUrls.has(item.url)).filter((item) => matchesMediaScope(item, scope));
+    res.status(200).json({ items: filtered });
   });
 
   app.post(
@@ -1692,24 +1720,26 @@ const bootstrap = async () => {
     auditAdminAction("media.upload"),
     upload.array("files", maxUploadFiles),
     async (req, res) => {
-    const files = (req.files as Express.Multer.File[]) ?? [];
-    if (!files.length) {
-      res.status(400).json({ error: "No files uploaded. Use form-data field 'files'." });
-      return;
+      const scope = resolveMediaScope(req.query.scope);
+      const files = (req.files as Express.Multer.File[]) ?? [];
+      if (!files.length) {
+        res.status(400).json({ error: "No files uploaded. Use form-data field 'files'." });
+        return;
     }
 
     const created = [];
     for (const file of files) {
       const url = `${API_PUBLIC_BASE_URL}/uploads/${file.filename}`;
-      const item = await mediaStore.add({
-        name: file.originalname,
-        fileName: file.filename,
-        url,
-        mime: file.mimetype,
-        sizeBytes: file.size
-      });
-      created.push(item);
-    }
+        const item = await mediaStore.add({
+          name: file.originalname,
+          fileName: file.filename,
+          url,
+          mime: file.mimetype,
+          sizeBytes: file.size,
+          source: scope
+        });
+        created.push(item);
+      }
 
     res.status(201).json({ items: created });
     }
@@ -1734,7 +1764,8 @@ const bootstrap = async () => {
         fileName: file.filename,
         url: sourceUrl,
         mime: file.mimetype,
-        sizeBytes: file.size
+        sizeBytes: file.size,
+        source: "fashion-video"
       });
       const filePath = path.join(mediaStore.uploadsDir, file.filename);
       let item = sourceItem;
@@ -1751,7 +1782,8 @@ const bootstrap = async () => {
             fileName: transcodedFileName,
             url: `${API_PUBLIC_BASE_URL}/uploads/${transcodedFileName}`,
             mime: "video/mp4",
-            sizeBytes: transcodedStats.size
+            sizeBytes: transcodedStats.size,
+            source: "fashion-video"
           });
         } catch {
           warnings.push("Video was converted but the browser-safe asset could not be registered.");
@@ -1780,7 +1812,8 @@ const bootstrap = async () => {
             fileName: thumbnailFileName,
             url: `${API_PUBLIC_BASE_URL}/uploads/${thumbnailFileName}`,
             mime: "image/jpeg",
-            sizeBytes: stats.size
+            sizeBytes: stats.size,
+            source: "fashion-video-thumbnail"
           });
         } catch {
           warnings.push("Thumbnail generation completed but could not be registered.");
@@ -1822,14 +1855,22 @@ const bootstrap = async () => {
         fileName: file.filename,
         url,
         mime: file.mimetype,
-        sizeBytes: file.size
+        sizeBytes: file.size,
+        source: "library"
       });
       res.status(201).json({ item });
     }
   );
 
   app.delete("/api/media/:id", requireAdminAuth, requireCsrfForCookieAuth, auditAdminAction("media.delete"), async (req, res) => {
+    const scope = resolveMediaScope(req.query.scope);
     const mediaId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const items = await mediaStore.list();
+    const target = items.find((item) => item.id === mediaId);
+    if (!target || !matchesMediaScope(target, scope)) {
+      res.status(404).json({ error: "Media item not found." });
+      return;
+    }
     const removed = await mediaStore.remove(mediaId);
     if (!removed) {
       res.status(404).json({ error: "Media item not found." });

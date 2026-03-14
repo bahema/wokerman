@@ -492,7 +492,7 @@ export const createDefaultFashionBossDraft = (): FashionBossDraft => ({
   trustPoints: fashionTrustPoints,
   highlights: fashionHighlights,
   whatsapp: {
-    phoneNumber: "+10000000000",
+    phoneNumber: "",
     productCta: "Order on WhatsApp",
     fitCta: "Ask about size",
     lookCta: "Send this look on WhatsApp",

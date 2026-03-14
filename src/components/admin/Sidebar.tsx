@@ -9,6 +9,7 @@ export type AdminSection =
   | "account-settings"
   | "analytics"
   | "product-media"
+  | "price-system"
   | "branding"
   | "social-links"
   | "hero"
@@ -47,6 +48,7 @@ const groups: Array<{ title: string; items: SidebarItem[] }> = [
     items: [
       { key: "analytics", label: "Analytics" },
       { key: "product-media", label: "Product Media" },
+      { key: "price-system", label: "Price System" },
       { key: "branding", label: "Branding & Theme" },
       { key: "social-links", label: "Social Links" }
     ]
@@ -80,6 +82,7 @@ const groups: Array<{ title: string; items: SidebarItem[] }> = [
       { key: "email-analytics", label: "Email Analytics" },
       { key: "email-sender", label: "Email Sender" },
       { key: "top-nav-links", label: "Top Nav Links" },
+      { href: "/boss/fashion/videos", label: "Fashion videos" },
       { href: "/boss/fashion", label: "Fashion" },
       { key: "account-settings", label: "Account Settings" }
     ]

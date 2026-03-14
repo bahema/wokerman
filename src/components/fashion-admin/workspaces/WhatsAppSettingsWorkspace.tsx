@@ -56,7 +56,7 @@ const defaultWhatsAppTemplateValues: Pick<
 };
 
 const defaultWhatsAppDestinationValues: Pick<FashionBossDraft["whatsapp"], "phoneNumber" | "disclaimer"> = {
-  phoneNumber: "+10000000000",
+  phoneNumber: "",
   disclaimer: "All orders and inquiries are handled directly by the client on WhatsApp."
 };
 
