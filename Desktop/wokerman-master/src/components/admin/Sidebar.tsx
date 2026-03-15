@@ -8,6 +8,7 @@ export type AdminSection =
   | "account-settings"
   | "analytics"
   | "product-media"
+  | "price-system"
   | "branding"
   | "social-links"
   | "hero"

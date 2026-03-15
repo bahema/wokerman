@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import AdminLayout from "../components/admin/AdminLayout";
 import BrandingEditor from "../components/admin/BrandingEditor";
 import PricingEditor from "../components/admin/PricingEditor";
+import PriceSystemEditor from "../components/admin/PriceSystemEditor";
 import AccountSettingsEditor from "../components/admin/AccountSettingsEditor";
 import AccountUploadsEditor from "../components/admin/AccountUploadsEditor";
 import AiControlCenterEditor from "../components/admin/AiControlCenterEditor";
@@ -47,6 +48,7 @@ const bossSectionByPath: Record<string, AdminSection> = {
   "/boss/traffic-ai": "traffic-ai",
   "/boss/email-analytics": "email-analytics",
   "/boss/email-sender": "email-sender",
+  "/boss/price": "price-system",
   "/boss/hero-2": "hero-2",
   "/boss/products-supplements": "products-supplements",
   "/boss/products-gadgets": "products-gadgets",
@@ -62,6 +64,7 @@ const pathByBossSection: Partial<Record<AdminSection, string>> = {
   "traffic-ai": "/boss/traffic-ai",
   "email-analytics": "/boss/email-analytics",
   "email-sender": "/boss/email-sender",
+  "price-system": "/boss/price",
   "hero-2": "/boss/hero-2",
   "products-supplements": "/boss/products-supplements",
   "products-gadgets": "/boss/products-gadgets",
@@ -318,6 +321,28 @@ const Admin = () => {
         return (
           <EditorShell title="Analytics" description="Overview metrics for content and product inventory.">
             <AnalyticsEditor content={content} />
+          </EditorShell>
+        );
+      case "price-system":
+        return (
+          <EditorShell
+            title="Price System"
+            description="Control global currency conversion for all price badges across the site."
+          >
+            <PriceSystemEditor
+              value={
+                content.pricing ?? {
+                  mode: "auto",
+                  defaultCurrency: "USD",
+                  fallbackLocale: "en-US",
+                  manualCurrency: "USD"
+                }
+              }
+              onChange={(nextPricing) => {
+                const nextContent = { ...content, pricing: nextPricing };
+                queueAutoPublish(nextContent, "Price System updated and published.", "Failed to publish Price System updates.");
+              }}
+            />
           </EditorShell>
         );
       case "branding":

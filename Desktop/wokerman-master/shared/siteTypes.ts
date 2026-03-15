@@ -45,6 +45,10 @@ export type PricingConfig = {
   defaultCurrency: string;
   fallbackLocale: string;
   manualCurrency?: string;
+  baseCurrency?: string;
+  exchangeRates?: Record<string, number>;
+  showCurrencyCode?: boolean;
+  rounding?: "auto" | "integer" | "two-decimal";
 };
 
 export type SiteContent = {
